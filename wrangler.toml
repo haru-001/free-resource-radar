@@ -1,0 +1,33 @@
+name = "free-resource-radar"
+main = "src/index.js"
+compatibility_date = "2025-11-01"
+
+# 每天 UTC 01:00 运行一次（= 北京 09:00 / 东京 10:00），可自行修改
+[triggers]
+crons = ["0 1 * * *"]
+
+# D1 和 KV 都不用手动创建：首次部署时 Wrangler 自动创建并绑定（需要 wrangler 4.45+，GitHub 部署同样生效）。
+# 只有 D1 是必需的；KV 可删掉，删掉后敏感信息存 D1 的 secrets 表。数据表首次访问自动建好。
+[[d1_databases]]
+binding = "DB"
+database_name = "free-resource-radar"
+
+# 敏感配置（各类 URL、Key、邮箱授权码、Telegram Token）存在这里
+[[kv_namespaces]]
+binding = "SECRETS"
+
+# 可选：用 Cloudflare Email Routing 发邮件（后台发送方式选 cloudflare 时才需要）
+# [[send_email]]
+# name = "MAILER"
+
+# 让 .html 文件以文本形式导入
+[[rules]]
+type = "Text"
+globs = ["**/*.html"]
+fallthrough = true
+
+[observability]
+enabled = true
+
+# 后台密码：首次打开 /admin 时设置（存 D1）。也可在控制台添加密钥 ADMIN_TOKEN 覆盖
+# 可选：GITHUB_TOKEN（提高 GitHub 搜索额度），同样以密钥形式添加

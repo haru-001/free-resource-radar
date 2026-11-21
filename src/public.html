@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>免费资源雷达 · 免费域名与虚拟主机</title>
+<meta name="description" content="每天自动收集半年内、注册简单的免费域名与免费虚拟主机资源" />
+<link rel="alternate" type="application/rss+xml" title="RSS" href="/feed.xml" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='5' fill='%23312e81'/></svg>" />
+<style>
+  :root {
+    --canvas:#f6f7f9; --canvas-subtle:#eceef2; --surface:#fff; --hover:#f7f8fb; --muted:#f1f3f6;
+    --ink-950:#111318; --ink-700:#374151; --ink-600:#4b5563; --ink-500:#525c6b; --ink-400:#646f80; --ink-300:#d1d5de; --ink-200:#e6e8ec;
+    --brand-subtle:#eef0ff; --brand-border:#c7d0f8; --accent:#312e81;
+    --deal:#047857; --deal-subtle:#ecfdf5; --code:#92400e; --code-subtle:#fef3c7;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; color:var(--ink-950); background:var(--surface); -webkit-font-smoothing:antialiased; }
+  ::selection { background:var(--brand-subtle); }
+  a { color:inherit; text-decoration:none; }
+  .app { display:grid; grid-template-columns:240px minmax(0,1fr); min-height:100vh; }
+  .rail { background:var(--canvas); border-right:1px solid var(--ink-200); padding:18px 12px; position:sticky; top:0; height:100vh; overflow:auto; }
+  .brand { display:flex; align-items:center; gap:8px; font-weight:600; font-size:14px; padding:2px 8px 14px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); flex:none; }
+  .search { position:relative; margin:0 2px 6px; }
+  .search input { width:100%; height:32px; border:1px solid var(--ink-200); border-radius:6px; padding:0 28px 0 10px; font:inherit; background:#fff; outline:none; }
+  .search input:focus { border-color:var(--brand-border); box-shadow:0 0 0 3px var(--brand-subtle); }
+  .search kbd { position:absolute; right:8px; top:7px; font:600 11px var(--mono); color:var(--ink-400); border:1px solid var(--ink-200); border-radius:4px; padding:0 4px; background:var(--canvas); }
+  .nav-title { font:600 11px/1.3 var(--mono); color:var(--ink-400); text-transform:uppercase; letter-spacing:.04em; padding:14px 8px 6px; }
+  .nav a { display:flex; justify-content:space-between; align-items:center; padding:7px 10px; border-radius:6px; color:var(--ink-700); cursor:pointer; }
+  .nav a:hover { background:var(--canvas-subtle); }
+  .nav a.on { background:var(--canvas-subtle); color:var(--ink-950); font-weight:600; }
+  .nav .n { font:600 11px var(--mono); color:var(--ink-400); font-variant-numeric:tabular-nums; }
+  .about { color:var(--ink-400); font-size:12px; padding:16px 8px 0; line-height:1.6; }
+  .main { min-width:0; }
+  .top { position:sticky; top:0; z-index:5; background:rgba(255,255,255,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--ink-200); padding:14px 28px; display:flex; align-items:center; gap:12px; }
+  .top h1 { font-size:17px; font-weight:600; margin:0; }
+  .top .count { color:var(--ink-400); font:600 12px var(--mono); flex:1; }
+  .seg { display:inline-flex; border:1px solid var(--ink-200); border-radius:6px; overflow:hidden; }
+  .seg button { border:none; background:#fff; padding:5px 10px; font:inherit; font-size:12px; color:var(--ink-500); cursor:pointer; }
+  .seg button.on { background:var(--ink-950); color:#fff; }
+  .list { padding:4px 28px 60px; }
+  /* 紧凑行 */
+  .row { display:grid; grid-template-columns:10px 34px minmax(0,1fr) auto; gap:10px; align-items:start; padding:12px 6px; border-bottom:1px solid var(--ink-200); }
+  .row:hover { background:var(--hover); }
+  .udot { width:7px; height:7px; border-radius:50%; background:var(--accent); margin-top:6px; }
+  .udot.old { background:transparent; }
+  .score { font:600 12px var(--mono); color:var(--ink-400); text-align:right; padding-top:1px; font-variant-numeric:tabular-nums; }
+  .score.hi { color:var(--deal); }
+  .t { font-size:14px; font-weight:500; line-height:1.35; word-break:break-word; }
+  .t:hover { color:var(--accent); }
+  .ob { font-size:12px; margin-left:6px; white-space:nowrap; }
+  .ob.free { color:var(--deal); }
+  .ob.cond { color:var(--code); }
+  .sum { color:var(--ink-600); margin-top:3px; }
+  .meta { color:var(--ink-400); font-size:12px; margin-top:3px; }
+  .meta i { font-style:normal; margin:0 5px; color:var(--ink-300); }
+  .time { font:12px var(--mono); color:var(--ink-400); white-space:nowrap; padding-top:2px; font-variant-numeric:tabular-nums; }
+  /* 卡片视图 */
+  .grid .cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding-top:16px; }
+  .card { border:1px solid var(--ink-200); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:6px; }
+  .card:hover { border-color:var(--ink-300); background:var(--hover); }
+  .card .head { display:flex; gap:8px; align-items:center; font-size:12px; color:var(--ink-400); }
+  .card .head .score { flex:none; }
+  .card .sum { flex:1; }
+  .chip { font:600 11px var(--mono); color:var(--code); background:var(--code-subtle); border-radius:4px; padding:1px 6px; }
+  .chip.free { color:var(--deal); background:var(--deal-subtle); }
+  .empty { color:var(--ink-400); text-align:center; padding:60px 0; }
+  .dayh { display:flex; align-items:baseline; gap:8px; padding:20px 6px 8px; border-bottom:1px solid var(--ink-200); position:sticky; top:57px; background:#fff; z-index:2; }
+  .dayh b { font-size:13px; font-weight:600; }
+  .dayh span { font:600 11px var(--mono); color:var(--ink-400); }
+  .grid .dayh { border-bottom:none; padding-bottom:0; position:static; }
+  .grid .cards { padding-top:10px; }
+  @media (max-width:1023px) { .grid .cards { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (max-width:640px) {
+    .app { grid-template-columns:1fr; }
+    .rail { position:static; height:auto; padding:12px; border-right:none; border-bottom:1px solid var(--ink-200); }
+    .rail .nav { display:flex; overflow-x:auto; gap:4px; }
+    .rail .nav a { flex:none; gap:6px; }
+    .nav-title, .about { display:none; }
+    .search kbd { display:none; }
+    .top, .list { padding-left:12px; padding-right:12px; }
+    .row { grid-template-columns:30px minmax(0,1fr); }
+    .row .udot { display:none; }
+    .row .time { grid-column:2; padding:0; }
+    .grid .cards { grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><span class="dot"></span>免费资源雷达</div>
+    <div class="search"><input id="q" placeholder="搜索资源…" /><kbd>/</kbd></div>
+    <div class="nav-title">频道</div>
+    <nav class="nav" id="cats">
+      <a data-c="" class="on">全部 <span class="n" data-n="all"></span></a>
+      <a data-c="domain">免费域名 <span class="n" data-n="domain"></span></a>
+      <a data-c="hosting">虚拟主机 <span class="n" data-n="hosting"></span></a>
+    </nav>
+    <div class="nav-title">获取方式</div>
+    <nav class="nav" id="obs">
+      <a data-o="" class="on">不限</a>
+      <a data-o="free">直接白嫖 <span class="n" data-n="free"></span></a>
+      <a data-o="conditional">有条件 <span class="n" data-n="conditional"></span></a>
+    </nav>
+    <div class="nav-title">按日期</div>
+    <nav class="nav" id="days"><a data-d="" class="on">最近 <span class="n" id="retN"></span></a></nav>
+    <div class="nav-title">订阅</div>
+    <nav class="nav">
+      <a href="/feed.xml" target="_blank">RSS ↗</a>
+      <a href="/admin">管理</a>
+    </nav>
+    <div class="about">每天自动收集半年内发布、只需邮箱或 GitHub / Google 登录即可注册的免费域名与虚拟主机，经 AI 筛选。<br><span id="updated"></span></div>
+  </aside>
+  <main class="main">
+    <div class="top">
+      <h1 id="title">全部资源</h1>
+      <span class="count" id="count"></span>
+      <div class="seg" id="view"><button data-v="list">列表</button><button data-v="grid">卡片</button></div>
+    </div>
+    <div class="list" id="list"><div class="empty">加载中…</div></div>
+  </main>
+</div>
+<script>
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const CAT = { domain: '免费域名', hosting: '虚拟主机', other: '其他' };
+const OB = { free: '直接白嫖', conditional: '有条件', lottery: '抽奖', trial: '试用', promo: '推广', paid: '需付费' };
+const state = { cat: '', ob: '', day: '', today: '', view: localStorage.getItem('frr_view') || 'list', timer: 0 };
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+function ago(t) {
+  if (!t) return '';
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 60) return Math.max(m, 1) + '分钟前';
+  if (m < 1440) return Math.round(m / 60) + '小时前';
+  if (m < 43200) return Math.round(m / 1440) + '天前';
+  return new Date(t).toLocaleDateString('zh-CN');
+}
+const obTag = (o, cls) => (o ? '<span class="' + cls + (o === 'free' ? ' free' : ' cond') + '">' + OB[o] + '</span>' : '');
+
+function rowHtml(it) {
+  const fresh = it.published_at && Date.now() - it.published_at < 3 * 86400000;
+  return '<div class="row"><span class="udot' + (fresh ? '' : ' old') + '" title="' + (fresh ? '3 天内' : '') + '"></span>' +
+    '<span class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '·') + '</span><div>' +
+    '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + esc(it.name || it.title) + '</a>' + obTag(it.obtain, 'ob') +
+    (it.summary ? '<div class="sum">' + esc(it.summary) + '</div>' : '') +
+    '<div class="meta">' + [CAT[it.category] || '', it.signup ? '注册：' + esc(it.signup) : '', esc(it.source || '')].filter(Boolean).join('<i>·</i>') + '</div></div>' +
+    '<span class="time">' + ago(it.published_at) + '</span></div>';
+}
+function cardHtml(it) {
+  return '<a class="card" href="' + esc(it.url) + '" target="_blank" rel="noopener">' +
+    '<div class="head"><span class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '·') + '</span><span>' + (CAT[it.category] || '') + '</span><span style="flex:1"></span>' + obTag(it.obtain, 'chip') + '</div>' +
+    '<div class="t">' + esc(it.name || it.title) + '</div>' +
+    (it.summary ? '<div class="sum">' + esc(it.summary) + '</div>' : '<div class="sum"></div>') +
+    '<div class="meta">' + [it.signup ? '注册：' + esc(it.signup) : '', ago(it.published_at)].filter(Boolean).join('<i>·</i>') + '</div></a>';
+}
+
+async function load() {
+  const p = new URLSearchParams({ limit: '200' });
+  if (state.cat) p.set('category', state.cat);
+  if (state.ob) p.set('obtain', state.ob);
+  if (state.day) p.set('day', state.day);
+  const q = $('#q').value.trim();
+  if (q) p.set('q', q);
+  const items = await fetch('/api/items?' + p).then((r) => r.json()).catch(() => []);
+  const el = $('#list');
+  el.className = 'list ' + state.view;
+  $('#count').textContent = Array.isArray(items) ? items.length + ' 条' : '';
+  if (!Array.isArray(items) || !items.length) { el.innerHTML = '<div class="empty">暂时没有符合条件的资源</div>'; return; }
+  const groups = [];
+  for (const it of items) {
+    const d = it.day || '';
+    if (!groups.length || groups[groups.length - 1].d !== d) groups.push({ d, list: [] });
+    groups[groups.length - 1].list.push(it);
+  }
+  el.innerHTML = groups.map((g) => '<div class="dayh"><b>' + dayLabel(g.d) + '</b><span>' + g.list.length + ' 条</span></div>' +
+    (state.view === 'grid' ? '<div class="cards">' + g.list.map(cardHtml).join('') + '</div>' : g.list.map(rowHtml).join(''))).join('');
+}
+function dayLabel(d) {
+  if (!d) return '更早';
+  const [y, m, dd] = d.split('-').map(Number);
+  const diff = state.today ? Math.round((Date.parse(state.today) - Date.parse(d)) / 86400000) : -1;
+  const rel = diff === 0 ? ' · 今天' : diff === 1 ? ' · 昨天' : '';
+  return m + '月' + dd + '日' + rel;
+}
+async function loadStats() {
+  const s = await fetch('/api/stats').then((r) => r.json()).catch(() => null);
+  if (!s) return;
+  $$('[data-n]').forEach((el) => (el.textContent = s[el.dataset.n] ?? ''));
+  state.today = s.today || '';
+  $('#retN').textContent = s.retention_days ? s.retention_days + '天' : '';
+  $('#days').innerHTML = '<a data-d="" class="' + (state.day ? '' : 'on') + '">最近 <span class="n">' + (s.retention_days || 15) + '天</span></a>' +
+    (s.days || []).slice(0, 15).map((x) => '<a data-d="' + x.day + '" class="' + (state.day === x.day ? 'on' : '') + '">' + dayLabel(x.day) + ' <span class="n">' + x.n + '</span></a>').join('');
+  $$('#days a').forEach((a) => (a.onclick = () => { state.day = a.dataset.d; setActive('#days', 'd', state.day); load(); }));
+  if (s.last_run) $('#updated').textContent = '最近更新：' + new Date(s.last_run).toLocaleString('zh-CN', { hour12: false });
+}
+
+function setActive(groupSel, attr, val) { $$(groupSel + ' a').forEach((a) => a.classList.toggle('on', a.dataset[attr] === val)); }
+$$('#cats a').forEach((a) => (a.onclick = () => { state.cat = a.dataset.c; setActive('#cats', 'c', state.cat); $('#title').textContent = state.cat ? CAT[state.cat] : '全部资源'; load(); }));
+$$('#obs a').forEach((a) => (a.onclick = () => { state.ob = a.dataset.o; setActive('#obs', 'o', state.ob); load(); }));
+$$('#view button').forEach((b) => {
+  b.classList.toggle('on', b.dataset.v === state.view);
+  b.onclick = () => { state.view = b.dataset.v; localStorage.setItem('frr_view', state.view); $$('#view button').forEach((x) => x.classList.toggle('on', x === b)); load(); };
+});
+$('#q').oninput = () => { clearTimeout(state.timer); state.timer = setTimeout(load, 250); };
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && document.activeElement !== $('#q')) { e.preventDefault(); $('#q').focus(); }
+  if (e.key === 'Escape') { $('#q').value = ''; $('#q').blur(); load(); }
+});
+loadStats().then(load);
+</script>
+</body>
+</html>

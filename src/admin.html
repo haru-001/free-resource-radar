@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>管理 · 免费资源雷达</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='5' fill='%23312e81'/></svg>" />
+<style>
+  :root {
+    --canvas:#f6f7f9; --canvas-subtle:#eceef2; --surface:#fff; --hover:#f7f8fb; --muted:#f1f3f6;
+    --ink-950:#111318; --ink-700:#374151; --ink-600:#4b5563; --ink-500:#525c6b; --ink-400:#646f80; --ink-300:#d1d5de; --ink-200:#e6e8ec;
+    --brand:#111318; --brand-hover:#272b36; --brand-subtle:#eef0ff; --brand-border:#c7d0f8; --accent:#312e81;
+    --deal:#047857; --deal-subtle:#ecfdf5; --code:#92400e; --code-subtle:#fef3c7; --alert:#dc2626; --alert-subtle:#fef2f2;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; }
+  body { font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; color:var(--ink-950); background:var(--surface); -webkit-font-smoothing:antialiased; }
+  ::selection { background:var(--brand-subtle); }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .app { display:grid; grid-template-columns:240px minmax(0,1fr); min-height:100vh; }
+  /* 左导轨 */
+  .rail { background:var(--canvas); border-right:1px solid var(--ink-200); padding:18px 12px; position:sticky; top:0; height:100vh; overflow:auto; }
+  .brand { display:flex; align-items:center; gap:8px; font-weight:600; font-size:14px; padding:2px 8px 16px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); flex:none; }
+  .nav-title { font:600 11px/1.3 var(--mono); color:var(--ink-400); text-transform:uppercase; letter-spacing:.04em; padding:14px 8px 6px; }
+  .nav a { display:flex; justify-content:space-between; align-items:center; padding:7px 10px; border-radius:6px; color:var(--ink-700); font-size:13px; }
+  .nav a:hover { background:var(--canvas-subtle); text-decoration:none; }
+  .nav a.on { background:var(--canvas-subtle); color:var(--ink-950); font-weight:600; }
+  .nav .n { font:600 11px var(--mono); color:var(--ink-400); font-variant-numeric:tabular-nums; }
+  /* 主画布 */
+  .main { min-width:0; }
+  .top { position:sticky; top:0; z-index:5; background:rgba(255,255,255,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--ink-200); padding:14px 28px; display:flex; align-items:center; gap:10px; }
+  .top h1 { font-size:17px; font-weight:600; margin:0; flex:1; }
+  .page { padding:22px 28px 60px; max-width:980px; }
+  .panel { display:none; }
+  .panel.on { display:block; }
+  .section { border:1px solid var(--ink-200); border-radius:8px; margin-bottom:16px; }
+  .section > header { display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid var(--ink-200); }
+  .section > header h2 { font-size:14px; font-weight:600; margin:0; flex:1; }
+  .section .body { padding:14px 16px; display:grid; gap:14px; }
+  .grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 16px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 16px; }
+  label.f { display:block; font-size:12px; color:var(--ink-500); margin-bottom:4px; }
+  input[type=text], input[type=password], input[type=number], select, textarea {
+    width:100%; height:36px; padding:0 10px; border:1px solid var(--ink-200); border-radius:6px; font:inherit; color:var(--ink-950); background:var(--surface); outline:none; }
+  textarea { height:auto; min-height:110px; padding:8px 10px; font:12px/1.55 var(--mono); resize:vertical; }
+  input:focus, select:focus, textarea:focus { border-color:var(--brand-border); box-shadow:0 0 0 3px var(--brand-subtle); }
+  .hint { font-size:12px; color:var(--ink-400); }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .row > .grow { flex:1; min-width:180px; }
+  .btn { height:32px; padding:0 12px; border-radius:6px; border:1px solid var(--ink-200); background:var(--surface); color:var(--ink-700); font:inherit; cursor:pointer; white-space:nowrap; }
+  .btn:hover { background:var(--hover); }
+  .btn.pri { background:var(--brand); border-color:var(--brand); color:#fff; }
+  .btn.pri:hover { background:var(--brand-hover); }
+  .btn.danger { color:var(--alert); }
+  .btn:disabled { opacity:.55; cursor:wait; }
+  .btn.sm { height:26px; padding:0 8px; font-size:12px; }
+  /* 开关 */
+  .sw { display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; color:var(--ink-700); user-select:none; }
+  .sw input { appearance:none; width:30px; height:18px; border-radius:999px; background:var(--ink-300); position:relative; cursor:pointer; transition:.15s; margin:0; }
+  .sw input::after { content:""; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#fff; transition:.15s; }
+  .sw input:checked { background:var(--brand); }
+  .sw input:checked::after { left:14px; }
+  .chk { display:inline-flex; align-items:center; gap:6px; margin-right:14px; font-size:13px; color:var(--ink-700); }
+  /* 列表 */
+  .tabs { display:flex; gap:18px; border-bottom:1px solid var(--ink-200); margin-bottom:4px; }
+  .tabs button { background:none; border:none; padding:8px 0; font:inherit; color:var(--ink-500); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .tabs button.on { color:var(--ink-950); font-weight:600; border-color:var(--accent); }
+  .tabs .n { font:600 11px var(--mono); color:var(--ink-400); margin-left:4px; }
+  .item { display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:10px; padding:12px 6px; border-bottom:1px solid var(--ink-200); align-items:start; }
+  .item:hover { background:var(--hover); }
+  .score { font:600 12px var(--mono); color:var(--ink-400); text-align:right; padding-top:1px; font-variant-numeric:tabular-nums; }
+  .score.hi { color:var(--deal); }
+  .t { font-size:14px; font-weight:500; color:var(--ink-950); line-height:1.35; word-break:break-word; }
+  .t:hover { color:var(--accent); text-decoration:none; }
+  .free { color:var(--deal); font-size:12px; margin-left:6px; }
+  .cond { color:var(--code); font-size:12px; margin-left:6px; }
+  .sum { color:var(--ink-600); margin-top:3px; }
+  .meta { color:var(--ink-400); font-size:12px; margin-top:3px; }
+  .meta i { font-style:normal; margin:0 5px; color:var(--ink-300); }
+  .acts { display:flex; gap:4px; opacity:.35; transition:.12s; }
+  .item:hover .acts { opacity:1; }
+  .empty { color:var(--ink-400); padding:40px 0; text-align:center; }
+  details { border-bottom:1px solid var(--ink-200); padding:10px 4px; }
+  summary { cursor:pointer; color:var(--ink-700); }
+  pre { background:var(--muted); border-radius:6px; padding:10px 12px; font:12px/1.55 var(--mono); white-space:pre-wrap; word-break:break-all; margin:8px 0 0; }
+  .callout { background:var(--brand-subtle); border:1px solid var(--brand-border); color:var(--accent); border-radius:6px; padding:8px 12px; font-size:12px; }
+  #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink-950); color:#fff; padding:9px 16px; border-radius:8px; box-shadow:0 8px 24px rgba(17,19,24,.18); display:none; max-width:min(560px,90vw); z-index:20; }
+  #gate { position:fixed; inset:0; background:rgba(246,247,249,.96); display:none; align-items:center; justify-content:center; z-index:30; }
+  #gate .box { width:340px; background:#fff; border:1px solid var(--ink-200); border-radius:8px; padding:22px; box-shadow:0 12px 32px rgba(17,19,24,.08); }
+  #gate h3 { margin:0 0 4px; font-size:17px; }
+  @media (max-width:1023px) { .grid3 { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (max-width:760px) {
+    .app { grid-template-columns:1fr; }
+    .rail { position:static; height:auto; padding:12px; border-right:none; border-bottom:1px solid var(--ink-200); }
+    .rail .nav { display:flex; overflow-x:auto; gap:4px; }
+    .rail .nav a { flex:none; }
+    .nav-title, .rail .foot { display:none; }
+    .brand { padding-bottom:10px; }
+    .top, .page { padding-left:14px; padding-right:14px; }
+    .grid2, .grid3 { grid-template-columns:1fr; }
+    .item { grid-template-columns:32px minmax(0,1fr); }
+    .acts { grid-column:2; opacity:1; }
+  }
+</style>
+</head>
+<body>
+<div id="gate"><div class="box">
+  <div id="loginBox">
+    <h3>管理区</h3>
+    <div class="hint" style="margin-bottom:14px">输入管理员密码</div>
+    <input type="password" id="tokenInput" placeholder="密码" onkeydown="if(event.key==='Enter')login()" />
+    <div class="row" style="margin-top:14px"><button class="btn pri" onclick="login()">进入</button><a href="/" class="hint">返回资源页</a></div>
+  </div>
+  <div id="setupBox" style="display:none">
+    <h3>设置管理员密码</h3>
+    <div class="hint" style="margin-bottom:14px">首次使用，请设置后台密码（至少 8 位）。设置后只能用这个密码登录。</div>
+    <input type="password" id="pw1" placeholder="密码" style="margin-bottom:8px" />
+    <input type="password" id="pw2" placeholder="再输入一次" onkeydown="if(event.key==='Enter')setup()" />
+    <div class="row" style="margin-top:14px"><button class="btn pri" onclick="setup()">完成设置</button></div>
+  </div>
+</div></div>
+
+<div class="app">
+  <aside class="rail">
+    <div class="brand"><span class="dot"></span>免费资源雷达</div>
+    <div class="nav-title">管理</div>
+    <nav class="nav" id="nav">
+      <a href="#items" data-p="items">资源审核 <span class="n" id="navPending"></span></a>
+      <a href="#ai" data-p="ai">AI 引擎</a>
+      <a href="#search" data-p="search">联网搜索</a>
+      <a href="#push" data-p="push">邮件与推送</a>
+      <a href="#collect" data-p="collect">采集与过滤</a>
+      <a href="#runs" data-p="runs">运行记录</a>
+      <a href="#account" data-p="account">账号与存储</a>
+    </nav>
+    <div class="nav-title">其他</div>
+    <nav class="nav foot">
+      <a href="/" target="_blank">资源页 ↗</a>
+      <a href="/feed.xml" target="_blank">RSS ↗</a>
+      <a href="javascript:logout()">退出登录</a>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <h1 id="title">资源审核</h1>
+      <button class="btn" onclick="runNow(this)">立即抓取</button>
+      <button class="btn pri" onclick="save(this)">保存设置</button>
+    </div>
+    <div class="page">
+
+      <!-- 资源审核 -->
+      <div class="panel" id="p-items">
+        <div class="tabs">
+          <button data-st="approved" onclick="loadItems('approved')">已通过<span class="n"></span></button>
+          <button data-st="pending" onclick="loadItems('pending')">待判定<span class="n"></span></button>
+          <button data-st="rejected" onclick="loadItems('rejected')">已拒绝<span class="n"></span></button>
+          <span style="flex:1"></span>
+          <button class="danger" onclick="clearStatus()" style="color:var(--alert)">清空当前</button>
+        </div>
+        <pre id="runOut" style="display:none"></pre>
+        <div id="items"></div>
+      </div>
+
+      <!-- AI -->
+      <div class="panel" id="p-ai">
+        <div class="section">
+          <header><h2>AI 判定</h2><label class="sw"><input type="checkbox" data-key="ai_enabled" />启用</label></header>
+          <div class="body">
+            <div class="callout"><span class="storageNote"></span>支持任何 OpenAI 兼容接口：OpenAI、DeepSeek、OpenRouter、硅基流动、各类中转。</div>
+            <div class="grid2">
+              <div><label class="f">接口地址</label><input type="text" data-key="ai_base_url" placeholder="https://api.openai.com/v1" /></div>
+              <div><label class="f">API Key</label><input type="password" data-key="ai_api_key" autocomplete="off" /></div>
+            </div>
+            <div>
+              <label class="f">默认模型</label>
+              <div class="row">
+                <input class="grow" type="text" data-key="ai_model" list="ai-models" placeholder="手动输入，或获取列表后选择" />
+                <datalist id="ai-models"></datalist>
+                <select id="ai-select" class="grow" onchange="pick('ai', this.value)"><option value="">— 模型列表 —</option></select>
+                <button class="btn" onclick="fetchModels('ai', this)">获取模型</button>
+                <button class="btn" onclick="testModel('ai', this)">测试</button>
+              </div>
+            </div>
+            <div class="grid3">
+              <div><label class="f">每次请求判定条数</label><input type="number" data-key="ai_batch_size" min="1" max="20" /></div>
+              <div><label class="f">每次运行最多判定</label><input type="number" data-key="ai_max_items" min="1" /></div>
+              <div><label class="f">最低通过分数</label><input type="number" data-key="ai_min_score" min="0" max="100" /></div>
+            </div>
+            <div class="hint">AI 输出：是否相关、分类（域名 / 主机）、获取方式、注册是否简单、一句话简介、0-100 分。未启用时用关键词粗筛。</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 搜索 -->
+      <div class="panel" id="p-search">
+        <div class="section">
+          <header><h2>Tavily</h2><label class="sw"><input type="checkbox" data-key="tavily_enabled" />启用</label></header>
+          <div class="body">
+            <div class="grid2">
+              <div><label class="f">API Key（tvly-…）</label><input type="password" data-key="tavily_api_key" autocomplete="off" /></div>
+              <div><label class="f">搜索深度</label><select data-key="tavily_depth"><option value="basic">basic（1 credit）</option><option value="advanced">advanced（2 credits）</option><option value="fast">fast</option></select></div>
+            </div>
+            <div class="row"><button class="btn" onclick="testSearch('tavily', this)">测试搜索</button><span class="hint">中文查询会设置 language=zh-cn；只要中文时开启 filter_by_language。</span></div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>Keenable</h2><label class="sw"><input type="checkbox" data-key="keenable_enabled" />启用</label></header>
+          <div class="body">
+            <div class="grid2">
+              <div><label class="f">API Key（keen_…，留空走免费公共接口）</label><input type="password" data-key="keenable_api_key" autocomplete="off" /></div>
+              <div><label class="f">模式</label><select data-key="keenable_mode"><option value="pro">pro（检索更深）</option><option value="realtime">realtime（更快）</option></select></div>
+            </div>
+            <div class="row"><button class="btn" onclick="testSearch('keenable', this)">测试搜索</button><span class="hint">按发布日期过滤，自动排除无日期页面和屏蔽站点。</span></div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>联网搜索模型</h2><label class="sw"><input type="checkbox" data-key="search_enabled" />启用</label></header>
+          <div class="body">
+            <div class="grid2">
+              <div><label class="f">接口地址</label><input type="text" data-key="search_base_url" placeholder="https://api.perplexity.ai" /></div>
+              <div><label class="f">API Key</label><input type="password" data-key="search_api_key" autocomplete="off" /></div>
+            </div>
+            <div>
+              <label class="f">模型</label>
+              <div class="row">
+                <input class="grow" type="text" data-key="search_model" list="search-models" placeholder="sonar / gpt-4o-search-preview" />
+                <datalist id="search-models"></datalist>
+                <select id="search-select" class="grow" onchange="pick('search', this.value)"><option value="">— 模型列表 —</option></select>
+                <button class="btn" onclick="fetchModels('search', this)">获取模型</button>
+                <button class="btn" onclick="testModel('search', this)">测试</button>
+              </div>
+            </div>
+            <div><label class="f">额外请求参数（JSON）</label><textarea data-key="search_extra_body" style="min-height:56px"></textarea>
+              <div class="hint">OpenAI 搜索模型填 {"web_search_options":{}}；Perplexity 可填 {"search_recency_filter":"month"}；不需要就填 {}。</div></div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>搜索偏好与过滤</h2></header>
+          <div class="body">
+            <div class="grid2">
+              <div><label class="f">语言</label><select data-key="search_lang"><option value="zh_first">中文优先（不足时补英文）</option><option value="zh_only">只要中文</option><option value="any">不限</option></select></div>
+              <div><label class="f">每个查询返回条数</label><input type="number" data-key="search_max_results" min="1" max="50" /></div>
+            </div>
+            <div class="grid2">
+              <div><label class="f">搜索词（Tavily / Keenable，每行一个）</label><textarea data-key="search_queries"></textarea></div>
+              <div><label class="f">屏蔽站点（每行一个域名，对所有来源生效）</label><textarea data-key="search_block_domains"></textarea></div>
+            </div>
+            <div class="hint">搜索结果依次经过：屏蔽站点 → 语言 → 噪音标题 → 屏蔽规则 → 明显要绑卡 / 实名 → 发布时间 → 关键词 → AI 判定。</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 推送 -->
+      <div class="panel" id="p-push">
+        <div class="section">
+          <header><h2>邮件日报</h2><label class="sw"><input type="checkbox" data-key="mail_enabled" />启用</label></header>
+          <div class="body">
+            <div class="grid2">
+              <div><label class="f">发送方式</label><select data-key="mail_provider" onchange="applyShow()"><option value="smtp">SMTP（默认 QQ 邮箱）</option><option value="resend">Resend</option><option value="brevo">Brevo</option><option value="cloudflare">Cloudflare Email Routing</option></select></div>
+              <div><label class="f">收件人（多个用逗号分隔）</label><input type="text" data-key="mail_to" placeholder="me@example.com" /></div>
+            </div>
+            <div data-show="mail_provider=smtp" class="grid3">
+              <div><label class="f">SMTP 服务器</label><input type="text" data-key="smtp_host" /></div>
+              <div><label class="f">端口</label><input type="number" data-key="smtp_port" /></div>
+              <div><label class="f">加密</label><select data-key="smtp_secure"><option value="ssl">SSL（465）</option><option value="starttls">STARTTLS（587）</option></select></div>
+              <div><label class="f">QQ 邮箱账号</label><input type="text" data-key="smtp_user" placeholder="123456@qq.com" /></div>
+              <div><label class="f">授权码（不是 QQ 密码）</label><input type="password" data-key="smtp_pass" autocomplete="off" /></div>
+              <div><label class="f">发件地址（留空 = 账号）</label><input type="text" data-key="mail_from" /></div>
+            </div>
+            <div data-show="mail_provider=smtp" class="hint">QQ 邮箱 → 设置 → 账号与安全 → 安全设置 → 开启 POP3/IMAP/SMTP 服务，生成授权码。QQ 要求发件地址与登录账号一致。</div>
+            <div data-show="mail_provider=resend,brevo" class="grid2">
+              <div><label class="f">API Key</label><input type="password" data-key="mail_api_key" autocomplete="off" /></div>
+              <div><label class="f">发件地址（需已验证域名）</label><input type="text" data-key="mail_from" class="mirror" /></div>
+            </div>
+            <div data-show="mail_provider=cloudflare" class="hint">需要取消 wrangler.toml 中 [[send_email]] 的注释，发件域名开启 Email Routing，收件人在 Email Routing 中验证。发件地址填你域名下的地址。</div>
+            <div class="grid3">
+              <div><label class="f">发件人名称</label><input type="text" data-key="mail_from_name" /></div>
+              <div><label class="f">标题</label><input type="text" data-key="mail_subject" /></div>
+              <div><label class="f">每封最多条数</label><input type="number" data-key="mail_max_items" min="1" max="200" /></div>
+            </div>
+            <div><label class="f">资源页地址（邮件底部“查看全部”）</label><input type="text" data-key="mail_site_url" placeholder="https://xxx.workers.dev" /></div>
+            <div class="row">
+              <label class="sw"><input type="checkbox" data-key="mail_only_new" />只推上次之后新通过的</label>
+              <label class="sw"><input type="checkbox" data-key="mail_send_empty" />没有新内容也推</label>
+            </div>
+            <div class="row">
+              <button class="btn" onclick="mailPreview(this)">预览邮件</button>
+              <button class="btn" onclick="pushAction('test', 'mail', this)">发送测试邮件</button>
+              <span class="hint">先保存再测试。</span>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>Telegram</h2><label class="sw"><input type="checkbox" data-key="telegram_enabled" />启用</label></header>
+          <div class="body">
+            <div class="grid2">
+              <div><label class="f">Bot Token（@BotFather 获取）</label><input type="password" data-key="telegram_bot_token" autocomplete="off" /></div>
+              <div><label class="f">Chat ID（个人或群组）</label><input type="text" data-key="telegram_chat_id" /></div>
+            </div>
+            <div class="row"><button class="btn" onclick="pushAction('test', 'telegram', this)">发送测试消息</button></div>
+          </div>
+        </div>
+        <div class="row"><button class="btn pri" onclick="pushAction('send', null, this)">立即推送日报</button><span class="hint">每天定时抓取结束后，按启用的渠道自动推送。</span></div>
+      </div>
+
+      <!-- 采集与过滤 -->
+      <div class="panel" id="p-collect">
+        <div class="section">
+          <header><h2>时效与质量</h2></header>
+          <div class="body">
+            <div class="grid3">
+              <div><label class="f">最大消息年龄（天）</label><input type="number" data-key="max_age_days" min="1" /></div>
+              <div><label class="f">数据保留天数（按抓取日期，到期自动清理）</label><input type="number" data-key="retention_days" min="1" max="365" /></div>
+              <div><label class="f">无发布日期</label><label class="sw" style="margin-top:8px"><input type="checkbox" data-key="keep_undated" />保留</label></div>
+              <div><label class="f">噪音标题（求助 / 吐槽）</label><label class="sw" style="margin-top:8px"><input type="checkbox" data-key="noise_filter" />跳过</label></div>
+            </div>
+            <div>
+              <label class="f">允许的获取方式</label>
+              <div data-csv="allowed_obtain">
+                <label class="chk"><input type="checkbox" value="free" />直接白嫖</label>
+                <label class="chk"><input type="checkbox" value="conditional" />有条件</label>
+                <label class="chk"><input type="checkbox" value="trial" />试用</label>
+                <label class="chk"><input type="checkbox" value="lottery" />抽奖</label>
+                <label class="chk"><input type="checkbox" value="promo" />推广</label>
+                <label class="chk"><input type="checkbox" value="paid" />需付费</label>
+              </div>
+            </div>
+            <div><label class="f">屏蔽规则（关键词或 /正则/，命中直接丢弃，不送 AI）</label><textarea data-key="block_rules"></textarea></div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>关键词预筛</h2></header>
+          <div class="body">
+            <div class="grid3">
+              <div><label class="f">主题词（命中其一）</label><textarea data-key="topic_keywords"></textarea></div>
+              <div><label class="f">免费词（命中其一）</label><textarea data-key="free_keywords"></textarea></div>
+              <div><label class="f">复杂注册词</label><textarea data-key="hard_signup_keywords"></textarea></div>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>数据源</h2></header>
+          <div class="body">
+            <textarea data-key="sources" style="min-height:300px"></textarea>
+            <div class="hint">type：rss（url）/ v2ex（node）/ hn（query）/ reddit（query, subreddit）/ github（query）。enabled:false 停用，filter:false 跳过关键词预筛。</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 账号与存储 -->
+      <div class="panel" id="p-account">
+        <div class="section">
+          <header><h2>存储</h2></header>
+          <div class="body">
+            <div id="storageInfo" class="hint"></div>
+            <div class="hint">资源按抓取日期（北京时间）存储，默认保留 15 天后自动清理；为避免重复推送，“已见过”的链接记录保留到最大消息年龄。保留天数在「采集与过滤」里改。</div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>管理员密码</h2></header>
+          <div class="body">
+            <div id="pwEnvNote" class="hint" style="display:none">当前使用 Cloudflare 环境变量 ADMIN_TOKEN 登录，请在控制台「设置 → 变量和机密」修改。</div>
+            <div id="pwForm" class="row">
+              <input class="grow" type="password" id="newPw" placeholder="新密码（至少 8 位）" />
+              <button class="btn" onclick="changePw(this)">修改密码</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 运行记录 -->
+      <div class="panel" id="p-runs"><div id="runs"></div></div>
+    </div>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+let TOKEN = localStorage.getItem('frr_token') || '';
+let CUR = 'approved';
+let SETTINGS = {};
+const TITLES = { items: '资源审核', ai: 'AI 引擎', search: '联网搜索', push: '邮件与推送', collect: '采集与过滤', runs: '运行记录', account: '账号与存储' };
+const CAT = { domain: '域名', hosting: '主机', other: '其他' };
+const OB = { free: '直接白嫖', conditional: '有条件', lottery: '抽奖', trial: '试用', promo: '推广', paid: '需付费' };
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const fmt = (t) => (t ? new Date(t).toLocaleString('zh-CN', { hour12: false }) : '—');
+function ago(t) {
+  if (!t) return '';
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 60) return Math.max(m, 1) + ' 分钟前';
+  if (m < 1440) return Math.round(m / 60) + ' 小时前';
+  return Math.round(m / 1440) + ' 天前';
+}
+function toast(msg, ms = 3500) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = 'none'), ms); }
+let STATUS = { initialized: true, storage: 'd1', env_token: false };
+function showGate() {
+  $('#gate').style.display = 'flex';
+  $('#loginBox').style.display = STATUS.initialized ? '' : 'none';
+  $('#setupBox').style.display = STATUS.initialized ? 'none' : '';
+  (STATUS.initialized ? $('#tokenInput') : $('#pw1')).focus();
+}
+async function setup() {
+  const a = $('#pw1').value, b = $('#pw2').value;
+  if (a.length < 8) return toast('密码至少 8 位');
+  if (a !== b) return toast('两次输入不一致');
+  const r = await fetch('/api/admin/setup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: a }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) return toast(j.error || '设置失败');
+  STATUS.initialized = true;
+  TOKEN = a; localStorage.setItem('frr_token', TOKEN);
+  $('#gate').style.display = 'none';
+  toast('密码已设置');
+  init();
+}
+function changePw(btn) {
+  return busy(btn, async () => {
+    const pw = $('#newPw').value;
+    await api('/api/admin/password', { method: 'POST', body: JSON.stringify({ password: pw }) });
+    TOKEN = pw; localStorage.setItem('frr_token', TOKEN); $('#newPw').value = '';
+    toast('密码已修改');
+  });
+}
+function login() { TOKEN = $('#tokenInput').value.trim(); localStorage.setItem('frr_token', TOKEN); $('#gate').style.display = 'none'; init(); }
+function logout() { localStorage.removeItem('frr_token'); TOKEN = ''; showGate(); }
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + TOKEN } });
+  const j = await r.json().catch(() => ({ error: '响应不是 JSON（HTTP ' + r.status + '）' }));
+  if (r.status === 401) { showGate(); throw new Error('口令错误'); }
+  if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+  return j;
+}
+async function busy(btn, fn) {
+  if (btn) btn.disabled = true;
+  try { return await fn(); } catch (e) { toast('出错：' + e.message, 7000); } finally { if (btn) btn.disabled = false; }
+}
+
+// ---- 路由 ----
+function route() {
+  const p = (location.hash || '#items').slice(1);
+  const key = TITLES[p] ? p : 'items';
+  $$('.panel').forEach((el) => el.classList.toggle('on', el.id === 'p-' + key));
+  $$('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.p === key));
+  $('#title').textContent = TITLES[key];
+  if (key === 'runs' && TOKEN) loadRuns();
+}
+window.addEventListener('hashchange', route);
+
+// ---- 设置 ----
+function fill(s) {
+  SETTINGS = s;
+  $$('[data-key]').forEach((el) => {
+    const v = s[el.dataset.key];
+    if (el.type === 'checkbox') el.checked = v === 'true'; else el.value = v ?? '';
+  });
+  $$('[data-csv]').forEach((box) => {
+    const vals = String(s[box.dataset.csv] || '').split(',').map((x) => x.trim());
+    box.querySelectorAll('input').forEach((i) => (i.checked = vals.includes(i.value)));
+  });
+  applyShow();
+}
+function collect() {
+  const out = {};
+  $$('[data-key]').forEach((el) => {
+    if (el.closest('[data-show]') && el.closest('[data-show]').style.display === 'none') return; // 隐藏的重复字段不覆盖
+    out[el.dataset.key] = el.type === 'checkbox' ? String(el.checked) : el.value;
+  });
+  $$('[data-csv]').forEach((box) => { out[box.dataset.csv] = [...box.querySelectorAll('input:checked')].map((i) => i.value).join(','); });
+  return out;
+}
+function applyShow() {
+  $$('[data-show]').forEach((el) => {
+    const [k, vals] = el.dataset.show.split('=');
+    const cur = document.querySelector('select[data-key="' + k + '"]').value;
+    el.style.display = vals.split(',').includes(cur) ? '' : 'none';
+  });
+}
+const field = (k) => document.querySelector('[data-key="' + k + '"]');
+
+function save(btn) {
+  return busy(btn, async () => {
+    const data = collect();
+    try { JSON.parse(data.sources); } catch (e) { throw new Error('数据源 JSON 格式错误：' + e.message); }
+    try { JSON.parse(data.search_extra_body || '{}'); } catch (e) { throw new Error('额外请求参数 JSON 格式错误：' + e.message); }
+    const r = await api('/api/admin/settings', { method: 'PUT', body: JSON.stringify(data) });
+    fill(r.settings);
+    toast('已保存');
+  });
+}
+
+function fetchModels(target, btn) {
+  return busy(btn, async () => {
+    const r = await api('/api/admin/models', { method: 'POST', body: JSON.stringify({ target, base_url: field(target + '_base_url').value, api_key: field(target + '_api_key').value }) });
+    $('#' + target + '-models').innerHTML = r.models.map((m) => '<option value="' + esc(m) + '">').join('');
+    const cur = field(target + '_model').value;
+    $('#' + target + '-select').innerHTML = '<option value="">— 共 ' + r.models.length + ' 个模型 —</option>' + r.models.map((m) => '<option' + (m === cur ? ' selected' : '') + ' value="' + esc(m) + '">' + esc(m) + '</option>').join('');
+    toast('获取到 ' + r.models.length + ' 个模型，选好后记得保存');
+  });
+}
+function pick(target, v) { if (v) field(target + '_model').value = v; }
+function testModel(target, btn) {
+  return busy(btn, async () => {
+    const body = { target, base_url: field(target + '_base_url').value, api_key: field(target + '_api_key').value, model: field(target + '_model').value };
+    if (target === 'search') body.extra_body = field('search_extra_body').value;
+    const r = await api('/api/admin/test', { method: 'POST', body: JSON.stringify(body) });
+    toast('连接成功（' + r.ms + 'ms）：' + r.reply, 6000);
+  });
+}
+function testSearch(provider, btn) {
+  return busy(btn, async () => {
+    const r = await api('/api/admin/search-test', { method: 'POST', body: JSON.stringify({ provider }) });
+    const out = $('#runOut');
+    location.hash = '#items';
+    out.style.display = 'block';
+    out.textContent = provider + ' 返回 ' + r.count + ' 条（' + r.ms + 'ms，使用已保存的设置）\n' + (r.errors || []).map((e) => '! ' + e + '\n').join('') + '\n' + r.sample.map((x) => '· ' + (x.date || '无日期') + '  ' + x.title + '\n  ' + x.url).join('\n');
+  });
+}
+
+function runNow(btn) {
+  return busy(btn, async () => {
+    toast('正在抓取，可能需要一两分钟…', 120000);
+    const r = await api('/api/admin/run', { method: 'POST' });
+    location.hash = '#items';
+    const out = $('#runOut'); out.style.display = 'block';
+    const s = r.stats;
+    out.textContent = '抓到 ' + s.fetched + ' · 候选 ' + s.candidates + ' · 新增 ' + s.new + ' · 判定 ' + s.judged + ' · 通过 ' + s.approved + ' · 错误 ' + s.errors +
+      '\n过滤：超期 ' + s.too_old + ' · 无日期 ' + s.undated + ' · 不相关 ' + s.off_topic + ' · 噪音 ' + s.noise + ' · 屏蔽 ' + (s.block_rule + s.blocked) + ' · 重复标题 ' + s.dup_title + '\n\n' + r.log.join('\n');
+    toast('抓取完成：新增 ' + s.new + '，通过 ' + s.approved);
+    loadItems(CUR);
+  });
+}
+function pushAction(kind, channel, btn) {
+  return busy(btn, async () => {
+    const r = await api('/api/admin/mail/' + kind, { method: 'POST', body: JSON.stringify({ channel }) });
+    toast(r.skipped ? '未发送：' + r.skipped : '已发送 ' + r.sent + ' 条 → ' + r.to.join(', ') + (r.errors && r.errors.length ? '；失败：' + r.errors.join('；') : ''), 7000);
+  });
+}
+function mailPreview(btn) {
+  return busy(btn, async () => {
+    const r = await fetch('/api/admin/mail/preview', { headers: { authorization: 'Bearer ' + TOKEN } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    window.open(URL.createObjectURL(new Blob([await r.text()], { type: 'text/html' })), '_blank');
+  });
+}
+
+// ---- 资源 ----
+async function loadItems(st) {
+  CUR = st;
+  $$('.tabs [data-st]').forEach((b) => b.classList.toggle('on', b.dataset.st === st));
+  const r = await api('/api/admin/items?status=' + st);
+  $$('.tabs [data-st]').forEach((b) => (b.querySelector('.n').textContent = r.counts[b.dataset.st] || 0));
+  $('#navPending').textContent = r.counts.pending || '';
+  $('#items').innerHTML = r.items.length ? r.items.map((it) => {
+    const ob = it.obtain ? '<span class="' + (it.obtain === 'free' ? 'free' : 'cond') + '">' + OB[it.obtain] + '</span>' : '';
+    return '<div class="item"><div class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '—') + '</div><div>' +
+      '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + esc(it.name || it.title) + '</a>' + ob +
+      (it.summary ? '<div class="sum">' + esc(it.summary) + '</div>' : '') +
+      '<div class="meta">' + [esc(it.source), CAT[it.category] || '', it.signup ? '注册：' + esc(it.signup) : '', ago(it.published_at), it.judged_by ? esc(it.judged_by) : ''].filter(Boolean).join('<i>·</i>') + '</div>' +
+      (it.name && it.name !== it.title ? '<div class="meta">' + esc(it.title) + '</div>' : '') +
+      '</div><div class="acts">' +
+      (st !== 'approved' ? '<button class="btn sm" onclick="setStatus(\'' + it.id + '\',\'approved\')">通过</button>' : '') +
+      (st !== 'rejected' ? '<button class="btn sm" onclick="setStatus(\'' + it.id + '\',\'rejected\')">拒绝</button>' : '') +
+      (st !== 'pending' ? '<button class="btn sm" onclick="setStatus(\'' + it.id + '\',\'pending\')" title="下次运行重新判定">重判</button>' : '') +
+      '<button class="btn sm danger" onclick="del(\'' + it.id + '\')">删除</button></div></div>';
+  }).join('') : '<div class="empty">暂无</div>';
+}
+async function setStatus(id, status) { await busy(null, async () => { await api('/api/admin/items/' + id, { method: 'POST', body: JSON.stringify({ status }) }); loadItems(CUR); }); }
+async function del(id) { if (!confirm('删除这条？')) return; await busy(null, async () => { await api('/api/admin/items/' + id, { method: 'DELETE' }); loadItems(CUR); }); }
+async function clearStatus() { if (!confirm('清空当前分类的全部条目？')) return; await busy(null, async () => { await api('/api/admin/items?status=' + CUR, { method: 'DELETE' }); loadItems(CUR); }); }
+
+async function loadRuns() {
+  const runs = await api('/api/admin/runs');
+  $('#runs').innerHTML = runs.length ? runs.map((r) => {
+    const s = JSON.parse(r.stats || '{}');
+    const line = r.trigger === 'mail' ? (r.log || '').split('\n')[0] : '抓到 ' + (s.fetched || 0) + ' · 新增 ' + (s.new || 0) + ' · 通过 ' + (s.approved || 0) + ' · 错误 ' + (s.errors || 0);
+    return '<details><summary>' + fmt(r.started_at) + '<span class="hint"> · ' + esc(r.trigger) + ' · </span>' + esc(line) + '</summary><pre>' + esc((r.log || '') + '\n\n' + JSON.stringify(s, null, 2)) + '</pre></details>';
+  }).join('') : '<div class="empty">还没有运行过</div>';
+}
+
+async function init() {
+  route();
+  STATUS = await fetch('/api/admin/status').then((r) => r.json()).catch(() => STATUS);
+  const where = STATUS.storage === 'kv' ? 'Cloudflare KV' : 'D1 独立的 secrets 表';
+  $$('.storageNote').forEach((el) => (el.textContent = '接口地址、Key、授权码等敏感信息保存在 ' + where + '，后台只显示打码值。'));
+  $('#storageInfo').textContent = '资源与设置：D1 数据库。敏感信息：' + where + (STATUS.storage === 'kv' ? '' : '（如需改存 KV，给 Worker 绑定一个变量名为 SECRETS 的 KV 命名空间，重新保存一次设置即可）') + '。';
+  $('#pwEnvNote').style.display = STATUS.env_token ? '' : 'none';
+  $('#pwForm').style.display = STATUS.env_token ? 'none' : '';
+  if (!STATUS.initialized || !TOKEN) return showGate();
+  try { fill(await api('/api/admin/settings')); await loadItems(CUR); } catch (e) { toast(e.message, 6000); }
+}
+init();
+</script>
+</body>
+</html>
