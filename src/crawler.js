@@ -1,34 +1,49 @@
 // 抓取、过滤、AI 判定的主流程
 import { getSettings, lines } from './db.js';
-import { judgeBatch, searchWithModel } from './ai.js';
+import { judgeBatch } from './ai.js';
+import { sendDigest } from './mailer.js';
 import { dayOf } from './db.js';
-import { searchTavily, searchKeenable } from './search.js';
+import { CAT_MAP, enabledCats, guessCategory, topicWordsFor, kwHit, compileWords } from './categories.js';
+import { BACKENDS, BACKEND_MAP, backendReady, runBackend } from './search.js';
 import { isNoiseTitle, guessObtain, compileBlockRules, matchBlock, titleFingerprint } from './rules.js';
 
 const UA = 'Mozilla/5.0 (compatible; FreeResourceRadar/1.0; +https://workers.cloudflare.com)';
 const DAY = 86400000;
 
-async function getText(url, headers = {}) {
+// maxBytes：只读前 N 字节就断开（RSS 最新的条目在最前面），大 feed 不必整份下载解码，省 CPU
+async function getText(url, headers = {}, maxBytes = 0) {
   const r = await fetch(url, {
     headers: { 'User-Agent': UA, Accept: '*/*', ...headers },
     signal: AbortSignal.timeout(20000),
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.text();
+  if (!maxBytes || !r.body) return r.text();
+  const reader = r.body.getReader();
+  const chunks = [];
+  let size = 0;
+  while (size < maxBytes) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    size += value.byteLength;
+  }
+  reader.cancel().catch(() => {});
+  const buf = new Uint8Array(Math.min(size, maxBytes));
+  let off = 0;
+  for (const c of chunks) { const part = c.subarray(0, buf.length - off); buf.set(part, off); off += part.length; if (off >= buf.length) break; }
+  return new TextDecoder().decode(buf);
 }
 const getJson = async (url, headers) => JSON.parse(await getText(url, { Accept: 'application/json', ...headers }));
 
 // ---------- 文本工具 ----------
+const ENT = { nbsp: ' ', quot: '"', apos: "'", lt: '<', gt: '>', amp: '&' };
 export function decodeEntities(s) {
-  return String(s || '')
-    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;|&#39;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&');
+  s = String(s || '');
+  if (!s.includes('&')) return s;
+  return s.replace(/&(#x[0-9a-f]+|#\d+|nbsp|quot|apos|lt|gt|amp);/gi, (m, e) => {
+    if (e[0] === '#') { const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10); try { return String.fromCodePoint(n); } catch { return m; } }
+    return ENT[e.toLowerCase()] ?? m;
+  });
 }
 export function cleanText(s) {
   let t = String(s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
@@ -36,10 +51,21 @@ export function cleanText(s) {
   t = t.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ');
   return decodeEntities(t).replace(/\s+/g, ' ').trim();
 }
+// 用 indexOf 取标签内容，避免大 feed（如 LowEndTalk 600KB+）上跑回溯正则，省 CPU（免费版每次只有 10ms）
 function tag(block, name) {
-  const re = new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`, 'i');
-  const m = block.match(re);
-  return m ? m[1] : '';
+  const lower = block; // feed 标签名一般是小写
+  let i = 0;
+  for (;;) {
+    i = lower.indexOf('<' + name, i);
+    if (i < 0) return '';
+    const ch = lower[i + name.length + 1];
+    if (ch === '>' || ch === ' ' || ch === '\n' || ch === '\t' || ch === '\r' || ch === '/') break;
+    i += name.length + 1;
+  }
+  const gt = block.indexOf('>', i);
+  if (gt < 0 || block[gt - 1] === '/') return '';
+  const end = block.indexOf('</' + name + '>', gt);
+  return end < 0 ? '' : block.slice(gt + 1, end);
 }
 export function parseDate(s) {
   if (!s) return null;
@@ -47,20 +73,34 @@ export function parseDate(s) {
   return Number.isFinite(t) ? t : null;
 }
 export function parseFeed(xml) {
-  const blocks = xml.match(/<item[\s>][\s\S]*?<\/item>/gi) || xml.match(/<entry[\s>][\s\S]*?<\/entry>/gi) || [];
-  return blocks.map((b) => {
+  const open = xml.includes('<item') ? 'item' : 'entry';
+  const out = [];
+  let i = 0;
+  while (out.length < 200) {
+    i = xml.indexOf('<' + open, i);
+    if (i < 0) break;
+    const c = xml[i + open.length + 1];
+    if (c !== '>' && c !== ' ' && c !== '\n' && c !== '\r' && c !== '\t') { i += 2; continue; }
+    const end = xml.indexOf('</' + open + '>', i);
+    if (end < 0) break;
+    const b = xml.slice(i, end);
+    i = end + open.length + 3;
     let link = cleanText(tag(b, 'link'));
     if (!link) {
       const alt = b.match(/<link[^>]*rel=["']alternate["'][^>]*href=["']([^"']+)["']/i) || b.match(/<link[^>]*href=["']([^"']+)["']/i);
       link = alt ? decodeEntities(alt[1]) : cleanText(tag(b, 'guid'));
     }
-    return {
+    // 正文只取前 3000 字符再清洗，长帖不必全部处理
+    const body = tag(b, 'description') || tag(b, 'summary') || tag(b, 'content:encoded') || tag(b, 'content');
+    const plain = cleanText(body.slice(0, 2000));
+    out.push({
       title: cleanText(tag(b, 'title')),
       url: link,
       published_at: parseDate(tag(b, 'pubDate') || tag(b, 'published') || tag(b, 'dc:date') || tag(b, 'updated')),
-      raw_text: cleanText(tag(b, 'description') || tag(b, 'summary') || tag(b, 'content:encoded') || tag(b, 'content')).slice(0, 1500),
-    };
-  });
+      raw_text: plain.slice(0, 1200),
+    });
+  }
+  return out;
 }
 export function normalizeUrl(u) {
   try {
@@ -122,10 +162,57 @@ async function fetchSource(src, cutoff, env) {
         raw_text: `${r.description || ''} ★${r.stargazers_count}${r.homepage ? ' 主页：' + r.homepage : ''}`,
       }));
     }
+    case 'gamerpower': {
+      const j = await getJson(`https://www.gamerpower.com/api/giveaways?type=${encodeURIComponent(src.kind || 'game')}`);
+      if (!Array.isArray(j)) return [];
+      return j.filter((g) => g.status !== 'Expired').map((g) => ({
+        title: `${g.title}（${g.platforms || ''}）`,
+        url: g.open_giveaway_url || g.gamerpower_url,
+        published_at: parseDate(String(g.published_date || '').replace(' ', 'T') + 'Z'),
+        raw_text: `${cleanText(g.description).slice(0, 400)} 原价 ${g.worth || 'N/A'}${g.end_date && g.end_date !== 'N/A' ? '，截止 ' + g.end_date : ''}`,
+        name: g.title,
+        summary: `${g.platforms || ''} 免费领取${g.worth && g.worth !== 'N/A' ? '，原价 ' + g.worth : ''}${g.end_date && g.end_date !== 'N/A' ? '，截止 ' + g.end_date.slice(0, 10) : ''}`,
+        signup: (g.platforms || '').split(',')[0].trim() + ' 账号',
+      }));
+    }
+    case 'epic': {
+      const j = await getJson('https://store-site-backend-static.ak.epicgames.com/freeGamesPromotions?locale=zh-CN&country=CN&allowCountries=CN');
+      const out = [];
+      for (const e of j?.data?.Catalog?.searchStore?.elements || []) {
+        const offers = (e.promotions?.promotionalOffers || []).flatMap((g) => g.promotionalOffers || []);
+        const free = offers.find((o) => o.discountSetting?.discountPercentage === 0);
+        if (!free) continue;
+        const slug = e.catalogNs?.mappings?.[0]?.pageSlug || e.productSlug || e.urlSlug;
+        const end = parseDate(free.endDate);
+        out.push({
+          title: `Epic 免费领取：${e.title}`,
+          url: slug ? `https://store.epicgames.com/p/${slug}` : 'https://store.epicgames.com/free-games',
+          published_at: parseDate(free.startDate) || Date.now(),
+          raw_text: cleanText(e.description || '').slice(0, 400),
+          name: e.title,
+          summary: `Epic 限时免费，领取后永久入库${end ? '，截止 ' + dayOf(end) : ''}`,
+          signup: 'Epic 账号',
+        });
+      }
+      return out;
+    }
+    case 'openrouter_free': {
+      // max_price=0 只返回免费模型（约 20KB，比完整列表小得多）
+      const j = await getJson('https://openrouter.ai/api/v1/models?max_price=0');
+      return (j.data || []).filter((m) => String(m.id).endsWith(':free')).map((m) => ({
+        title: `OpenRouter 免费模型：${m.name}`,
+        url: `https://openrouter.ai/${String(m.id)}`,
+        published_at: (m.created || 0) * 1000 || null,
+        raw_text: cleanText(String(m.description || '').slice(0, 600)).slice(0, 400),
+        name: m.name,
+        summary: `OpenRouter 上的免费模型，API 调用不计费（有频率限制）${m.context_length ? '，上下文 ' + Math.round(m.context_length / 1000) + 'K' : ''}`,
+        signup: '邮箱 / GitHub / Google',
+      }));
+    }
     case 'rss':
     default:
       if (!src.url) throw new Error('缺少 url');
-      return parseFeed(await getText(src.url, { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' }));
+      return parseFeed(await getText(src.url, { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*' }, 120000));
   }
 }
 
@@ -141,109 +228,113 @@ const containsAny = (text, words) => words.some((w) => text.includes(w));
 
 function heuristicJudge(item, s) {
   const text = `${item.title} ${item.raw_text || ''}`.toLowerCase();
-  const hard = lines(s.hard_signup_keywords).find((w) => text.includes(w));
-  const isDomain = /域名|domain|subdomain/.test(text);
+  const hard = s.simple_signup_only !== 'false' && lines(s.hard_signup_keywords).find((w) => text.includes(w));
   const obtain = guessObtain(item.title, item.raw_text || '');
   const allowed = lines(s.allowed_obtain);
+  const category = guessCategory(text, enabledCats(s)) || 'other';
   return {
-    status: hard || !allowed.includes(obtain) ? 'rejected' : 'approved',
+    // 没有 AI 时更保守：标题里要有“免费 / 白嫖 / free”之类的字样
+    status: hard || !allowed.includes(obtain) || category === 'other' || !lines(s.free_keywords).some((w) => kwHit(String(item.title).toLowerCase(), w)) ? 'rejected' : 'approved',
     obtain,
-    category: isDomain ? 'domain' : 'hosting',
+    category,
     name: null,
     summary: (item.raw_text || '').slice(0, 120),
-    signup: hard ? `疑似需要：${hard}` : allowed.includes(obtain) ? '未经 AI 判定' : `获取方式：${obtain}`,
+    signup: hard ? `疑似需要：${hard}` : allowed.includes(obtain) ? null : `获取方式：${obtain}`,
     score: null,
     judged_by: 'keywords',
   };
 }
 
-// ---------- 主流程 ----------
-export async function runCrawl(env, trigger = 'cron') {
-  const startedAt = Date.now();
-  const s = await getSettings(env);
+// ---------- 主流程：拆成小步骤 ----------
+// Workers 免费版每次调用只有 10ms CPU、50 个外部请求，一次跑完全部数据源会超限。
+// 所以一次“抓取”被拆成若干步骤存进 D1（jobs 表）：每个数据源 / 搜索引擎 / AI 判定批次 / 清理 / 推送各一步，
+// 定时任务每分钟执行一步（steps_per_tick 可调），后台“立即抓取”由浏览器逐步驱动。
+
+const ZERO_STATS = () => ({ fetched: 0, blocked: 0, block_rule: 0, noise: 0, dup_title: 0, non_zh: 0, hard_signup: 0, too_old: 0, undated: 0, off_topic: 0, candidates: 0, new: 0, trusted: 0, judged: 0, approved: 0, rejected: 0, expired_removed: 0, errors: 0 });
+// AI 可选：开关没关、且接口地址 / Key / 模型都填了才用
+const aiReadyOf = (s) => s.ai_enabled !== 'false' && !!(s.ai_api_key && s.ai_base_url && s.ai_model);
+
+function ctxOf(s, now) {
   const maxAgeDays = Math.max(1, Number(s.max_age_days) || 180);
-  const cutoff = startedAt - maxAgeDays * DAY;
-  const keepUndated = s.keep_undated === 'true';
-  const topicWords = lines(s.topic_keywords);
-  const freeWords = lines(s.free_keywords);
-  const hardWords = lines(s.hard_signup_keywords);
-  const blockDomains = lines(s.search_block_domains);
-  const searchLang = s.search_lang || 'zh_first';
-  const blockRules = compileBlockRules(s.block_rules);
-  const noiseOn = s.noise_filter !== 'false';
-  const log = [];
-  const stats = { fetched: 0, blocked: 0, block_rule: 0, noise: 0, dup_title: 0, non_zh: 0, hard_signup: 0, too_old: 0, undated: 0, off_topic: 0, candidates: 0, new: 0, judged: 0, approved: 0, rejected: 0, expired_removed: 0, errors: 0 };
+  const cats = enabledCats(s);
+  return {
+    s, now, maxAgeDays, cats,
+    cutoff: now - maxAgeDays * DAY,
+    keepUndated: s.keep_undated === 'true',
+    topicRe: compileWords([...topicWordsFor(cats), ...lines(s.topic_keywords)]),
+    freeWords: lines(s.free_keywords),
+    hardWords: lines(s.hard_signup_keywords),
+    blockDomains: lines(s.search_block_domains),
+    searchLang: s.search_lang || 'zh_first',
+    blockRules: compileBlockRules(s.block_rules),
+    noiseOn: s.noise_filter !== 'false',
+    noEnglish: s.filter_english !== 'false',
+    aiReady: aiReadyOf(s),
+  };
+}
 
+function listSources(s, aiReady, log) {
   let sources = [];
-  try { sources = JSON.parse(s.sources).filter((x) => x && x.enabled !== false); } catch (e) { log.push(`数据源 JSON 解析失败：${e.message}`); }
+  try { sources = JSON.parse(s.sources).filter((x) => x && x.enabled !== false); } catch (e) { log.push(`✗ 数据源 JSON 解析失败：${e.message}`); }
+  const skipped = sources.filter((x) => x.ai_only && !aiReady);
+  if (skipped.length) log.push(`– 未配置 AI，跳过 ${skipped.length} 个噪音较大的源（${skipped.map((x) => x.name).join('、')}）`);
+  return sources.filter((x) => !(x.ai_only && !aiReady));
+}
 
-  // 1. 抓取
-  const tasks = sources.map((src) =>
-    fetchSource(src, cutoff, env).then(
-      (items) => ({ src, items: items.map((it) => ({ ...it, source: src.name || src.type })) }),
-      (err) => ({ src, error: err })
-    )
-  );
-  const aiReady = s.ai_enabled === 'true' && s.ai_api_key && s.ai_base_url && s.ai_model;
-  const searchReady = s.search_enabled === 'true' && s.search_api_key && s.search_base_url && s.search_model;
-  if (searchReady) {
-    tasks.push(
-      searchWithModel(s, maxAgeDays).then(
-        (items) => ({ src: { name: 'AI 联网搜索', isSearch: true }, items }),
-        (err) => ({ src: { name: 'AI 联网搜索' }, error: err })
-      )
-    );
-  }
-  const apiSearch = (name, fn) =>
-    tasks.push(fn(s, maxAgeDays).then(
-      ({ items, errors }) => { for (const e of errors) log.push(`! ${name} 部分查询失败：${e}`); return { src: { name, isSearch: true }, items }; },
-      (err) => ({ src: { name }, error: err })
-    ));
-  if (s.tavily_enabled === 'true') apiSearch('Tavily 搜索', searchTavily);
-  if (s.keenable_enabled === 'true') apiSearch('Keenable 搜索', searchKeenable);
-  const results = await Promise.all(tasks);
-
-  // 2. 时间 + 关键词过滤
+/** 过滤一批抓到的条目并入库（去重靠 seen 表，跨步骤、跨天都有效） */
+async function ingest(env, c, src, items, stats, log) {
+  const cats = c.cats;
+  const autoCat = src.category === 'auto';
+  if (src.trusted && src.category && !autoCat && !cats.includes(src.category)) { log.push(`– ${src.name}: 分类「${CAT_MAP[src.category]?.label}」未勾选，跳过`); return; }
+  let include = null;
+  if (src.include) { try { include = new RegExp(src.include, 'i'); } catch { log.push(`! ${src.name}: include 正则无效`); } }
   const candidates = new Map();
-  const seenFp = new Set();
-  for (const r of results) {
-    if (r.error) { stats.errors++; log.push(`✗ ${r.src.name}: ${r.error.message}`); continue; }
-    log.push(`✓ ${r.src.name}: ${r.items.length} 条`);
-    for (const it of r.items) {
-      stats.fetched++;
-      if (!it.url || !it.title) continue;
-      if (!it.published_at) { if (!keepUndated) { stats.undated++; continue; } }
-      else if (it.published_at < cutoff) { stats.too_old++; continue; }
-      if (isBlocked(it.url, blockDomains)) { stats.blocked++; continue; }
-      if (noiseOn && isNoiseTitle(it.title)) { stats.noise++; continue; }
-      if (blockRules.length && matchBlock(blockRules, `${it.title}\n${it.raw_text || ''}`)) { stats.block_rule++; continue; }
-      if (r.src.isSearch) {
-        // 联网搜索结果额外过滤：语言 + 明显的复杂注册
-        const zh = it.lang ? it.lang.startsWith('zh') : CJK.test(it.title);
-        if (searchLang === 'zh_only' && !zh) { stats.non_zh++; continue; }
-        const t = `${it.title} ${it.raw_text || ''}`.toLowerCase();
-        if (hardWords.some((w) => t.includes(w) && !t.includes('无需' + w) && !t.includes('不需要' + w) && !t.includes('no ' + w))) { stats.hard_signup++; continue; }
-      }
-      if (r.src.filter !== false) {
-        const text = `${it.title} ${it.raw_text || ''}`.toLowerCase();
-        if (!containsAny(text, topicWords) || !containsAny(text, freeWords)) { stats.off_topic++; continue; }
-      }
-      const url = normalizeUrl(it.url);
-      const id = await hashId(url);
-      const fp = titleFingerprint(it.title);
-      if (candidates.has(id)) continue;
-      if (fp.length >= 8 && seenFp.has(fp)) { stats.dup_title++; continue; }
-      if (fp.length >= 8) seenFp.add(fp);
-      candidates.set(id, { ...it, url, id, fp });
+  const runFp = new Set();
+  for (const raw of items) {
+    const it = { ...raw, source: raw.source || src.name || src.type, trusted: !!src.trusted, category: src.category || null };
+    if (src.note && !it.summary) it.summary = src.note;
+    if (autoCat) {
+      // 自动归类：按关键词归到已勾选的分类，归不进去就用 fallback，fallback 也没勾选则跳过
+      const g = guessCategory(`${it.title} ${it.raw_text || ''}`.toLowerCase(), cats) || src.fallback;
+      if (!g || !cats.includes(g)) { stats.off_topic++; continue; }
+      it.category = g;
     }
+    stats.fetched++;
+    if (!it.url || !it.title) continue;
+    if (include && !include.test(it.title)) { stats.off_topic++; continue; }
+    // 搜索结果本身就是按“最近”查的，部分后端（如 AnySearch）不给发布日期，放行交给后续过滤和判定
+    if (!it.published_at) { if (!c.keepUndated && !src.isSearch) { stats.undated++; continue; } }
+    else if (it.published_at < c.cutoff) { stats.too_old++; continue; }
+    if (isBlocked(it.url, c.blockDomains)) { stats.blocked++; continue; }
+    if (c.noiseOn && isNoiseTitle(it.title)) { stats.noise++; continue; }
+    // 默认过滤纯英文内容：标题、简介、正文前 500 字都没有中文就丢弃
+    if (c.noEnglish && !CJK.test(it.title) && !CJK.test(it.summary || '') && !CJK.test(String(it.raw_text || '').slice(0, 500))) { stats.non_zh++; continue; }
+    if (c.blockRules.length && matchBlock(c.blockRules, `${it.title}\n${it.raw_text || ''}`)) { stats.block_rule++; continue; }
+    if (src.isSearch) {
+      // 联网搜索结果额外过滤：语言 + 明显的复杂注册
+      const zh = it.lang ? it.lang.startsWith('zh') : CJK.test(it.title);
+      if (c.searchLang === 'zh_only' && !zh) { stats.non_zh++; continue; }
+      const t = `${it.title} ${it.raw_text || ''}`.toLowerCase();
+      if (c.s.simple_signup_only !== 'false' && c.hardWords.some((w) => t.includes(w) && !t.includes('无需' + w) && !t.includes('不需要' + w) && !t.includes('no ' + w))) { stats.hard_signup++; continue; }
+    }
+    if (src.filter !== false && !src.trusted) {
+      const text = `${it.title} ${it.raw_text || ''}`.toLowerCase();
+      if (!(c.topicRe && c.topicRe.test(text)) || !containsAny(text, c.freeWords)) { stats.off_topic++; continue; }
+    }
+    const url = normalizeUrl(it.url);
+    const id = await hashId(url);
+    const fp = titleFingerprint(it.title);
+    if (candidates.has(id)) continue;
+    if (fp.length >= 8 && runFp.has(fp)) { stats.dup_title++; continue; }
+    if (fp.length >= 8) runFp.add(fp);
+    candidates.set(id, { ...it, url, id, fp });
   }
-  stats.candidates = candidates.size;
+  stats.candidates += candidates.size;
+  if (!candidates.size) return;
 
-  // 3. 去重入库（新条目为 pending）
   const ids = [...candidates.keys()];
   const existing = new Set();
   const existingFp = new Set();
-  const today = dayOf(startedAt);
   for (let i = 0; i < ids.length; i += 45) {
     const chunk = ids.slice(i, i + 45);
     const fps = chunk.map((id) => candidates.get(id).fp || '-');
@@ -252,24 +343,39 @@ export async function runCrawl(env, trigger = 'cron') {
     ).bind(...chunk, ...fps).all();
     for (const row of rows || []) { existing.add(row.id); if (row.fp) existingFp.add(row.fp); }
   }
-  const inserts = [];
+  const today = dayOf(c.now);
+  const stmts = [];
   for (const [id, it] of candidates) {
     if (existing.has(id)) continue;
     if (it.fp && it.fp.length >= 8 && existingFp.has(it.fp)) { stats.dup_title++; continue; }
-    inserts.push(
-      env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, startedAt, 'pending', it.fp || null, today),
-      env.DB.prepare('INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)').bind(id, it.fp || null, startedAt)
+    stats.new++;
+    // 白嫖专源直接通过，不消耗 AI 额度
+    const direct = it.trusted && it.category;
+    if (direct) { stats.trusted++; stats.approved++; }
+    stmts.push(
+      direct
+        ? env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, c.now, 'approved', it.fp || null, today, it.category, it.name || null, it.summary || (it.raw_text || '').slice(0, 120), it.signup || null, 'free', 80, 'trusted', c.now)
+        : env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, c.now, 'pending', it.fp || null, today),
+      env.DB.prepare('INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)').bind(id, it.fp || null, c.now)
     );
   }
-  for (let i = 0; i < inserts.length; i += 50) await env.DB.batch(inserts.slice(i, i + 50));
-  stats.new = inserts.length / 2; // 每条两句：items + seen
+  for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+}
 
-  // 4. 判定待处理条目（AI 优先，失败 3 次后回退到关键词）
-  const maxItems = Math.max(1, Number(s.ai_max_items) || 40);
+/** 判定一批待处理条目。返回是否还有剩余 */
+async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
+  const s = c.s;
+  const perStep = c.aiReady ? Math.min(20, Math.max(1, Number(s.ai_batch_size) || 12)) * 3 : 40;
+  const cap = c.aiReady ? (capOverride || Math.max(1, Number(s.ai_max_items) || 60)) : 100000;
+  const room = Math.max(0, cap - judgedSoFar);
+  if (!room) { log.push(`– 本次 AI 判定已达上限 ${cap} 条，剩余留到下次`); return false; }
   const { results: pending } = await env.DB.prepare(
     'SELECT * FROM items WHERE status = ? AND (published_at IS NULL OR published_at >= ?) ORDER BY published_at DESC LIMIT ?'
-  ).bind('pending', cutoff, maxItems).all();
+  ).bind('pending', c.cutoff, Math.min(perStep, room) + 1).all();
+  const list = (pending || []).slice(0, Math.min(perStep, room));
+  if (!list.length) return false;
 
   const updates = [];
   const applyVerdict = (it, v) => {
@@ -281,60 +387,187 @@ export async function runCrawl(env, trigger = 'cron') {
     if (v.status === 'approved') stats.approved++; else stats.rejected++;
   };
 
-  if (aiReady) {
+  if (c.aiReady) {
     const minScore = Number(s.ai_min_score) || 60;
     const allowedObtain = lines(s.allowed_obtain);
-    const batchSize = Math.min(20, Math.max(1, Number(s.ai_batch_size) || 8));
-    const aiItems = (pending || []).filter((it) => it.attempts < 3);
-    for (const it of (pending || []).filter((x) => x.attempts >= 3)) applyVerdict(it, heuristicJudge(it, s));
+    const batchSize = Math.min(20, Math.max(1, Number(s.ai_batch_size) || 12));
+    const aiItems = list.filter((it) => it.attempts < 3);
+    for (const it of list.filter((x) => x.attempts >= 3)) applyVerdict(it, heuristicJudge(it, s));
     const batches = [];
     for (let i = 0; i < aiItems.length; i += batchSize) batches.push(aiItems.slice(i, i + batchSize));
-    // 小并发，避免触发限流
-    for (let i = 0; i < batches.length; i += 3) {
-      await Promise.all(batches.slice(i, i + 3).map(async (batch) => {
-        try {
-          const verdicts = await judgeBatch(batch, s);
-          batch.forEach((it, idx) => {
-            const v = verdicts.get(idx);
-            if (!v) { updates.push(env.DB.prepare('UPDATE items SET attempts = attempts + 1 WHERE id=?').bind(it.id)); return; }
-            const score = Math.round(Number(v.score) || 0);
-            const obtain = ['free', 'conditional', 'lottery', 'trial', 'promo', 'paid'].includes(v.obtain) ? v.obtain : guessObtain(it.title, it.raw_text || '');
-            const ok = v.relevant === true && v.simple_signup === true && score >= minScore && allowedObtain.includes(obtain);
-            applyVerdict(it, {
-              status: ok ? 'approved' : 'rejected',
-              category: ['domain', 'hosting'].includes(v.category) ? v.category : 'other',
-              name: v.name ? String(v.name).slice(0, 100) : null,
-              summary: v.summary ? String(v.summary).slice(0, 300) : null,
-              signup: v.signup ? String(v.signup).slice(0, 100) : null,
-              score,
-              obtain,
-              judged_by: `ai:${s.ai_model}`,
-            });
+    await Promise.all(batches.map(async (batch) => {
+      try {
+        const verdicts = await judgeBatch(batch, s);
+        batch.forEach((it, idx) => {
+          const v = verdicts.get(idx);
+          if (!v) { updates.push(env.DB.prepare('UPDATE items SET attempts = attempts + 1 WHERE id=?').bind(it.id)); return; }
+          const score = Math.round(Number(v.score) || 0);
+          const obtain = ['free', 'conditional', 'lottery', 'trial', 'promo', 'paid'].includes(v.obtain) ? v.obtain : guessObtain(it.title, it.raw_text || '');
+          const category = c.cats.includes(v.category) ? v.category : 'other';
+          const signupOk = s.simple_signup_only === 'false' || v.simple_signup === true;
+          const ok = v.relevant === true && signupOk && category !== 'other' && score >= minScore && allowedObtain.includes(obtain);
+          applyVerdict(it, {
+            status: ok ? 'approved' : 'rejected',
+            category,
+            name: v.name ? String(v.name).slice(0, 100) : null,
+            summary: v.summary ? String(v.summary).slice(0, 300) : null,
+            signup: v.signup ? String(v.signup).slice(0, 100) : null,
+            score,
+            obtain,
+            judged_by: `ai:${s.ai_model}`,
           });
-        } catch (e) {
-          stats.errors++;
-          log.push(`✗ AI 判定失败：${e.message}`);
-          for (const it of batch) updates.push(env.DB.prepare('UPDATE items SET attempts = attempts + 1 WHERE id=?').bind(it.id));
-        }
-      }));
-    }
+        });
+      } catch (e) {
+        stats.errors++;
+        log.push(`✗ AI 判定失败：${e.message}`);
+        for (const it of batch) updates.push(env.DB.prepare('UPDATE items SET attempts = attempts + 1 WHERE id=?').bind(it.id));
+      }
+    }));
   } else {
-    if (s.ai_enabled === 'true') log.push('AI 已启用但配置不完整，使用关键词判定');
-    for (const it of pending || []) applyVerdict(it, heuristicJudge(it, s));
+    for (const it of list) applyVerdict(it, heuristicJudge(it, s));
   }
   for (let i = 0; i < updates.length; i += 50) await env.DB.batch(updates.slice(i, i + 50));
+  return (pending || []).length > list.length || (c.aiReady && list.length === perStep);
+}
 
-  // 5. 定期清理：条目按抓取日期保留 retention_days 天（默认 15），超过半年的也删；去重记忆保留到半年
-  const keepMs = Math.max(1, Number(s.retention_days) || 15) * 86400000;
-  const del = await env.DB.prepare('DELETE FROM items WHERE fetched_at < ? OR (published_at IS NOT NULL AND published_at < ?)').bind(startedAt - keepMs, cutoff).run();
-  stats.expired_removed = del.meta?.changes || 0;
-  await env.DB.prepare('DELETE FROM seen WHERE seen_at < ?').bind(Math.min(cutoff, startedAt - keepMs)).run();
-  await env.DB.prepare('DELETE FROM runs WHERE started_at < ?').bind(startedAt - keepMs).run();
+async function cleanupStep(env, c, stats) {
+  const keepMs = Math.max(1, Number(c.s.retention_days) || 15) * DAY;
+  const del = await env.DB.prepare('DELETE FROM items WHERE fetched_at < ? OR (published_at IS NOT NULL AND published_at < ?)').bind(c.now - keepMs, c.cutoff).run();
+  stats.expired_removed += del.meta?.changes || 0;
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM seen WHERE seen_at < ?').bind(Math.min(c.cutoff, c.now - keepMs)),
+    env.DB.prepare('DELETE FROM jobs WHERE run_id IN (SELECT id FROM runs WHERE started_at < ?)').bind(c.now - 2 * DAY),
+    env.DB.prepare('DELETE FROM runs WHERE started_at < ?').bind(c.now - keepMs),
+  ]);
+}
 
-  const finishedAt = Date.now();
-  log.push(`耗时 ${((finishedAt - startedAt) / 1000).toFixed(1)}s`);
-  await env.DB.prepare('INSERT INTO runs (trigger, started_at, finished_at, stats, log) VALUES (?, ?, ?, ?, ?)')
-    .bind(trigger, startedAt, finishedAt, JSON.stringify(stats), log.join('\n')).run();
-  await env.DB.prepare('DELETE FROM runs WHERE id NOT IN (SELECT id FROM runs ORDER BY id DESC LIMIT 60)').run();
-  return { stats, log };
+const STEP_LABEL = { source: '抓取', search: '搜索', judge: '判定', cleanup: '清理', mail: '推送' };
+
+/** 新建一次运行（已有进行中的运行则直接返回它） */
+export async function planRun(env, trigger = 'cron', opts = {}) {
+  const now = Date.now();
+  const active = await env.DB.prepare('SELECT id, started_at FROM runs WHERE finished_at IS NULL ORDER BY id DESC LIMIT 1').first();
+  if (active && now - active.started_at < 3 * 3600000) return { run_id: active.id, existing: true };
+  if (active) await env.DB.prepare("UPDATE runs SET finished_at = ?, log = log || ? WHERE id = ?").bind(now, '\n✗ 超时未完成，已放弃', active.id).run();
+
+  const s = await getSettings(env);
+  const log = [];
+  const aiReady = aiReadyOf(s);
+  const sources = listSources(s, aiReady, log);
+  const steps = opts.only === 'judge' ? [] : sources.map((src) => ['source', { src }]);
+  if (opts.only === 'judge') {
+    steps.push(['judge', { cap: opts.cap || 0 }]); // 只重新判定，不抓取
+  } else {
+    // 可用的搜索后端并行跑；单次调用外部请求上限 50，按每步最多 40 个请求分组
+    const ready = BACKENDS.filter((b) => backendReady(s, b)).map((b) => b.id);
+    const perBackend = Math.max(1, Number(s.search_max_queries) || 8);
+    const group = Math.max(1, Math.min(2, Math.floor(40 / perBackend))); // 每步最多 2 家并行，控制单步 CPU
+    for (let i = 0; i < ready.length; i += group) steps.push(['search', { engines: ready.slice(i, i + group) }]);
+    steps.push(['judge', {}], ['cleanup', {}]);
+    if (trigger === 'cron') steps.push(['mail', {}]);
+  }
+  if (!aiReady) log.push('未配置 AI，使用关键词判定');
+
+  const r = await env.DB.prepare('INSERT INTO runs (trigger, started_at, finished_at, stats, log) VALUES (?, ?, NULL, ?, ?) RETURNING id')
+    .bind(trigger, now, JSON.stringify(ZERO_STATS()), log.join('\n')).first();
+  const runId = r.id;
+  const stmts = steps.map(([kind, payload], i) =>
+    env.DB.prepare("INSERT INTO jobs (run_id, seq, kind, payload, status) VALUES (?, ?, ?, ?, 'pending')").bind(runId, i, kind, JSON.stringify(payload)));
+  for (let i = 0; i < stmts.length; i += 50) await env.DB.batch(stmts.slice(i, i + 50));
+  return { run_id: runId, steps: steps.length };
+}
+
+async function runJob(env, job, c, stats, log, runStats) {
+  const p = JSON.parse(job.payload || '{}');
+  switch (job.kind) {
+    case 'source': {
+      const src = p.src;
+      try {
+        const items = await fetchSource(src, c.cutoff, env);
+        log.push(`✓ ${src.name}: ${items.length} 条`);
+        await ingest(env, c, src, items, stats, log);
+      } catch (e) { stats.errors++; log.push(`✗ ${src.name}: ${e.message}`); }
+      return false;
+    }
+    case 'search': {
+      const ids = p.engines || [p.engine];
+      const results = await Promise.all(ids.map((id) => runBackend(c.s, id, c.maxAgeDays).then((r) => ({ id, r }), (e) => ({ id, e }))));
+      for (const { id, r, e } of results) {
+        const name = (BACKEND_MAP[id]?.name || id) + ' 搜索';
+        if (e) { stats.errors++; log.push(`✗ ${name}: ${e.message}`); continue; }
+        for (const x of r.errors) log.push(`! ${name} 部分查询失败：${x}`);
+        log.push(`✓ ${name}: ${r.items.length} 条`);
+        await ingest(env, c, { name, isSearch: true }, r.items, stats, log);
+      }
+      return false;
+    }
+    case 'judge':
+      return judgeStep(env, c, stats, log, runStats.judged || 0, p.cap);
+    case 'cleanup':
+      await cleanupStep(env, c, stats);
+      return false;
+    case 'mail': {
+      try {
+        const r = await sendDigest(env);
+        log.push(r.skipped ? `– 推送跳过：${r.skipped}` : `✓ 已推送 ${r.sent} 条（${r.providers.join(' + ')}）→ ${r.to.join(', ')}${r.errors.length ? '\n✗ ' + r.errors.join('\n✗ ') : ''}`);
+      } catch (e) { stats.errors++; log.push(`✗ 推送失败：${e.message}`); }
+      return false;
+    }
+  }
+  return false;
+}
+
+/** 执行进行中运行的下一步（最多 maxSteps 步）。返回进度 */
+export async function tick(env, maxSteps = 1) {
+  const run = await env.DB.prepare('SELECT * FROM runs WHERE finished_at IS NULL ORDER BY id DESC LIMIT 1').first();
+  if (!run) return { idle: true };
+  const s = await getSettings(env);
+  const c = ctxOf(s, run.started_at);
+  const runStats = { ...ZERO_STATS(), ...JSON.parse(run.stats || '{}') };
+  const log = [];
+  let current = null;
+  let busy = false;
+  for (let n = 0; n < maxSteps; n++) {
+    // 原子地认领下一步：同一次运行同时只允许一个步骤在执行（定时任务和后台按钮可能同时触发）
+    const t = Date.now();
+    await env.DB.prepare("UPDATE jobs SET status = 'pending' WHERE run_id = ? AND status = 'running' AND claimed_at < ?").bind(run.id, t - 5 * 60000).run();
+    const job = await env.DB.prepare(
+      `UPDATE jobs SET status = 'running', claimed_at = ?1
+       WHERE id = (SELECT id FROM jobs WHERE run_id = ?2 AND status = 'pending' ORDER BY seq LIMIT 1)
+         AND NOT EXISTS (SELECT 1 FROM jobs WHERE run_id = ?2 AND status = 'running')
+       RETURNING *`
+    ).bind(t, run.id).first();
+    if (!job) { busy = !!(await env.DB.prepare("SELECT 1 AS x FROM jobs WHERE run_id = ? AND status = 'running' LIMIT 1").bind(run.id).first()); break; }
+    const pl = JSON.parse(job.payload || '{}');
+    current = STEP_LABEL[job.kind] + (job.kind === 'source' ? '：' + (pl.src?.name || '') : job.kind === 'search' ? '：' + (pl.engines || [pl.engine]).map((id) => BACKEND_MAP[id]?.name || id).join(' + ') : '');
+    const stats = ZERO_STATS();
+    let again = false;
+    try { again = await runJob(env, job, c, stats, log, runStats); } catch (e) { stats.errors++; log.push(`✗ ${current} 出错：${e.message}`); }
+    await env.DB.prepare('UPDATE jobs SET status = ? WHERE id = ?').bind(again ? 'pending' : 'done', job.id).run();
+    // 统计按步骤累加写回（读最新值再加，避免和别的调用互相覆盖）
+    const fresh = await env.DB.prepare('SELECT stats FROM runs WHERE id = ?').bind(run.id).first();
+    const merged = { ...ZERO_STATS(), ...JSON.parse(fresh?.stats || '{}') };
+    for (const k of Object.keys(stats)) merged[k] = (merged[k] || 0) + stats[k];
+    Object.assign(runStats, merged);
+    await env.DB.prepare('UPDATE runs SET stats = ? WHERE id = ?').bind(JSON.stringify(merged), run.id).run();
+  }
+  const left = await env.DB.prepare("SELECT COUNT(*) AS n, (SELECT COUNT(*) FROM jobs WHERE run_id = ?) AS total FROM jobs WHERE run_id = ? AND status != 'done'").bind(run.id, run.id).first();
+  const done = !left || left.n === 0;
+  const now = Date.now();
+  if (done) {
+    const fin = await env.DB.prepare('UPDATE runs SET finished_at = ? WHERE id = ? AND finished_at IS NULL').bind(now, run.id).run();
+    if (fin.meta?.changes) log.push(`完成，用时 ${Math.max(1, Math.round((now - run.started_at) / 1000))}s`);
+  }
+  const add = log.join('\n');
+  if (add) await env.DB.prepare("UPDATE runs SET log = CASE WHEN log = '' THEN ? ELSE log || char(10) || ? END WHERE id = ?").bind(add, add, run.id).run();
+  return { run_id: run.id, done, busy, current, left: left?.n || 0, total: left?.total || 0, stats: runStats, log };
+}
+
+/** 一口气跑完（本地测试 / 付费版用）。免费版请用 tick 逐步执行 */
+export async function runCrawl(env, trigger = 'manual', maxTicks = 500) {
+  await planRun(env, trigger);
+  let r;
+  for (let i = 0; i < maxTicks; i++) { r = await tick(env, 5); if (r.idle || r.done) break; }
+  const run = await env.DB.prepare('SELECT * FROM runs ORDER BY id DESC LIMIT 1').first();
+  return { stats: JSON.parse(run.stats || '{}'), log: String(run.log || '').split('\n') };
 }

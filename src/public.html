@@ -2,88 +2,135 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>免费资源雷达 · 免费域名与虚拟主机</title>
-<meta name="description" content="每天自动收集半年内、注册简单的免费域名与免费虚拟主机资源" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>免费资源雷达 · 每日白嫖情报</title>
+<meta name="description" content="每天自动收集免费域名、主机、云服务、AI 额度、限免软件与游戏等白嫖资源，经 AI 筛选" />
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#0d0f13" media="(prefers-color-scheme: dark)" />
 <link rel="alternate" type="application/rss+xml" title="RSS" href="/feed.xml" />
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='5' fill='%23312e81'/></svg>" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%23312e81'/><circle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2' opacity='.45'/><circle cx='16' cy='16' r='4' fill='%23fff'/></svg>" />
 <style>
   :root {
-    --canvas:#f6f7f9; --canvas-subtle:#eceef2; --surface:#fff; --hover:#f7f8fb; --muted:#f1f3f6;
-    --ink-950:#111318; --ink-700:#374151; --ink-600:#4b5563; --ink-500:#525c6b; --ink-400:#646f80; --ink-300:#d1d5de; --ink-200:#e6e8ec;
-    --brand-subtle:#eef0ff; --brand-border:#c7d0f8; --accent:#312e81;
-    --deal:#047857; --deal-subtle:#ecfdf5; --code:#92400e; --code-subtle:#fef3c7;
+    --canvas:#f6f7f9; --canvas-subtle:#eceef2; --surface:#fff; --hover:#f7f8fb;
+    --ink-950:#111318; --ink-700:#374151; --ink-600:#4b5563; --ink-400:#646f80; --ink-300:#d1d5de; --ink-200:#e6e8ec;
+    --brand-subtle:#eef0ff; --brand-border:#c7d0f8; --accent:#312e81; --accent-ink:#fff;
+    --deal:#047857; --deal-subtle:#ecfdf5; --code:#92400e; --code-subtle:#fef3c7; --new:#b91c1c; --new-subtle:#fef2f2;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --topbar: 58px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas:#0d0f13; --canvas-subtle:#1a1d24; --surface:#121419; --hover:#171a20;
+      --ink-950:#eef0f4; --ink-700:#c9ced8; --ink-600:#aab1be; --ink-400:#8a93a3; --ink-300:#3a404c; --ink-200:#252932;
+      --brand-subtle:#1e1f3a; --brand-border:#3f43a0; --accent:#a5b4fc; --accent-ink:#0d0f13;
+      --deal:#34d399; --deal-subtle:#0f2a22; --code:#fbbf24; --code-subtle:#2b2110; --new:#f87171; --new-subtle:#2a1414;
+    }
   }
   * { box-sizing:border-box; }
+  html { -webkit-text-size-adjust:100%; }
   body { margin:0; font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; color:var(--ink-950); background:var(--surface); -webkit-font-smoothing:antialiased; }
   ::selection { background:var(--brand-subtle); }
   a { color:inherit; text-decoration:none; }
-  .app { display:grid; grid-template-columns:240px minmax(0,1fr); min-height:100vh; }
-  .rail { background:var(--canvas); border-right:1px solid var(--ink-200); padding:18px 12px; position:sticky; top:0; height:100vh; overflow:auto; }
-  .brand { display:flex; align-items:center; gap:8px; font-weight:600; font-size:14px; padding:2px 8px 14px; }
-  .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); flex:none; }
-  .search { position:relative; margin:0 2px 6px; }
-  .search input { width:100%; height:32px; border:1px solid var(--ink-200); border-radius:6px; padding:0 28px 0 10px; font:inherit; background:#fff; outline:none; }
+  button { font:inherit; color:inherit; }
+  :focus-visible { outline:2px solid var(--brand-border); outline-offset:2px; border-radius:4px; }
+  .app { display:grid; grid-template-columns:248px minmax(0,1fr); min-height:100vh; }
+
+  /* 侧栏 */
+  .rail { background:var(--canvas); border-right:1px solid var(--ink-200); padding:18px 12px 24px; position:sticky; top:0; height:100vh; overflow:auto; }
+  .brand { display:flex; align-items:center; gap:10px; padding:2px 8px 16px; }
+  .logo { width:26px; height:26px; border-radius:7px; background:var(--accent); display:grid; place-items:center; flex:none; }
+  .logo i { width:8px; height:8px; border-radius:50%; background:var(--accent-ink); box-shadow:0 0 0 4px color-mix(in srgb, var(--accent-ink) 30%, transparent); }
+  .brand b { font-size:14px; font-weight:600; display:block; }
+  .brand small { font-size:11px; color:var(--ink-400); }
+  .search { position:relative; margin:0 2px 4px; }
+  .search input { width:100%; height:34px; border:1px solid var(--ink-200); border-radius:7px; padding:0 30px 0 10px; font:inherit; background:var(--surface); color:var(--ink-950); outline:none; }
   .search input:focus { border-color:var(--brand-border); box-shadow:0 0 0 3px var(--brand-subtle); }
-  .search kbd { position:absolute; right:8px; top:7px; font:600 11px var(--mono); color:var(--ink-400); border:1px solid var(--ink-200); border-radius:4px; padding:0 4px; background:var(--canvas); }
-  .nav-title { font:600 11px/1.3 var(--mono); color:var(--ink-400); text-transform:uppercase; letter-spacing:.04em; padding:14px 8px 6px; }
-  .nav a { display:flex; justify-content:space-between; align-items:center; padding:7px 10px; border-radius:6px; color:var(--ink-700); cursor:pointer; }
+  .search kbd { position:absolute; right:8px; top:8px; font:600 11px var(--mono); color:var(--ink-400); border:1px solid var(--ink-200); border-radius:4px; padding:0 5px; background:var(--canvas); }
+  .nav-title { font:600 11px/1.3 var(--mono); color:var(--ink-400); text-transform:uppercase; letter-spacing:.04em; padding:16px 8px 6px; }
+  .nav a { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:6px; color:var(--ink-700); cursor:pointer; user-select:none; }
+  .nav a .ic { width:18px; text-align:center; flex:none; font-size:13px; }
+  .cdot { display:inline-block; width:8px; height:8px; border-radius:50%; flex:none; }
+  .nav a .ic .cdot { vertical-align:1px; }
+  .nav a .lb { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .nav a:hover { background:var(--canvas-subtle); }
-  .nav a.on { background:var(--canvas-subtle); color:var(--ink-950); font-weight:600; }
+  .nav a.on { background:var(--surface); color:var(--ink-950); font-weight:600; box-shadow:inset 0 0 0 1px var(--ink-200); }
   .nav .n { font:600 11px var(--mono); color:var(--ink-400); font-variant-numeric:tabular-nums; }
-  .about { color:var(--ink-400); font-size:12px; padding:16px 8px 0; line-height:1.6; }
+  .about { color:var(--ink-400); font-size:12px; padding:18px 8px 0; line-height:1.7; }
+
+  /* 顶栏 */
   .main { min-width:0; }
-  .top { position:sticky; top:0; z-index:5; background:rgba(255,255,255,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--ink-200); padding:14px 28px; display:flex; align-items:center; gap:12px; }
-  .top h1 { font-size:17px; font-weight:600; margin:0; }
-  .top .count { color:var(--ink-400); font:600 12px var(--mono); flex:1; }
-  .seg { display:inline-flex; border:1px solid var(--ink-200); border-radius:6px; overflow:hidden; }
-  .seg button { border:none; background:#fff; padding:5px 10px; font:inherit; font-size:12px; color:var(--ink-500); cursor:pointer; }
-  .seg button.on { background:var(--ink-950); color:#fff; }
-  .list { padding:4px 28px 60px; }
-  /* 紧凑行 */
-  .row { display:grid; grid-template-columns:10px 34px minmax(0,1fr) auto; gap:10px; align-items:start; padding:12px 6px; border-bottom:1px solid var(--ink-200); }
-  .row:hover { background:var(--hover); }
-  .udot { width:7px; height:7px; border-radius:50%; background:var(--accent); margin-top:6px; }
-  .udot.old { background:transparent; }
-  .score { font:600 12px var(--mono); color:var(--ink-400); text-align:right; padding-top:1px; font-variant-numeric:tabular-nums; }
-  .score.hi { color:var(--deal); }
-  .t { font-size:14px; font-weight:500; line-height:1.35; word-break:break-word; }
-  .t:hover { color:var(--accent); }
-  .ob { font-size:12px; margin-left:6px; white-space:nowrap; }
-  .ob.free { color:var(--deal); }
-  .ob.cond { color:var(--code); }
-  .sum { color:var(--ink-600); margin-top:3px; }
-  .meta { color:var(--ink-400); font-size:12px; margin-top:3px; }
-  .meta i { font-style:normal; margin:0 5px; color:var(--ink-300); }
-  .time { font:12px var(--mono); color:var(--ink-400); white-space:nowrap; padding-top:2px; font-variant-numeric:tabular-nums; }
-  /* 卡片视图 */
-  .grid .cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding-top:16px; }
-  .card { border:1px solid var(--ink-200); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:6px; }
-  .card:hover { border-color:var(--ink-300); background:var(--hover); }
-  .card .head { display:flex; gap:8px; align-items:center; font-size:12px; color:var(--ink-400); }
-  .card .head .score { flex:none; }
-  .card .sum { flex:1; }
-  .chip { font:600 11px var(--mono); color:var(--code); background:var(--code-subtle); border-radius:4px; padding:1px 6px; }
-  .chip.free { color:var(--deal); background:var(--deal-subtle); }
-  .empty { color:var(--ink-400); text-align:center; padding:60px 0; }
-  .dayh { display:flex; align-items:baseline; gap:8px; padding:20px 6px 8px; border-bottom:1px solid var(--ink-200); position:sticky; top:57px; background:#fff; z-index:2; }
+  .top { position:sticky; top:0; z-index:5; height:var(--topbar); background:color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter:saturate(1.4) blur(10px); border-bottom:1px solid var(--ink-200); padding:0 28px; display:flex; align-items:center; gap:12px; }
+  .top h1 { font-size:17px; font-weight:600; margin:0; white-space:nowrap; }
+  .top .count { color:var(--ink-400); font:600 12px var(--mono); flex:1; white-space:nowrap; }
+  .seg { display:inline-flex; border:1px solid var(--ink-200); border-radius:7px; padding:2px; gap:2px; background:var(--canvas); }
+  .seg button { border:none; background:transparent; padding:4px 10px; font-size:12px; color:var(--ink-600); cursor:pointer; border-radius:5px; }
+  .seg button.on { background:var(--surface); color:var(--ink-950); box-shadow:0 0 0 1px var(--ink-200); }
+
+  /* 今日概览 */
+  .hero { display:flex; gap:10px; padding:18px 28px 4px; flex-wrap:wrap; }
+  .stat { border:1px solid var(--ink-200); border-radius:8px; padding:10px 14px; min-width:120px; }
+  .stat b { display:block; font:600 20px/1.2 var(--mono); font-variant-numeric:tabular-nums; }
+  .stat span { color:var(--ink-400); font-size:12px; }
+  .stat.hl b { color:var(--deal); }
+
+  .list { padding:4px 28px 80px; }
+  .dayh { display:flex; align-items:baseline; gap:8px; padding:20px 6px 8px; border-bottom:1px solid var(--ink-200); position:sticky; top:var(--topbar); background:var(--surface); z-index:2; }
   .dayh b { font-size:13px; font-weight:600; }
   .dayh span { font:600 11px var(--mono); color:var(--ink-400); }
+
+  /* 紧凑行 */
+  .row { display:grid; grid-template-columns:16px minmax(0,1fr) auto; gap:12px; align-items:start; padding:12px 6px; border-bottom:1px solid var(--ink-200); }
+  .row:hover { background:var(--hover); }
+  .row .ic { line-height:20px; text-align:center; padding-top:1px; }
+  .t { font-size:14px; font-weight:500; line-height:1.4; word-break:break-word; }
+  a.t:hover { color:var(--accent); }
+  .tags { display:inline-flex; gap:4px; margin-left:6px; vertical-align:1px; }
+  .chip { font:600 11px/18px var(--mono); color:var(--code); background:var(--code-subtle); border-radius:4px; padding:0 6px; white-space:nowrap; }
+  .chip.free { color:var(--deal); background:var(--deal-subtle); }
+  .chip.new { color:var(--new); background:var(--new-subtle); }
+  .sum { color:var(--ink-600); margin-top:3px; line-height:1.55; }
+  .meta { color:var(--ink-400); font-size:12px; margin-top:4px; display:flex; flex-wrap:wrap; align-items:center; }
+  .meta i { font-style:normal; margin:0 6px; color:var(--ink-300); }
+  .meta .host { font-family:var(--mono); font-size:11px; }
+  .side { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+  .time { font:12px var(--mono); color:var(--ink-400); white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .copy { border:1px solid var(--ink-200); background:var(--surface); border-radius:5px; font-size:11px; padding:1px 7px; color:var(--ink-600); cursor:pointer; opacity:0; transition:opacity .12s; }
+  .row:hover .copy, .copy:focus-visible { opacity:1; }
+
+  /* 卡片视图 */
+  .grid .cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding-top:12px; }
   .grid .dayh { border-bottom:none; padding-bottom:0; position:static; }
-  .grid .cards { padding-top:10px; }
-  @media (max-width:1023px) { .grid .cards { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-  @media (max-width:640px) {
+  .card { border:1px solid var(--ink-200); border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:6px; min-height:150px; }
+  .card:hover { border-color:var(--ink-300); background:var(--hover); }
+  .card .head { display:flex; gap:6px; align-items:center; font-size:12px; color:var(--ink-400); }
+  .card .head .sp { flex:1; }
+  .card .sum { flex:1; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+
+  .empty { color:var(--ink-400); text-align:center; padding:72px 20px; line-height:1.8; }
+  .empty b { display:block; color:var(--ink-950); font-size:15px; margin-bottom:4px; }
+  .empty a { color:var(--accent); }
+  .skel { height:64px; border-bottom:1px solid var(--ink-200); background:linear-gradient(90deg,transparent,var(--hover),transparent); background-size:200% 100%; animation:sk 1.2s infinite; }
+  @keyframes sk { to { background-position:-200% 0; } }
+  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink-950); color:var(--surface); padding:7px 14px; border-radius:7px; font-size:12px; opacity:0; transition:opacity .15s; pointer-events:none; }
+  .toast.on { opacity:1; }
+
+  @media (max-width:1100px) { .grid .cards { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+  @media (max-width:720px) {
+    :root { --topbar: 52px; }
     .app { grid-template-columns:1fr; }
-    .rail { position:static; height:auto; padding:12px; border-right:none; border-bottom:1px solid var(--ink-200); }
-    .rail .nav { display:flex; overflow-x:auto; gap:4px; }
-    .rail .nav a { flex:none; gap:6px; }
-    .nav-title, .about { display:none; }
+    .rail { position:static; height:auto; padding:12px 12px 4px; border-right:none; border-bottom:1px solid var(--ink-200); }
+    .brand { padding-bottom:10px; }
+    .rail .nav { display:flex; overflow-x:auto; gap:4px; padding-bottom:8px; scrollbar-width:none; }
+    .rail .nav::-webkit-scrollbar { display:none; }
+    .rail .nav a { flex:none; }
+    .rail .nav a .lb { overflow:visible; }
+    .nav-title, .about, .rail .links { display:none; }
     .search kbd { display:none; }
-    .top, .list { padding-left:12px; padding-right:12px; }
-    .row { grid-template-columns:30px minmax(0,1fr); }
-    .row .udot { display:none; }
-    .row .time { grid-column:2; padding:0; }
+    .top, .list, .hero { padding-left:12px; padding-right:12px; }
+    .hero .stat { flex:1; min-width:0; }
+    .row { grid-template-columns:12px minmax(0,1fr); gap:8px; }
+    .row .side { grid-column:2; flex-direction:row; align-items:center; }
+    .copy { opacity:1; }
     .grid .cards { grid-template-columns:1fr; }
   }
 </style>
@@ -91,70 +138,84 @@
 <body>
 <div class="app">
   <aside class="rail">
-    <div class="brand"><span class="dot"></span>免费资源雷达</div>
-    <div class="search"><input id="q" placeholder="搜索资源…" /><kbd>/</kbd></div>
-    <div class="nav-title">频道</div>
-    <nav class="nav" id="cats">
-      <a data-c="" class="on">全部 <span class="n" data-n="all"></span></a>
-      <a data-c="domain">免费域名 <span class="n" data-n="domain"></span></a>
-      <a data-c="hosting">虚拟主机 <span class="n" data-n="hosting"></span></a>
-    </nav>
+    <div class="brand"><span class="logo"><i></i></span><div><b>免费资源雷达</b><small>每日白嫖情报</small></div></div>
+    <div class="search"><input id="q" placeholder="搜索资源…" aria-label="搜索" /><kbd>/</kbd></div>
+    <div class="nav-title">分类</div>
+    <nav class="nav" id="cats"><a data-c="" class="on"><span class="ic">◎</span><span class="lb">全部</span><span class="n" data-n="all"></span></a></nav>
     <div class="nav-title">获取方式</div>
     <nav class="nav" id="obs">
-      <a data-o="" class="on">不限</a>
-      <a data-o="free">直接白嫖 <span class="n" data-n="free"></span></a>
-      <a data-o="conditional">有条件 <span class="n" data-n="conditional"></span></a>
+      <a data-o="" class="on"><span class="ic">·</span><span class="lb">不限</span></a>
+      <a data-o="free"><span class="ic">✓</span><span class="lb">直接白嫖</span><span class="n" data-n="free"></span></a>
+      <a data-o="conditional"><span class="ic">◐</span><span class="lb">有条件</span><span class="n" data-n="conditional"></span></a>
     </nav>
-    <div class="nav-title">按日期</div>
-    <nav class="nav" id="days"><a data-d="" class="on">最近 <span class="n" id="retN"></span></a></nav>
-    <div class="nav-title">订阅</div>
-    <nav class="nav">
-      <a href="/feed.xml" target="_blank">RSS ↗</a>
-      <a href="/admin">管理</a>
+    <div class="nav-title">日期</div>
+    <nav class="nav" id="days"></nav>
+    <div class="nav-title links">订阅</div>
+    <nav class="nav links">
+      <a href="/feed.xml" target="_blank"><span class="ic">◉</span><span class="lb">RSS 订阅</span></a>
+      <a href="/admin"><span class="ic">⚙</span><span class="lb">管理后台</span></a>
     </nav>
-    <div class="about">每天自动收集半年内发布、只需邮箱或 GitHub / Google 登录即可注册的免费域名与虚拟主机，经 AI 筛选。<br><span id="updated"></span></div>
+    <div class="about">每天自动收集半年内发布、注册简单的免费资源，经 AI 筛选。数据保留 <span id="ret">15</span> 天。<br><span id="updated"></span></div>
   </aside>
   <main class="main">
     <div class="top">
       <h1 id="title">全部资源</h1>
       <span class="count" id="count"></span>
-      <div class="seg" id="view"><button data-v="list">列表</button><button data-v="grid">卡片</button></div>
+      <div class="seg" id="view" role="tablist"><button data-v="list">列表</button><button data-v="grid">卡片</button></div>
     </div>
-    <div class="list" id="list"><div class="empty">加载中…</div></div>
+    <div class="hero" id="hero"></div>
+    <div class="list" id="list"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
   </main>
 </div>
+<div class="toast" id="toast"></div>
 <script>
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const CAT = { domain: '免费域名', hosting: '虚拟主机', other: '其他' };
 const OB = { free: '直接白嫖', conditional: '有条件', lottery: '抽奖', trial: '试用', promo: '推广', paid: '需付费' };
-const state = { cat: '', ob: '', day: '', today: '', view: localStorage.getItem('frr_view') || 'list', timer: 0 };
+const CAT = {}; // key -> { label, icon }
+const state = { cat: '', ob: '', day: '', today: '', view: localStorage.getItem('frr_view') || 'list', timer: 0, items: [] };
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
 function ago(t) {
   if (!t) return '';
   const m = Math.round((Date.now() - t) / 60000);
-  if (m < 60) return Math.max(m, 1) + '分钟前';
-  if (m < 1440) return Math.round(m / 60) + '小时前';
-  if (m < 43200) return Math.round(m / 1440) + '天前';
+  if (m < 60) return Math.max(m, 1) + ' 分钟前';
+  if (m < 1440) return Math.round(m / 60) + ' 小时前';
+  if (m < 43200) return Math.round(m / 1440) + ' 天前';
   return new Date(t).toLocaleDateString('zh-CN');
 }
-const obTag = (o, cls) => (o ? '<span class="' + cls + (o === 'free' ? ' free' : ' cond') + '">' + OB[o] + '</span>' : '');
+const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+// 只有积累了不止一天的数据时才标 NEW，第一天全是新的就不标了
+const isNew = (it) => state.multiDay && it.day && it.day === state.today;
+const dot = (c) => '<span class="cdot" style="background:' + (c && c.color || '#9ca3af') + '"></span>';
+function chips(it) {
+  const c = [];
+  if (isNew(it)) c.push('<span class="chip new">NEW</span>');
+  if (it.obtain) c.push('<span class="chip ' + (it.obtain === 'free' ? 'free' : '') + '">' + OB[it.obtain] + '</span>');
+  return c.length ? '<span class="tags">' + c.join('') + '</span>' : '';
+}
+function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 1400); }
 
-function rowHtml(it) {
-  const fresh = it.published_at && Date.now() - it.published_at < 3 * 86400000;
-  return '<div class="row"><span class="udot' + (fresh ? '' : ' old') + '" title="' + (fresh ? '3 天内' : '') + '"></span>' +
-    '<span class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '·') + '</span><div>' +
-    '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + esc(it.name || it.title) + '</a>' + obTag(it.obtain, 'ob') +
+function rowHtml(it, i) {
+  const c = CAT[it.category] || { label: '其它' };
+  return '<div class="row"><span class="ic" title="' + esc(c.label) + '">' + dot(c) + '</span><div>' +
+    '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + esc(it.name || it.title) + '</a>' + chips(it) +
     (it.summary ? '<div class="sum">' + esc(it.summary) + '</div>' : '') +
-    '<div class="meta">' + [CAT[it.category] || '', it.signup ? '注册：' + esc(it.signup) : '', esc(it.source || '')].filter(Boolean).join('<i>·</i>') + '</div></div>' +
-    '<span class="time">' + ago(it.published_at) + '</span></div>';
+    '<div class="meta">' + [esc(c.label), it.signup ? '注册：' + esc(it.signup) : '', '<span class="host">' + esc(host(it.url)) + '</span>', esc(it.source || '')].filter(Boolean).join('<i>·</i>') + '</div></div>' +
+    '<div class="side"><span class="time">' + ago(it.published_at) + '</span><button class="copy" data-i="' + i + '">复制链接</button></div></div>';
 }
 function cardHtml(it) {
+  const c = CAT[it.category] || { label: '其它' };
   return '<a class="card" href="' + esc(it.url) + '" target="_blank" rel="noopener">' +
-    '<div class="head"><span class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '·') + '</span><span>' + (CAT[it.category] || '') + '</span><span style="flex:1"></span>' + obTag(it.obtain, 'chip') + '</div>' +
+    '<div class="head">' + dot(c) + '<span>' + esc(c.label) + '</span><span class="sp"></span>' + chips(it) + '</div>' +
     '<div class="t">' + esc(it.name || it.title) + '</div>' +
-    (it.summary ? '<div class="sum">' + esc(it.summary) + '</div>' : '<div class="sum"></div>') +
+    '<div class="sum">' + esc(it.summary || '') + '</div>' +
     '<div class="meta">' + [it.signup ? '注册：' + esc(it.signup) : '', ago(it.published_at)].filter(Boolean).join('<i>·</i>') + '</div></a>';
+}
+function dayLabel(d) {
+  if (!d) return '更早';
+  const [, m, dd] = d.split('-').map(Number);
+  const diff = state.today ? Math.round((Date.parse(state.today) - Date.parse(d)) / 86400000) : -1;
+  return m + '月' + dd + '日' + (diff === 0 ? ' · 今天' : diff === 1 ? ' · 昨天' : '');
 }
 
 async function load() {
@@ -165,44 +226,64 @@ async function load() {
   const q = $('#q').value.trim();
   if (q) p.set('q', q);
   const items = await fetch('/api/items?' + p).then((r) => r.json()).catch(() => []);
+  state.items = Array.isArray(items) ? items : [];
   const el = $('#list');
   el.className = 'list ' + state.view;
-  $('#count').textContent = Array.isArray(items) ? items.length + ' 条' : '';
-  if (!Array.isArray(items) || !items.length) { el.innerHTML = '<div class="empty">暂时没有符合条件的资源</div>'; return; }
+  $('#count').textContent = state.items.length ? state.items.length + ' 条' : '';
+  if (!state.items.length) {
+    const filtered = state.cat || state.ob || state.day || q;
+    el.innerHTML = filtered
+      ? '<div class="empty"><b>没有符合条件的资源</b>换个分类或清空搜索试试</div>'
+      : '<div class="empty"><b>还没有数据</b>每天北京时间 09:00 自动抓取。刚部署好？去 <a href="/admin">管理后台</a> 点「立即抓取」。</div>';
+    return;
+  }
   const groups = [];
-  for (const it of items) {
+  state.items.forEach((it, i) => {
     const d = it.day || '';
     if (!groups.length || groups[groups.length - 1].d !== d) groups.push({ d, list: [] });
-    groups[groups.length - 1].list.push(it);
-  }
+    groups[groups.length - 1].list.push([it, i]);
+  });
   el.innerHTML = groups.map((g) => '<div class="dayh"><b>' + dayLabel(g.d) + '</b><span>' + g.list.length + ' 条</span></div>' +
-    (state.view === 'grid' ? '<div class="cards">' + g.list.map(cardHtml).join('') + '</div>' : g.list.map(rowHtml).join(''))).join('');
-}
-function dayLabel(d) {
-  if (!d) return '更早';
-  const [y, m, dd] = d.split('-').map(Number);
-  const diff = state.today ? Math.round((Date.parse(state.today) - Date.parse(d)) / 86400000) : -1;
-  const rel = diff === 0 ? ' · 今天' : diff === 1 ? ' · 昨天' : '';
-  return m + '月' + dd + '日' + rel;
-}
-async function loadStats() {
-  const s = await fetch('/api/stats').then((r) => r.json()).catch(() => null);
-  if (!s) return;
-  $$('[data-n]').forEach((el) => (el.textContent = s[el.dataset.n] ?? ''));
-  state.today = s.today || '';
-  $('#retN').textContent = s.retention_days ? s.retention_days + '天' : '';
-  $('#days').innerHTML = '<a data-d="" class="' + (state.day ? '' : 'on') + '">最近 <span class="n">' + (s.retention_days || 15) + '天</span></a>' +
-    (s.days || []).slice(0, 15).map((x) => '<a data-d="' + x.day + '" class="' + (state.day === x.day ? 'on' : '') + '">' + dayLabel(x.day) + ' <span class="n">' + x.n + '</span></a>').join('');
-  $$('#days a').forEach((a) => (a.onclick = () => { state.day = a.dataset.d; setActive('#days', 'd', state.day); load(); }));
-  if (s.last_run) $('#updated').textContent = '最近更新：' + new Date(s.last_run).toLocaleString('zh-CN', { hour12: false });
+    (state.view === 'grid' ? '<div class="cards">' + g.list.map(([it]) => cardHtml(it)).join('') + '</div>' : g.list.map(([it, i]) => rowHtml(it, i)).join(''))).join('');
 }
 
+function navItem(attr, val, icon, label, n, on) {
+  return '<a data-' + attr + '="' + val + '" class="' + (on ? 'on' : '') + '"><span class="ic">' + icon + '</span><span class="lb">' + label + '</span><span class="n">' + (n ?? '') + '</span></a>';
+}
+async function loadStats() {
+  const s = await fetch('/api/stats').then((r) => { if (r.status === 401) location.reload(); return r.json(); }).catch(() => null);
+  if (!s) return;
+  state.today = s.today || '';
+  state.multiDay = (s.days || []).length > 1;
+  for (const c of s.categories || []) CAT[c.key] = c;
+  $('#cats').innerHTML = navItem('c', '', '◎', '全部', s.all, !state.cat) +
+    (s.categories || []).map((c) => navItem('c', c.key, dot(c), esc(c.label), s[c.key] || '', state.cat === c.key)).join('');
+  $$('[data-n]').forEach((el) => (el.textContent = s[el.dataset.n] ?? ''));
+  $('#ret').textContent = s.retention_days || 15;
+  const todayN = (s.days || []).find((x) => x.day === state.today)?.n || 0;
+  $('#days').innerHTML = navItem('d', '', '▦', '最近 ' + (s.retention_days || 15) + ' 天', '', !state.day) +
+    (s.days || []).slice(0, 15).map((x) => navItem('d', x.day, '·', dayLabel(x.day), x.n, state.day === x.day)).join('');
+  $('#hero').innerHTML = s.all
+    ? '<div class="stat hl"><b>' + todayN + '</b><span>今日新增</span></div><div class="stat"><b>' + (s.free || 0) + '</b><span>直接白嫖</span></div><div class="stat"><b>' + s.all + '</b><span>共收录</span></div>'
+    : '';
+  if (s.last_run) $('#updated').textContent = '最近更新 ' + new Date(s.last_run).toLocaleString('zh-CN', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  bindNav();
+}
+function bindNav() {
+  $$('#cats a').forEach((a) => (a.onclick = () => { state.cat = a.dataset.c; setActive('#cats', 'c', state.cat); $('#title').textContent = state.cat ? CAT[state.cat].label : '全部资源'; load(); }));
+  $$('#days a').forEach((a) => (a.onclick = () => { state.day = a.dataset.d; setActive('#days', 'd', state.day); load(); }));
+}
 function setActive(groupSel, attr, val) { $$(groupSel + ' a').forEach((a) => a.classList.toggle('on', a.dataset[attr] === val)); }
-$$('#cats a').forEach((a) => (a.onclick = () => { state.cat = a.dataset.c; setActive('#cats', 'c', state.cat); $('#title').textContent = state.cat ? CAT[state.cat] : '全部资源'; load(); }));
 $$('#obs a').forEach((a) => (a.onclick = () => { state.ob = a.dataset.o; setActive('#obs', 'o', state.ob); load(); }));
 $$('#view button').forEach((b) => {
   b.classList.toggle('on', b.dataset.v === state.view);
   b.onclick = () => { state.view = b.dataset.v; localStorage.setItem('frr_view', state.view); $$('#view button').forEach((x) => x.classList.toggle('on', x === b)); load(); };
+});
+$('#list').addEventListener('click', (e) => {
+  const b = e.target.closest('.copy');
+  if (!b) return;
+  const it = state.items[Number(b.dataset.i)];
+  navigator.clipboard?.writeText(it.url).then(() => toast('已复制链接'), () => toast('复制失败'));
 });
 $('#q').oninput = () => { clearTimeout(state.timer); state.timer = setTimeout(load, 250); };
 document.addEventListener('keydown', (e) => {

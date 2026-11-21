@@ -63,7 +63,28 @@
   .sw input::after { content:""; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#fff; transition:.15s; }
   .sw input:checked { background:var(--brand); }
   .sw input:checked::after { left:14px; }
+  .tag { font:600 11px/18px var(--mono); padding:0 6px; border-radius:4px; background:var(--muted, #f1f3f6); color:var(--ink-500); margin-left:6px; vertical-align:2px; }
+  .tag.free { background:#ecfdf5; color:#047857; }
+  .tag.zh { background:#eef0ff; color:#312e81; }
+  .quota { font-size:13px; color:var(--ink-700); padding-top:7px; }
+  a.reg { color:var(--accent); font-size:13px; text-decoration:none; }
+  a.reg:hover { text-decoration:underline; }
   .chk { display:inline-flex; align-items:center; gap:6px; margin-right:14px; font-size:13px; color:var(--ink-700); }
+  /* 分类勾选卡片 */
+  .cats { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:8px; }
+  .cat { position:relative; display:flex; gap:10px; align-items:flex-start; border:1px solid var(--ink-200); border-radius:8px; padding:10px 12px; cursor:pointer; user-select:none; }
+  .cat:hover { border-color:var(--ink-300); background:var(--hover); }
+  .cat input { position:absolute; opacity:0; pointer-events:none; }
+  .cat .ic { width:10px; height:10px; border-radius:50%; flex:none; margin-top:5px; }
+  .cat .tx { flex:1; min-width:0; padding-right:18px; }
+  .cat b { display:block; font-size:13px; font-weight:600; }
+  .cat small { display:block; color:var(--ink-400); font-size:11px; line-height:1.4; margin-top:2px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .cat .ck { position:absolute; right:8px; top:8px; width:16px; height:16px; border-radius:4px; border:1px solid var(--ink-300); display:grid; place-items:center; font-size:11px; color:transparent; }
+  .cat:has(input:checked) { border-color:var(--brand); background:var(--brand-subtle); }
+  .cat:has(input:checked) .ck { background:var(--brand); border-color:var(--brand); color:#fff; }
+  .cats.mini { grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); }
+  .cats.mini .cat { padding:7px 10px; }
+  .cats.mini small { display:none; }
   /* 列表 */
   .tabs { display:flex; gap:18px; border-bottom:1px solid var(--ink-200); margin-bottom:4px; }
   .tabs button { background:none; border:none; padding:8px 0; font:inherit; color:var(--ink-500); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
@@ -132,6 +153,7 @@
       <a href="#ai" data-p="ai">AI 引擎</a>
       <a href="#search" data-p="search">联网搜索</a>
       <a href="#push" data-p="push">邮件与推送</a>
+      <a href="#cats" data-p="cats">分类订阅</a>
       <a href="#collect" data-p="collect">采集与过滤</a>
       <a href="#runs" data-p="runs">运行记录</a>
       <a href="#account" data-p="account">账号与存储</a>
@@ -170,7 +192,7 @@
         <div class="section">
           <header><h2>AI 判定</h2><label class="sw"><input type="checkbox" data-key="ai_enabled" />启用</label></header>
           <div class="body">
-            <div class="callout"><span class="storageNote"></span>支持任何 OpenAI 兼容接口：OpenAI、DeepSeek、OpenRouter、硅基流动、各类中转。</div>
+            <div class="callout"><b>可选。</b>不填也能用，会按关键词判定；填好接口地址、Key、模型并保存后自动改用 AI，结果更准。支持任何 OpenAI 兼容接口：OpenAI、DeepSeek、OpenRouter、硅基流动、各类中转。<span class="storageNote"></span></div>
             <div class="grid2">
               <div><label class="f">接口地址</label><input type="text" data-key="ai_base_url" placeholder="https://api.openai.com/v1" /></div>
               <div><label class="f">API Key</label><input type="password" data-key="ai_api_key" autocomplete="off" /></div>
@@ -185,68 +207,30 @@
                 <button class="btn" onclick="testModel('ai', this)">测试</button>
               </div>
             </div>
+            <div class="row"><button class="btn" onclick="rejudge(this)">用 AI 重新判定</button><span class="hint">配好并保存后，可以把之前用关键词判定过的条目交给 AI 再判一遍。</span></div>
             <div class="grid3">
               <div><label class="f">每次请求判定条数</label><input type="number" data-key="ai_batch_size" min="1" max="20" /></div>
               <div><label class="f">每次运行最多判定</label><input type="number" data-key="ai_max_items" min="1" /></div>
               <div><label class="f">最低通过分数</label><input type="number" data-key="ai_min_score" min="0" max="100" /></div>
             </div>
-            <div class="hint">AI 输出：是否相关、分类（域名 / 主机）、获取方式、注册是否简单、一句话简介、0-100 分。未启用时用关键词粗筛。</div>
+            <div class="hint">AI 输出：是否相关、分类（按「分类订阅」里勾选的）、获取方式、注册是否简单、一句话中文简介、0-100 分。</div>
           </div>
         </div>
       </div>
 
       <!-- 搜索 -->
       <div class="panel" id="p-search">
-        <div class="section">
-          <header><h2>Tavily</h2><label class="sw"><input type="checkbox" data-key="tavily_enabled" />启用</label></header>
-          <div class="body">
-            <div class="grid2">
-              <div><label class="f">API Key（tvly-…）</label><input type="password" data-key="tavily_api_key" autocomplete="off" /></div>
-              <div><label class="f">搜索深度</label><select data-key="tavily_depth"><option value="basic">basic（1 credit）</option><option value="advanced">advanced（2 credits）</option><option value="fast">fast</option></select></div>
-            </div>
-            <div class="row"><button class="btn" onclick="testSearch('tavily', this)">测试搜索</button><span class="hint">中文查询会设置 language=zh-cn；只要中文时开启 filter_by_language。</span></div>
-          </div>
-        </div>
-        <div class="section">
-          <header><h2>Keenable</h2><label class="sw"><input type="checkbox" data-key="keenable_enabled" />启用</label></header>
-          <div class="body">
-            <div class="grid2">
-              <div><label class="f">API Key（keen_…，留空走免费公共接口）</label><input type="password" data-key="keenable_api_key" autocomplete="off" /></div>
-              <div><label class="f">模式</label><select data-key="keenable_mode"><option value="pro">pro（检索更深）</option><option value="realtime">realtime（更快）</option></select></div>
-            </div>
-            <div class="row"><button class="btn" onclick="testSearch('keenable', this)">测试搜索</button><span class="hint">按发布日期过滤，自动排除无日期页面和屏蔽站点。</span></div>
-          </div>
-        </div>
-        <div class="section">
-          <header><h2>联网搜索模型</h2><label class="sw"><input type="checkbox" data-key="search_enabled" />启用</label></header>
-          <div class="body">
-            <div class="grid2">
-              <div><label class="f">接口地址</label><input type="text" data-key="search_base_url" placeholder="https://api.perplexity.ai" /></div>
-              <div><label class="f">API Key</label><input type="password" data-key="search_api_key" autocomplete="off" /></div>
-            </div>
-            <div>
-              <label class="f">模型</label>
-              <div class="row">
-                <input class="grow" type="text" data-key="search_model" list="search-models" placeholder="sonar / gpt-4o-search-preview" />
-                <datalist id="search-models"></datalist>
-                <select id="search-select" class="grow" onchange="pick('search', this.value)"><option value="">— 模型列表 —</option></select>
-                <button class="btn" onclick="fetchModels('search', this)">获取模型</button>
-                <button class="btn" onclick="testModel('search', this)">测试</button>
-              </div>
-            </div>
-            <div><label class="f">额外请求参数（JSON）</label><textarea data-key="search_extra_body" style="min-height:56px"></textarea>
-              <div class="hint">OpenAI 搜索模型填 {"web_search_options":{}}；Perplexity 可填 {"search_recency_filter":"month"}；不需要就填 {}。</div></div>
-          </div>
-        </div>
+        <div class="callout" style="margin-bottom:16px">联网搜索按勾选的分类自动生成中文搜索词，结果和其他来源一样经过过滤和判定。<b>AnySearch、Keenable 免 Key 开箱即用</b>；其余几家注册拿到免费 Key 填上就自动参与。开启的几家会并行搜索（免费版每步并行 2 家）。填了 Key 就固定走 Key，不会自动切换。接口资料参考 <a href="https://github.com/bestnite/search" target="_blank" rel="noopener">bestnite/search</a>。</div>
+        <div id="searchBackends"></div>
         <div class="section">
           <header><h2>搜索偏好与过滤</h2></header>
           <div class="body">
             <div class="grid2">
-              <div><label class="f">语言</label><select data-key="search_lang"><option value="zh_first">中文优先（不足时补英文）</option><option value="zh_only">只要中文</option><option value="any">不限</option></select></div>
+              <div><label class="f">语言</label><select data-key="search_lang"><option value="zh_only">只要中文</option><option value="zh_first">中文优先（不足时补英文）</option><option value="any">不限</option></select></div>
               <div><label class="f">每个查询返回条数</label><input type="number" data-key="search_max_results" min="1" max="50" /></div>
             </div>
             <div class="grid2">
-              <div><label class="f">搜索词（Tavily / Keenable，每行一个）</label><textarea data-key="search_queries"></textarea></div>
+              <div><label class="f">搜索词（每行一个；留空按勾选分类自动生成）</label><textarea data-key="search_queries"></textarea></div>
               <div><label class="f">屏蔽站点（每行一个域名，对所有来源生效）</label><textarea data-key="search_block_domains"></textarea></div>
             </div>
             <div class="hint">搜索结果依次经过：屏蔽站点 → 语言 → 噪音标题 → 屏蔽规则 → 明显要绑卡 / 实名 → 发布时间 → 关键词 → AI 判定。</div>
@@ -287,6 +271,9 @@
               <label class="sw"><input type="checkbox" data-key="mail_only_new" />只推上次之后新通过的</label>
               <label class="sw"><input type="checkbox" data-key="mail_send_empty" />没有新内容也推</label>
             </div>
+            <div><label class="f">推送哪些分类（都不勾 = 与收集的分类相同）</label>
+              <div class="cats mini" data-csv="mail_categories" id="mailCatBox"></div>
+            </div>
             <div class="row">
               <button class="btn" onclick="mailPreview(this)">预览邮件</button>
               <button class="btn" onclick="pushAction('test', 'mail', this)">发送测试邮件</button>
@@ -307,6 +294,29 @@
         <div class="row"><button class="btn pri" onclick="pushAction('send', null, this)">立即推送日报</button><span class="hint">每天定时抓取结束后，按启用的渠道自动推送。</span></div>
       </div>
 
+      <!-- 分类订阅 -->
+      <div class="panel" id="p-cats">
+        <div class="section">
+          <header><h2>收集哪些分类</h2><span class="hint" id="catCount"></span></header>
+          <div class="body">
+            <div class="cats" data-csv="enabled_categories" id="catBox"></div>
+            <div class="row">
+              <button class="btn sm" onclick="catAll('#catBox', true)">全选</button>
+              <button class="btn sm" onclick="catAll('#catBox', false)">全不选</button>
+              <button class="btn sm" onclick="catPreset()">恢复推荐</button>
+              <span class="hint">只收集勾选的分类：关键词预筛、AI 判定、联网搜索词和白嫖专源都会跟着变。至少勾一个。</span>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>注册门槛</h2></header>
+          <div class="body">
+            <label class="sw"><input type="checkbox" data-key="simple_signup_only" />只要注册简单的（邮箱 / GitHub / Google 登录，不要绑卡、手机验证、实名、邀请码）</label>
+          </div>
+        </div>
+        <div class="row"><button class="btn pri" onclick="save(this)">保存设置</button></div>
+      </div>
+
       <!-- 采集与过滤 -->
       <div class="panel" id="p-collect">
         <div class="section">
@@ -315,8 +325,11 @@
             <div class="grid3">
               <div><label class="f">最大消息年龄（天）</label><input type="number" data-key="max_age_days" min="1" /></div>
               <div><label class="f">数据保留天数（按抓取日期，到期自动清理）</label><input type="number" data-key="retention_days" min="1" max="365" /></div>
+              <div><label class="f">每天几点抓取（北京时间 0-23，抓完自动推送）</label><input type="number" data-key="run_hour" min="0" max="23" /></div>
+              <div><label class="f">每分钟执行几步（免费版保持 1）</label><input type="number" data-key="steps_per_tick" min="1" max="50" /></div>
               <div><label class="f">无发布日期</label><label class="sw" style="margin-top:8px"><input type="checkbox" data-key="keep_undated" />保留</label></div>
               <div><label class="f">噪音标题（求助 / 吐槽）</label><label class="sw" style="margin-top:8px"><input type="checkbox" data-key="noise_filter" />跳过</label></div>
+              <div><label class="f">纯英文内容（标题和正文都没有中文）</label><label class="sw" style="margin-top:8px"><input type="checkbox" data-key="filter_english" />过滤</label></div>
             </div>
             <div>
               <label class="f">允许的获取方式</label>
@@ -336,7 +349,7 @@
           <header><h2>关键词预筛</h2></header>
           <div class="body">
             <div class="grid3">
-              <div><label class="f">主题词（命中其一）</label><textarea data-key="topic_keywords"></textarea></div>
+              <div><label class="f">额外主题词（各分类已内置关键词，这里只需补充）</label><textarea data-key="topic_keywords"></textarea></div>
               <div><label class="f">免费词（命中其一）</label><textarea data-key="free_keywords"></textarea></div>
               <div><label class="f">复杂注册词</label><textarea data-key="hard_signup_keywords"></textarea></div>
             </div>
@@ -346,7 +359,7 @@
           <header><h2>数据源</h2></header>
           <div class="body">
             <textarea data-key="sources" style="min-height:300px"></textarea>
-            <div class="hint">type：rss（url）/ v2ex（node）/ hn（query）/ reddit（query, subreddit）/ github（query）。enabled:false 停用，filter:false 跳过关键词预筛。</div>
+            <div class="hint">type：rss（url）/ v2ex（node）/ hn（query）/ reddit（query, subreddit）/ github（query）/ epic / gamerpower / openrouter_free。enabled:false 停用；filter:false 跳过关键词预筛；trusted:true + category 直接入库不送 AI（category:"auto" 按关键词自动归类）；include 为标题必须匹配的正则。</div>
           </div>
         </div>
       </div>
@@ -358,6 +371,17 @@
           <div class="body">
             <div id="storageInfo" class="hint"></div>
             <div class="hint">资源按抓取日期（北京时间）存储，默认保留 15 天后自动清理；为避免重复推送，“已见过”的链接记录保留到最大消息年龄。保留天数在「采集与过滤」里改。</div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>资源页访问密码</h2><span class="hint" id="siteLockState"></span></header>
+          <div class="body">
+            <div class="row">
+              <input class="grow" type="password" id="sitePw" placeholder="设置后，打开资源页要先输入密码" autocomplete="new-password" />
+              <button class="btn" onclick="setSitePw(this, true)">保存</button>
+              <button class="btn" onclick="setSitePw(this, false)">取消密码</button>
+            </div>
+            <div class="hint">留空则资源页公开。设置后 RSS 订阅地址改为 <code id="rssKeyed">/feed.xml?key=访问密码</code>。管理后台仍用管理员密码。</div>
           </div>
         </div>
         <div class="section">
@@ -383,8 +407,31 @@
 let TOKEN = localStorage.getItem('frr_token') || '';
 let CUR = 'approved';
 let SETTINGS = {};
-const TITLES = { items: '资源审核', ai: 'AI 引擎', search: '联网搜索', push: '邮件与推送', collect: '采集与过滤', runs: '运行记录', account: '账号与存储' };
-const CAT = { domain: '域名', hosting: '主机', other: '其他' };
+const TITLES = { items: '资源审核', ai: 'AI 引擎', search: '联网搜索', push: '邮件与推送', collect: '采集与过滤', runs: '运行记录', account: '账号与存储', cats: '分类订阅' };
+const CATS = /*__CATS__*/[];
+const BACKENDS = /*__BACKENDS__*/[];
+function renderBackends() {
+  $('#searchBackends').innerHTML = BACKENDS.map((b) => '<div class="section">' +
+    '<header><h2>' + esc(b.name) + (b.keyless ? ' <span class="tag free">免 Key 可用</span>' : ' <span class="tag">需注册</span>') + (b.zh ? ' <span class="tag zh">中文</span>' : '') + '</h2>' +
+    '<label class="sw"><input type="checkbox" data-key="' + b.id + '_enabled" />启用</label></header><div class="body">' +
+    '<div class="grid2"><div><label class="f">API Key' + (b.keyless ? '（可选，留空走免费公共接口）' : '（填了才会参与搜索）') + '</label><input type="password" data-key="' + b.id + '_api_key" autocomplete="off" /></div>' +
+    '<div><label class="f">免费额度</label><div class="quota">' + esc(b.free) + (b.note ? '<span class="hint"> · ' + esc(b.note) + '</span>' : '') + '</div></div></div>' +
+    '<div class="row"><button class="btn" onclick="testSearch(\'' + b.id + '\', this)">测试搜索</button>' +
+    '<a class="reg" href="' + esc(b.signup) + '" target="_blank" rel="noopener">' + (b.keyless ? '注册拿 Key（提高额度）' : '去注册拿 API Key') + ' ↗</a></div>' +
+    '</div></div>').join('');
+}
+const CAT = Object.fromEntries(CATS.map((c) => [c.key, c.label]));
+const REC = ['domain', 'hosting', 'cloud', 'ai', 'software', 'dev', 'game', 'edu'];
+function renderCats() {
+  const tile = (c, mini) => '<label class="cat" title="' + esc(c.kw.join(' · ')) + '"><input type="checkbox" value="' + c.key + '"><span class="ic" style="background:' + c.color + '"></span><span class="tx"><b>' + c.label + '</b>' + (mini ? '' : '<small>' + esc(c.kw.join(' · ') || '其它未归类的免费资源') + '</small>') + '</span><span class="ck">✓</span></label>';
+  const list = CATS.filter((c) => c.key !== 'other');
+  $('#catBox').innerHTML = list.map((c) => tile(c, false)).join('');
+  $('#mailCatBox').innerHTML = list.map((c) => tile(c, true)).join('');
+  $('#catBox').addEventListener('change', catCount);
+}
+function catCount() { $('#catCount').textContent = '已选 ' + $$('#catBox input:checked').length + ' / ' + $$('#catBox input').length; }
+function catAll(sel, on) { $$(sel + ' input').forEach((i) => (i.checked = on)); catCount(); }
+function catPreset() { $$('#catBox input').forEach((i) => (i.checked = REC.includes(i.value))); catCount(); }
 const OB = { free: '直接白嫖', conditional: '有条件', lottery: '抽奖', trial: '试用', promo: '推广', paid: '需付费' };
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
@@ -418,6 +465,17 @@ async function setup() {
   toast('密码已设置');
   init();
 }
+function setSitePw(btn, on) {
+  return busy(btn, async () => {
+    const pw = on ? $('#sitePw').value.trim() : '';
+    if (on && pw.length < 4) throw new Error('访问密码至少 4 位');
+    await api('/api/admin/site-password', { method: 'POST', body: JSON.stringify({ password: pw }) });
+    $('#sitePw').value = '';
+    STATUS.site_locked = on; siteLockLabel();
+    toast(on ? '已设置访问密码' : '资源页已公开');
+  });
+}
+function siteLockLabel() { $('#siteLockState').textContent = STATUS.site_locked ? '已开启' : '未开启（公开）'; }
 function changePw(btn) {
   return busy(btn, async () => {
     const pw = $('#newPw').value;
@@ -464,6 +522,7 @@ function fill(s) {
     box.querySelectorAll('input').forEach((i) => (i.checked = vals.includes(i.value)));
   });
   applyShow();
+  catCount();
 }
 function collect() {
   const out = {};
@@ -486,8 +545,8 @@ const field = (k) => document.querySelector('[data-key="' + k + '"]');
 function save(btn) {
   return busy(btn, async () => {
     const data = collect();
+    if (!data.enabled_categories) throw new Error('至少勾选一个分类');
     try { JSON.parse(data.sources); } catch (e) { throw new Error('数据源 JSON 格式错误：' + e.message); }
-    try { JSON.parse(data.search_extra_body || '{}'); } catch (e) { throw new Error('额外请求参数 JSON 格式错误：' + e.message); }
     const r = await api('/api/admin/settings', { method: 'PUT', body: JSON.stringify(data) });
     fill(r.settings);
     toast('已保存');
@@ -507,7 +566,6 @@ function pick(target, v) { if (v) field(target + '_model').value = v; }
 function testModel(target, btn) {
   return busy(btn, async () => {
     const body = { target, base_url: field(target + '_base_url').value, api_key: field(target + '_api_key').value, model: field(target + '_model').value };
-    if (target === 'search') body.extra_body = field('search_extra_body').value;
     const r = await api('/api/admin/test', { method: 'POST', body: JSON.stringify(body) });
     toast('连接成功（' + r.ms + 'ms）：' + r.reply, 6000);
   });
@@ -522,16 +580,36 @@ function testSearch(provider, btn) {
   });
 }
 
-function runNow(btn) {
+function runNow(btn) { return runSteps(btn, '/api/admin/run', '立即抓取', '抓取中'); }
+function rejudge(btn) {
+  if (!confirm('把之前用关键词判定过的条目全部交给 AI 重新判定？每次最多判定「每次运行最多判定」设置的条数。')) return;
+  return runSteps(btn, '/api/admin/rejudge', btn.textContent, '判定中');
+}
+function runSteps(btn, endpoint, label, doing) {
   return busy(btn, async () => {
-    toast('正在抓取，可能需要一两分钟…', 120000);
-    const r = await api('/api/admin/run', { method: 'POST' });
+    const plan = await api(endpoint, { method: 'POST' });
+    if (plan.reset != null) toast('已重置 ' + plan.reset + ' 条，开始用 AI 判定');
     location.hash = '#items';
     const out = $('#runOut'); out.style.display = 'block';
+    const lines = [];
+    let r;
+    // 逐步执行：每一步都是一次独立请求，不会触发免费版的 CPU 限制
+    for (let i = 0; i < 300; i++) {
+      r = await api('/api/admin/step', { method: 'POST', body: JSON.stringify({ n: 1 }) });
+      if (r.idle) break;
+      if (r.busy) { await new Promise((ok) => setTimeout(ok, 1500)); continue; } // 定时任务正在执行某一步，稍等
+      lines.push(...(r.log || []));
+      const doneN = r.total - r.left;
+      btn.textContent = doing + ' ' + doneN + '/' + r.total;
+      out.textContent = (r.current ? '▶ ' + r.current + '\n\n' : '') + lines.join('\n');
+      if (r.done) break;
+    }
+    btn.textContent = label;
+    if (!r || r.idle) { toast(plan.existing ? '已有抓取在进行，已接着执行' : '没有可执行的步骤'); return; }
     const s = r.stats;
-    out.textContent = '抓到 ' + s.fetched + ' · 候选 ' + s.candidates + ' · 新增 ' + s.new + ' · 判定 ' + s.judged + ' · 通过 ' + s.approved + ' · 错误 ' + s.errors +
-      '\n过滤：超期 ' + s.too_old + ' · 无日期 ' + s.undated + ' · 不相关 ' + s.off_topic + ' · 噪音 ' + s.noise + ' · 屏蔽 ' + (s.block_rule + s.blocked) + ' · 重复标题 ' + s.dup_title + '\n\n' + r.log.join('\n');
-    toast('抓取完成：新增 ' + s.new + '，通过 ' + s.approved);
+    out.textContent = '抓到 ' + s.fetched + ' · 候选 ' + s.candidates + ' · 新增 ' + s.new + '（专源直通 ' + (s.trusted || 0) + '）· 判定 ' + s.judged + ' · 通过 ' + s.approved + ' · 错误 ' + s.errors +
+      '\n过滤：超期 ' + s.too_old + ' · 无日期 ' + s.undated + ' · 不相关 ' + s.off_topic + ' · 噪音 ' + s.noise + ' · 屏蔽 ' + (s.block_rule + s.blocked) + ' · 重复标题 ' + s.dup_title + '\n\n' + lines.join('\n');
+    toast((plan.reset != null ? '判定完成：' : '抓取完成：新增 ' + s.new + '，') + '通过 ' + s.approved);
     loadItems(CUR);
   });
 }
@@ -578,18 +656,20 @@ async function loadRuns() {
   const runs = await api('/api/admin/runs');
   $('#runs').innerHTML = runs.length ? runs.map((r) => {
     const s = JSON.parse(r.stats || '{}');
-    const line = r.trigger === 'mail' ? (r.log || '').split('\n')[0] : '抓到 ' + (s.fetched || 0) + ' · 新增 ' + (s.new || 0) + ' · 通过 ' + (s.approved || 0) + ' · 错误 ' + (s.errors || 0);
+    const line = (r.finished_at ? '' : '进行中 · ') + (r.trigger === 'mail' ? (r.log || '').split('\n')[0] : '抓到 ' + (s.fetched || 0) + ' · 新增 ' + (s.new || 0) + ' · 通过 ' + (s.approved || 0) + ' · 错误 ' + (s.errors || 0));
     return '<details><summary>' + fmt(r.started_at) + '<span class="hint"> · ' + esc(r.trigger) + ' · </span>' + esc(line) + '</summary><pre>' + esc((r.log || '') + '\n\n' + JSON.stringify(s, null, 2)) + '</pre></details>';
   }).join('') : '<div class="empty">还没有运行过</div>';
 }
 
 async function init() {
+  if (!$('#catBox').children.length) { renderCats(); renderBackends(); }
   route();
   STATUS = await fetch('/api/admin/status').then((r) => r.json()).catch(() => STATUS);
   const where = STATUS.storage === 'kv' ? 'Cloudflare KV' : 'D1 独立的 secrets 表';
   $$('.storageNote').forEach((el) => (el.textContent = '接口地址、Key、授权码等敏感信息保存在 ' + where + '，后台只显示打码值。'));
   $('#storageInfo').textContent = '资源与设置：D1 数据库。敏感信息：' + where + (STATUS.storage === 'kv' ? '' : '（如需改存 KV，给 Worker 绑定一个变量名为 SECRETS 的 KV 命名空间，重新保存一次设置即可）') + '。';
   $('#pwEnvNote').style.display = STATUS.env_token ? '' : 'none';
+  siteLockLabel();
   $('#pwForm').style.display = STATUS.env_token ? 'none' : '';
   if (!STATUS.initialized || !TOKEN) return showGate();
   try { fill(await api('/api/admin/settings')); await loadItems(CUR); } catch (e) { toast(e.message, 6000); }

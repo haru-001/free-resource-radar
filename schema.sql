@@ -47,3 +47,7 @@ CREATE TABLE IF NOT EXISTS secrets (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, fp TEXT, seen_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS idx_seen_fp ON seen(fp);
 CREATE INDEX IF NOT EXISTS idx_seen_at ON seen(seen_at);
+
+-- 抓取步骤队列
+CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL, seq INTEGER NOT NULL, kind TEXT NOT NULL, payload TEXT, status TEXT NOT NULL DEFAULT 'pending', claimed_at INTEGER);
+CREATE INDEX IF NOT EXISTS idx_jobs_run ON jobs(run_id, status, seq);

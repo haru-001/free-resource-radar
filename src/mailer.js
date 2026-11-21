@@ -1,10 +1,11 @@
 // 邮件日报：Resend / Brevo / Cloudflare Email（send_email binding）
 import { getSettings, saveSettings } from './db.js';
+import { CATEGORIES, mailCats } from './categories.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const recipients = (s) => String(s || '').split(/[,;\s]+/).map((x) => x.trim()).filter((x) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
 const ymd = (t) => new Date(t + 8 * 3600000).toISOString().slice(0, 10); // 按北京时间显示日期
-const CAT = { domain: '免费域名', hosting: '免费虚拟主机', other: '其他' };
+const CAT = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
 const OBTAIN_ZH = { free: '直接白嫖', conditional: '有条件', lottery: '抽奖', trial: '试用', promo: '推广', paid: '需付费' };
 
 // ---------- 内容 ----------
@@ -13,10 +14,13 @@ export async function collectDigest(env, s) {
   const since = onlyNew ? Number(s.mail_last_sent_at) || 0 : 0;
   const cutoff = Date.now() - (Number(s.max_age_days) || 180) * 86400000;
   const limit = Math.min(200, Number(s.mail_max_items) || 60);
+  const cats = mailCats(s);
+  const order = CATEGORIES.map((c, i) => `WHEN '${c.key}' THEN ${i}`).join(' ');
   const { results } = await env.DB.prepare(
     `SELECT * FROM items WHERE status = 'approved' AND COALESCE(judged_at, fetched_at) > ? AND (published_at IS NULL OR published_at >= ?)
-     ORDER BY CASE category WHEN 'domain' THEN 0 WHEN 'hosting' THEN 1 ELSE 2 END, score DESC, published_at DESC LIMIT ?`
-  ).bind(since, cutoff, limit).all();
+     AND category IN (${cats.map(() => '?').join(',')})
+     ORDER BY CASE category ${order} ELSE 99 END, score DESC, published_at DESC LIMIT ?`
+  ).bind(since, cutoff, ...cats, limit).all();
   return results || [];
 }
 
@@ -57,7 +61,7 @@ ${list.map((it) => `
 <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:8px;">
 <tr><td style="padding:22px 24px;background:#111318;border-radius:8px 8px 0 0;font-family:${font};">
   <div style="font-size:19px;font-weight:bold;color:#ffffff;">${esc(s.mail_subject)}</div>
-  <div style="font-size:13px;color:#d1d5db;margin-top:4px;">${dateStr} · 共 ${items.length} 条 · 只收录半年内、注册简单的资源</div>
+  <div style="font-size:13px;color:#d1d5db;margin-top:4px;">${dateStr} · 共 ${items.length} 条 · 只收录半年内、注册简单的免费资源</div>
 </td></tr>
 ${body}
 <tr><td style="padding:18px 24px;font-family:${font};font-size:12px;color:#9ca3af;line-height:1.6;">
