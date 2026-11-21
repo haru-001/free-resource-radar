@@ -174,3 +174,95 @@ export async function checkSources(current, urls) {
   }
   return { groups: out, existing, unsupported, errors };
 }
+
+// ---------------- 批量添加 / 搜索发现新源 ----------------
+const UA = { 'User-Agent': 'Mozilla/5.0 (compatible; free-resource-radar)', Accept: 'text/html,application/xml,application/rss+xml,*/*' };
+// 搜索结果里这些大平台不是可订阅的博客/站点，跳过
+const SKIP_HOSTS = ['zhihu.com', 'bilibili.com', 'weixin.qq.com', 'qq.com', 'baidu.com', 'csdn.net', 'github.com', 'gitee.com', 'douyin.com', 'weibo.com', 'xiaohongshu.com', 'toutiao.com', 'sohu.com', '163.com', 'sina.com.cn', 'youtube.com', 'google.com', 'wikipedia.org', 'jianshu.com', 'juejin.cn', 'cnblogs.com', 'smzdm.com', 'taobao.com', 'jd.com', 'apple.com', 'microsoft.com'];
+const decode = (s) => String(s || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+
+async function getHead(url, limit = 200000) {
+  const r = await fetch(url, { headers: UA, redirect: 'follow', signal: AbortSignal.timeout(10000) });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const t = await r.text();
+  return { text: t.slice(0, limit), url: r.url || url };
+}
+/** 看一眼订阅源：条目数、最新时间、是不是中文 */
+function feedInfo(xml) {
+  if (!/<(rss|feed|rdf:RDF)[\s>]/i.test(xml.slice(0, 3000))) return null;
+  const titles = [...xml.matchAll(/<(?:item|entry)[\s>][\s\S]*?<title[^>]*>([\s\S]*?)<\/title>/gi)].map((m) => decode(m[1]));
+  const dates = [...xml.matchAll(/<(?:pubDate|updated|published|dc:date)>([^<]+)</gi)].map((m) => Date.parse(m[1])).filter((x) => x > 0);
+  const zh = titles.length ? titles.filter((t) => CJK.test(t)).length / titles.length >= 0.5 : false;
+  const name = decode((/<title[^>]*>([\s\S]*?)<\/title>/i.exec(xml) || [])[1]).slice(0, 40);
+  return { count: titles.length, latest: dates.length ? Math.max(...dates) : null, zh, name, sample: titles.slice(0, 3) };
+}
+const ago = (t) => { if (!t) return '无日期'; const d = Math.floor((Date.now() - t) / 864e5); return d <= 0 ? '今天更新' : d + ' 天前更新'; };
+
+/** 一个输入（网址 / t.me / @频道 / JSON）→ 一个候选源 */
+async function probeOne(raw) {
+  const line = raw.trim();
+  if (/^\{/.test(line)) { const x = JSON.parse(line); return { src: { enabled: true, ...x }, note: 'JSON' }; }
+  const tg = /^(?:https?:\/\/)?t\.me\/(?:s\/)?([A-Za-z0-9_]{4,})/.exec(line) || /^@([A-Za-z0-9_]{4,})$/.exec(line);
+  if (tg) {
+    const { text } = await getHead(`https://t.me/s/${tg[1]}`, 300000);
+    const n = (text.match(/tgme_widget_message_text/g) || []).length;
+    if (!n) throw new Error('频道没有公开消息页');
+    const title = decode((/<meta property="og:title" content="([^"]+)"/.exec(text) || [])[1]) || tg[1];
+    const texts = [...text.matchAll(/tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/g)].map((m) => m[1].replace(/<[^>]+>/g, ''));
+    const dates = [...text.matchAll(/datetime="([^"]+)"/g)].map((m) => Date.parse(m[1])).filter(Boolean);
+    return { src: { name: `TG · ${title}`, type: 'telegram', channel: tg[1], enabled: true }, zh: texts.filter((t) => CJK.test(t)).length >= texts.length / 2, count: n, latest: dates.length ? Math.max(...dates) : null };
+  }
+  if (!/^https?:\/\//.test(line)) throw new Error('不是网址、t.me 链接或 @频道');
+  const page = await getHead(line);
+  let info = feedInfo(page.text), feed = page.url;
+  if (!info) {
+    // 网页：先找 <link rel="alternate">，找不到再试常见路径
+    const alts = [...page.text.matchAll(/<link[^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]*>/gi)].map((m) => (/href=["']([^"']+)["']/.exec(m[0]) || [])[1]).filter(Boolean)
+      .filter((h) => !/comments/.test(h));
+    const origin = new URL(page.url).origin;
+    const tries = [...alts.map((h) => new URL(h, page.url).href), `${origin}/feed`, `${origin}/rss.xml`, `${origin}/feed.xml`].filter((v, i, a) => a.indexOf(v) === i).slice(0, alts.length ? 2 : 3);
+    for (const u of tries) {
+      try { const f = await getHead(u); info = feedInfo(f.text); if (info) { feed = f.url; break; } } catch {}
+    }
+    if (!info) throw new Error('没找到 RSS/Atom 订阅地址');
+  }
+  const h = hostOf(feed);
+  return { src: { name: info.name || h, type: 'rss', url: feed, enabled: true }, zh: info.zh, count: info.count, latest: info.latest, sample: info.sample };
+}
+
+function toCandidate(p, have) {
+  const k = sourceKey(p.src);
+  const h = hostOf(p.src.url || '');
+  const why = have.has(k) ? '已有' : p.zh === false ? '英文' : hostIn(h, BLOCKED_HOSTS) ? '机房常被拦' : p.count === 0 ? '没有条目' : p.latest && Date.now() - p.latest > 180 * 864e5 ? '半年没更新' : '';
+  const facts = [p.count != null ? p.count + ' 条' : '', p.latest !== undefined ? ago(p.latest) : ''].filter(Boolean).join(' · ');
+  return { key: k, suggest: !why, why, facts, sample: (p.sample || []).join(' / ').slice(0, 120), src: p.src };
+}
+
+/** 批量添加：每行一个，最多 15 个，逐个检测 */
+export async function probeInputs(current, lines) {
+  const have = new Set(current.map(sourceKey));
+  const items = [], errors = [];
+  const list = [...new Set(lines.map((x) => x.trim()).filter(Boolean))].slice(0, 15);
+  const res = await Promise.allSettled(list.map(probeOne));
+  res.forEach((r, i) => (r.status === 'fulfilled' ? items.push(toCandidate(r.value, have)) : errors.push(`${list[i].slice(0, 60)}：${r.reason?.message || r.reason}`)));
+  return { groups: items.length ? [{ id: 'batch', label: '批量添加', items }] : [], existing: items.filter((x) => x.why === '已有').length, errors };
+}
+
+/** 搜索发现：用搜索后端搜关键词，把结果里的站点挨个找订阅地址 */
+export async function discoverSources(current, keyword, searchFn) {
+  const have = new Set(current.map(sourceKey));
+  const haveHosts = new Set(current.map((x) => hostOf(x.url || '')).filter(Boolean));
+  const { results, errors } = await searchFn([`${keyword} RSS 订阅`, `${keyword} 博客`]);
+  const hosts = [];
+  for (const r of results) {
+    const h = hostOf(r.url);
+    if (!h || hosts.some((x) => x.h === h) || haveHosts.has(h) || hostIn(h, SKIP_HOSTS) || hostIn(h, BLOCKED_HOSTS)) continue;
+    hosts.push({ h, url: new URL(r.url).origin + '/', title: r.title });
+    if (hosts.length >= 8) break;
+  }
+  const res = await Promise.allSettled(hosts.map((x) => probeOne(x.url)));
+  const items = [], miss = [];
+  res.forEach((r, i) => (r.status === 'fulfilled' ? items.push(toCandidate(r.value, have)) : miss.push(hosts[i].h)));
+  if (miss.length) errors.push(`这些站没找到订阅地址：${miss.join('、')}`);
+  return { groups: items.length ? [{ id: 'discover', label: `搜索「${keyword}」发现`, items }] : [], existing: items.filter((x) => x.why === '已有').length, errors, searched: hosts.length };
+}

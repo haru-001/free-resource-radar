@@ -1048,6 +1048,14 @@ async function runBackend(s, id, maxAgeDays) {
   for (const it of r.items) it.source = `${b.name} \u641C\u7D22`;
   return r;
 }
+async function searchForDiscovery(s, queries) {
+  const ready = BACKENDS.filter((b) => backendReady(s, b)).slice(0, 2);
+  if (!ready.length) return { results: [], errors: ["\u6CA1\u6709\u53EF\u7528\u7684\u641C\u7D22\u540E\u7AEF\uFF0C\u53BB\u300CAI \u4E0E\u641C\u7D22\u300D\u6253\u5F00\u4E00\u4E2A"] };
+  const results = [], errors = [];
+  const jobs = ready.flatMap((b) => queries.map((q) => b.search(s, q, 3650).then((l) => results.push(...l), (e) => errors.push(`${b.name}\uFF1A${e.message}`))));
+  await Promise.all(jobs);
+  return { results, errors };
+}
 
 // src/rules.js
 var NOISE_TITLE = /^(怎样|怎么|如何|哪里|哪个|为什么|为何)|请问|有没有|求推荐|求一个|哪里(有|能)|值得买吗|怎么样[?？]|不够用|用完了|失效了|吐槽|踩坑|后悔|失望|谁有|求个|求购|哪有|多少钱|求助|求带|有人吗|有人知道|被封|封号|跑路|[?？]\s*$/;
@@ -1997,6 +2005,99 @@ async function checkSources(current, urls) {
   }
   return { groups: out, existing, unsupported, errors };
 }
+var UA2 = { "User-Agent": "Mozilla/5.0 (compatible; free-resource-radar)", Accept: "text/html,application/xml,application/rss+xml,*/*" };
+var SKIP_HOSTS = ["zhihu.com", "bilibili.com", "weixin.qq.com", "qq.com", "baidu.com", "csdn.net", "github.com", "gitee.com", "douyin.com", "weibo.com", "xiaohongshu.com", "toutiao.com", "sohu.com", "163.com", "sina.com.cn", "youtube.com", "google.com", "wikipedia.org", "jianshu.com", "juejin.cn", "cnblogs.com", "smzdm.com", "taobao.com", "jd.com", "apple.com", "microsoft.com"];
+var decode = (s) => String(s || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+async function getHead(url, limit = 2e5) {
+  const r = await fetch(url, { headers: UA2, redirect: "follow", signal: AbortSignal.timeout(1e4) });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const t = await r.text();
+  return { text: t.slice(0, limit), url: r.url || url };
+}
+function feedInfo(xml) {
+  if (!/<(rss|feed|rdf:RDF)[\s>]/i.test(xml.slice(0, 3e3))) return null;
+  const titles = [...xml.matchAll(/<(?:item|entry)[\s>][\s\S]*?<title[^>]*>([\s\S]*?)<\/title>/gi)].map((m) => decode(m[1]));
+  const dates = [...xml.matchAll(/<(?:pubDate|updated|published|dc:date)>([^<]+)</gi)].map((m) => Date.parse(m[1])).filter((x) => x > 0);
+  const zh = titles.length ? titles.filter((t) => CJK3.test(t)).length / titles.length >= 0.5 : false;
+  const name = decode((/<title[^>]*>([\s\S]*?)<\/title>/i.exec(xml) || [])[1]).slice(0, 40);
+  return { count: titles.length, latest: dates.length ? Math.max(...dates) : null, zh, name, sample: titles.slice(0, 3) };
+}
+var ago = (t) => {
+  if (!t) return "\u65E0\u65E5\u671F";
+  const d = Math.floor((Date.now() - t) / 864e5);
+  return d <= 0 ? "\u4ECA\u5929\u66F4\u65B0" : d + " \u5929\u524D\u66F4\u65B0";
+};
+async function probeOne(raw) {
+  const line = raw.trim();
+  if (/^\{/.test(line)) {
+    const x = JSON.parse(line);
+    return { src: { enabled: true, ...x }, note: "JSON" };
+  }
+  const tg = /^(?:https?:\/\/)?t\.me\/(?:s\/)?([A-Za-z0-9_]{4,})/.exec(line) || /^@([A-Za-z0-9_]{4,})$/.exec(line);
+  if (tg) {
+    const { text } = await getHead(`https://t.me/s/${tg[1]}`, 3e5);
+    const n = (text.match(/tgme_widget_message_text/g) || []).length;
+    if (!n) throw new Error("\u9891\u9053\u6CA1\u6709\u516C\u5F00\u6D88\u606F\u9875");
+    const title = decode((/<meta property="og:title" content="([^"]+)"/.exec(text) || [])[1]) || tg[1];
+    const texts = [...text.matchAll(/tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/g)].map((m) => m[1].replace(/<[^>]+>/g, ""));
+    const dates = [...text.matchAll(/datetime="([^"]+)"/g)].map((m) => Date.parse(m[1])).filter(Boolean);
+    return { src: { name: `TG \xB7 ${title}`, type: "telegram", channel: tg[1], enabled: true }, zh: texts.filter((t) => CJK3.test(t)).length >= texts.length / 2, count: n, latest: dates.length ? Math.max(...dates) : null };
+  }
+  if (!/^https?:\/\//.test(line)) throw new Error("\u4E0D\u662F\u7F51\u5740\u3001t.me \u94FE\u63A5\u6216 @\u9891\u9053");
+  const page = await getHead(line);
+  let info = feedInfo(page.text), feed = page.url;
+  if (!info) {
+    const alts = [...page.text.matchAll(/<link[^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]*>/gi)].map((m) => (/href=["']([^"']+)["']/.exec(m[0]) || [])[1]).filter(Boolean).filter((h2) => !/comments/.test(h2));
+    const origin = new URL(page.url).origin;
+    const tries = [...alts.map((h2) => new URL(h2, page.url).href), `${origin}/feed`, `${origin}/rss.xml`, `${origin}/feed.xml`].filter((v, i, a) => a.indexOf(v) === i).slice(0, alts.length ? 2 : 3);
+    for (const u of tries) {
+      try {
+        const f = await getHead(u);
+        info = feedInfo(f.text);
+        if (info) {
+          feed = f.url;
+          break;
+        }
+      } catch {
+      }
+    }
+    if (!info) throw new Error("\u6CA1\u627E\u5230 RSS/Atom \u8BA2\u9605\u5730\u5740");
+  }
+  const h = hostOf(feed);
+  return { src: { name: info.name || h, type: "rss", url: feed, enabled: true }, zh: info.zh, count: info.count, latest: info.latest, sample: info.sample };
+}
+function toCandidate(p, have) {
+  const k = sourceKey(p.src);
+  const h = hostOf(p.src.url || "");
+  const why = have.has(k) ? "\u5DF2\u6709" : p.zh === false ? "\u82F1\u6587" : hostIn(h, BLOCKED_HOSTS) ? "\u673A\u623F\u5E38\u88AB\u62E6" : p.count === 0 ? "\u6CA1\u6709\u6761\u76EE" : p.latest && Date.now() - p.latest > 180 * 864e5 ? "\u534A\u5E74\u6CA1\u66F4\u65B0" : "";
+  const facts = [p.count != null ? p.count + " \u6761" : "", p.latest !== void 0 ? ago(p.latest) : ""].filter(Boolean).join(" \xB7 ");
+  return { key: k, suggest: !why, why, facts, sample: (p.sample || []).join(" / ").slice(0, 120), src: p.src };
+}
+async function probeInputs(current, lines2) {
+  const have = new Set(current.map(sourceKey));
+  const items = [], errors = [];
+  const list = [...new Set(lines2.map((x) => x.trim()).filter(Boolean))].slice(0, 15);
+  const res = await Promise.allSettled(list.map(probeOne));
+  res.forEach((r, i) => r.status === "fulfilled" ? items.push(toCandidate(r.value, have)) : errors.push(`${list[i].slice(0, 60)}\uFF1A${r.reason?.message || r.reason}`));
+  return { groups: items.length ? [{ id: "batch", label: "\u6279\u91CF\u6DFB\u52A0", items }] : [], existing: items.filter((x) => x.why === "\u5DF2\u6709").length, errors };
+}
+async function discoverSources(current, keyword, searchFn) {
+  const have = new Set(current.map(sourceKey));
+  const haveHosts = new Set(current.map((x) => hostOf(x.url || "")).filter(Boolean));
+  const { results, errors } = await searchFn([`${keyword} RSS \u8BA2\u9605`, `${keyword} \u535A\u5BA2`]);
+  const hosts = [];
+  for (const r of results) {
+    const h = hostOf(r.url);
+    if (!h || hosts.some((x) => x.h === h) || haveHosts.has(h) || hostIn(h, SKIP_HOSTS) || hostIn(h, BLOCKED_HOSTS)) continue;
+    hosts.push({ h, url: new URL(r.url).origin + "/", title: r.title });
+    if (hosts.length >= 8) break;
+  }
+  const res = await Promise.allSettled(hosts.map((x) => probeOne(x.url)));
+  const items = [], miss = [];
+  res.forEach((r, i) => r.status === "fulfilled" ? items.push(toCandidate(r.value, have)) : miss.push(hosts[i].h));
+  if (miss.length) errors.push(`\u8FD9\u4E9B\u7AD9\u6CA1\u627E\u5230\u8BA2\u9605\u5730\u5740\uFF1A${miss.join("\u3001")}`);
+  return { groups: items.length ? [{ id: "discover", label: `\u641C\u7D22\u300C${keyword}\u300D\u53D1\u73B0`, items }] : [], existing: items.filter((x) => x.why === "\u5DF2\u6709").length, errors, searched: hosts.length };
+}
 
 // src/admin.html
 var admin_default = `<!doctype html>
@@ -2106,6 +2207,16 @@ var admin_default = `<!doctype html>
   .sitem { display:flex; gap:10px; align-items:center; padding:7px 4px; border-top:1px solid var(--line); cursor:pointer; }
   .sitem input { width:16px; height:16px; accent-color:var(--accent); flex:none; }
   .sitem .snm small { display:block; }
+  .sitem .snm .smp { display:block; color:var(--ink-3); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:560px; }
+  .mtop { padding:12px 18px 4px; display:flex; flex-direction:column; gap:8px; }
+  .mtop:empty { display:none; }
+  .mtop textarea { min-height:110px; font-family:var(--mono, monospace); font-size:12.5px; }
+  .mtop .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .mtop .row input { flex:1; min-width:180px; }
+  .mtop .qk { border:1px solid var(--line); background:#fff; border-radius:999px; padding:3px 10px; font-size:12px; cursor:pointer; color:var(--ink-2); }
+  .mtop .qk:hover { border-color:var(--accent); color:var(--accent); }
+  .srcnew { animation: srcflash 2.4s ease-out; }
+  @keyframes srcflash { from { background:#eef2ff; } to { background:transparent; } }
   .sitem .tag.why { background:var(--warn-bg); color:var(--warn); }
   .sp { flex:1; }
   @keyframes fade { from { opacity:0 } }
@@ -2388,7 +2499,7 @@ var admin_default = `<!doctype html>
           </div>
         </div>
         <div class="section">
-          <header><h2>\u6570\u636E\u6E90</h2><span class="hint" id="srcCount"></span><span class="sp"></span><button class="btn sm" onclick="openSync(this)">\u21BB \u66F4\u65B0\u6E90</button><button class="btn sm" onclick="addSource()">\uFF0B \u6DFB\u52A0</button></header>
+          <header><h2>\u6570\u636E\u6E90</h2><span class="hint" id="srcCount"></span><span class="sp"></span><button class="btn sm" onclick="openSync(this)" title="\u4ECE\u5185\u7F6E\u63A8\u8350\u548C freebie-radar \u7B49\u5730\u5740\u62C9\u53D6\u65B0\u6E90">\u21BB \u66F4\u65B0\u6E90</button><button class="btn sm" onclick="openDiscover()" title="\u7528\u5DF2\u5F00\u542F\u7684\u641C\u7D22\u540E\u7AEF\u627E\u65B0\u7684\u8BA2\u9605\u6E90">\u2315 \u53D1\u73B0\u65B0\u6E90</button><button class="btn sm" onclick="openBatch()" title="\u4E00\u6B21\u7C98\u8D34\u591A\u4E2A\u7F51\u5740 / t.me \u94FE\u63A5 / @\u9891\u9053">\uFF0B \u6279\u91CF\u6DFB\u52A0</button></header>
           <div class="body" style="padding-top:12px">
             <div class="srcbar"><input type="text" id="srcQ" placeholder="\u641C\u7D22\u6E90\u540D\u79F0 / \u5730\u5740" oninput="renderSources()" /><select id="srcF" onchange="renderSources()"><option value="">\u5168\u90E8</option><option value="on">\u5DF2\u542F\u7528</option><option value="off">\u5DF2\u505C\u7528</option><option value="limited">\u9650\u5B9A\u4E86\u5206\u7C7B</option></select></div>
             <div class="srclist" id="srcList"></div>
@@ -2440,7 +2551,7 @@ var admin_default = `<!doctype html>
           <div id="searchBackends"></div>
         </div>
         <div class="section">
-          <header><h2>\u641C\u7D22\u504F\u597D</h2></header>
+          <header><h2>\u641C\u7D22\u504F\u597D</h2><span class="sp"></span><button class="btn sm" onclick="openDiscover()">\u2315 \u7528\u641C\u7D22\u53D1\u73B0\u65B0\u8BA2\u9605\u6E90</button></header>
           <div class="body">
             <div class="grid3">
               <div><label class="f">\u8BED\u8A00</label><select data-key="search_lang"><option value="zh_only">\u53EA\u8981\u4E2D\u6587</option><option value="zh_first">\u4E2D\u6587\u4F18\u5148</option><option value="any">\u4E0D\u9650</option></select></div>
@@ -2588,7 +2699,8 @@ var admin_default = `<!doctype html>
 <div class="savebar"><span class="txt" id="dirtyTxt">\u6709\u672A\u4FDD\u5B58\u7684\u4FEE\u6539</span><button class="btn" onclick="revert()">\u64A4\u9500</button><button class="btn acc" onclick="save(this)">\u4FDD\u5B58</button></div>
 <div class="modal" id="syncModal" onclick="if(event.target===this)closeSync()">
   <div class="mbox">
-    <header><b>\u66F4\u65B0\u6E90</b><span class="hint" id="syncSum"></span><span class="sp"></span><button class="btn sm" onclick="syncAll(true)">\u5168\u9009</button><button class="btn sm" onclick="syncAll(false)">\u53EA\u9009\u63A8\u8350</button><button class="x" onclick="closeSync()" aria-label="\u5173\u95ED">\xD7</button></header>
+    <header><b id="syncTitle">\u66F4\u65B0\u6E90</b><span class="hint" id="syncSum"></span><span class="sp"></span><button class="btn sm" onclick="syncAll(true)">\u5168\u9009</button><button class="btn sm" onclick="syncAll(false)">\u53EA\u9009\u63A8\u8350</button><button class="x" onclick="closeSync()" aria-label="\u5173\u95ED">\xD7</button></header>
+    <div class="mtop" id="syncTop"></div>
     <div class="mbody" id="syncBody"></div>
     <footer><span class="hint" id="syncErr"></span><span class="sp"></span><button class="btn" onclick="closeSync()">\u53D6\u6D88</button><button class="btn pri" id="syncAdd" onclick="applySync()">\u6DFB\u52A0\u9009\u4E2D</button></footer>
   </div>
@@ -2846,30 +2958,81 @@ function addSource() {
   toast('\u5DF2\u6DFB\u52A0\uFF0C\u53EF\u4EE5\u6539\u540D\u79F0\u548C\u5206\u7C7B\uFF0C\u8BB0\u5F97\u4FDD\u5B58', 3000, 'ok');
 }
 let SYNC = null;
+function renderSync(r) {
+  SYNC = r;
+  const n = r.groups.reduce((a, g) => a + g.items.length, 0);
+  const fresh = r.groups.reduce((a, g) => a + g.items.filter((x) => x.why !== '\u5DF2\u6709').length, 0);
+  $('#syncSum').textContent = n ? '\u627E\u5230 ' + fresh + ' \u4E2A\u65B0\u6E90' + (r.existing ? '\uFF0C' + r.existing + ' \u4E2A\u5DF2\u6709' : '') + (r.unsupported ? '\uFF0C' + r.unsupported + ' \u4E2A\u7C7B\u578B\u6682\u4E0D\u652F\u6301' : '') : '';
+  $('#syncErr').textContent = (r.errors || []).length ? r.errors.join('\uFF1B') : '';
+  $('#syncBody').innerHTML = n ? r.groups.map((g, gi) => '<h4>' + esc(g.label) + ' \xB7 ' + g.items.length + ' \u4E2A</h4>' + g.items.map((it, ii) =>
+    '<label class="sitem"><input type="checkbox" data-g="' + gi + '" data-i="' + ii + '"' + (it.suggest ? ' checked' : '') + (it.why === '\u5DF2\u6709' ? ' disabled' : '') + ' /><div class="snm">' + esc(it.src.name) + '<span class="tag">' + (TYPE_ZH[it.src.type || 'rss'] || it.src.type) + '</span>' + (it.why ? '<span class="tag why">' + esc(it.why) + '</span>' : '<span class="tag on">\u63A8\u8350</span>') + (it.src.hint ? '<span class="tag">' + esc(CAT[it.src.hint] || it.src.hint) + '</span>' : '') + (it.facts ? '<span class="tag">' + esc(it.facts) + '</span>' : '') + '<small>' + esc(srcWhere(it.src)) + '</small>' + (it.sample ? '<span class="smp">' + esc(it.sample) + '</span>' : '') + '</div></label>').join('')).join('')
+    : '<div class="empty" style="padding:30px 0">' + (SYNC_MODE === 'sync' ? '\u5DF2\u7ECF\u662F\u6700\u65B0\u7684\u4E86\uFF0C\u6CA1\u6709\u65B0\u7684\u6E90\u3002' : '\u6CA1\u6709\u627E\u5230\u53EF\u7528\u7684\u8BA2\u9605\u6E90\u3002') + '</div>';
+  syncCount();
+}
+let SYNC_MODE = 'sync';
+function syncOpen(mode, title, top) {
+  SYNC_MODE = mode; SYNC = { groups: [] };
+  $('#syncTitle').textContent = title;
+  $('#syncTop').innerHTML = top || '';
+  $('#syncSum').textContent = ''; $('#syncErr').textContent = '';
+  $('#syncBody').innerHTML = mode === 'sync' ? '' : '<div class="empty" style="padding:24px 0">' + (mode === 'batch' ? '\u6BCF\u884C\u4E00\u4E2A\uFF1A\u7F51\u7AD9\u9996\u9875\u3001RSS \u5730\u5740\u3001t.me/\u9891\u9053 \u6216 @\u9891\u9053\uFF0C\u4E5F\u53EF\u4EE5\u8D34 JSON \u6E90\u3002\u7F51\u9875\u4F1A\u81EA\u52A8\u627E\u8BA2\u9605\u5730\u5740\u3002' : '\u8F93\u5165\u4F60\u60F3\u8BA2\u9605\u7684\u5185\u5BB9\uFF0C\u6BD4\u5982\u300C\u514D\u8D39 VPS\u300D\u300CAI \u989D\u5EA6\u300D\uFF0C\u4F1A\u7528\u5DF2\u5F00\u542F\u7684\u641C\u7D22\u540E\u7AEF\u627E\u76F8\u5173\u7F51\u7AD9\u5E76\u68C0\u6D4B\u8BA2\u9605\u5730\u5740\u3002') + '</div>';
+  syncCount();
+  $('#syncModal').classList.add('on');
+}
 async function openSync(btn) {
   await busy(btn, async () => {
     const r = await api('/api/admin/sources/check', { method: 'POST', body: JSON.stringify({ sources: field('sources').value, urls: field('source_sync_urls').value }) });
-    SYNC = r;
-    const n = r.groups.reduce((a, g) => a + g.items.length, 0);
-    $('#syncSum').textContent = n ? '\u627E\u5230 ' + n + ' \u4E2A\u65B0\u6E90' + (r.existing ? '\uFF0C' + r.existing + ' \u4E2A\u5DF2\u6709' : '') + (r.unsupported ? '\uFF0C' + r.unsupported + ' \u4E2A\u7C7B\u578B\u6682\u4E0D\u652F\u6301' : '') : '';
-    $('#syncErr').textContent = r.errors.length ? '\u90E8\u5206\u5730\u5740\u62C9\u53D6\u5931\u8D25\uFF1A' + r.errors.join('\uFF1B') : '';
-    $('#syncBody').innerHTML = n ? r.groups.map((g, gi) => '<h4>' + esc(g.label) + ' \xB7 ' + g.items.length + ' \u4E2A</h4>' + g.items.map((it, ii) =>
-      '<label class="sitem"><input type="checkbox" data-g="' + gi + '" data-i="' + ii + '"' + (it.suggest ? ' checked' : '') + ' /><div class="snm">' + esc(it.src.name) + '<span class="tag">' + (TYPE_ZH[it.src.type || 'rss'] || it.src.type) + '</span>' + (it.why ? '<span class="tag why">' + esc(it.why) + '</span>' : '<span class="tag on">\u63A8\u8350</span>') + (it.src.hint ? '<span class="tag">' + esc(CAT[it.src.hint] || it.src.hint) + '</span>' : '') + '<small>' + esc(srcWhere(it.src)) + '</small></div></label>').join('')).join('')
-      : '<div class="empty" style="padding:30px 0">\u5DF2\u7ECF\u662F\u6700\u65B0\u7684\u4E86\uFF0C\u6CA1\u6709\u65B0\u7684\u6E90\u3002</div>';
-    syncCount();
-    $('#syncModal').classList.add('on');
+    syncOpen('sync', '\u66F4\u65B0\u6E90');
+    renderSync(r);
   });
+}
+function openBatch(prefill, auto) {
+  syncOpen('batch', '\u6279\u91CF\u6DFB\u52A0', '<textarea id="batchIn" placeholder="https://www.example.com/\\nhttps://example.com/feed\\nt.me/abskoop\\n@zaihuapd"></textarea><div class="row"><span class="hint">\u4E00\u6B21\u6700\u591A 15 \u4E2A\uFF0C\u4F1A\u9010\u4E2A\u68C0\u6D4B\u80FD\u4E0D\u80FD\u6293\u5230\u5185\u5BB9</span><span class="sp" style="flex:1"></span><button class="btn pri" id="batchGo" onclick="runBatch(this)">\u68C0\u6D4B</button></div>');
+  if (prefill) $('#batchIn').value = prefill;
+  setTimeout(() => (auto ? runBatch($('#batchGo')) : $('#batchIn').focus()), 0);
+}
+async function runBatch(btn) {
+  const lines = $('#batchIn').value.trim();
+  if (!lines) return toast('\u5148\u7C98\u8D34\u7F51\u5740', 2000, 'err');
+  await busy(btn, async () => renderSync(await api('/api/admin/sources/probe', { method: 'POST', body: JSON.stringify({ sources: field('sources').value, lines }) })));
+}
+function openDiscover(kw, auto) {
+  const on = ((field('enabled_categories') || {}).value ?? SETTINGS.enabled_categories ?? '').split(',').filter(Boolean);
+  const quick = (on.length ? on : CATS.map((c) => c.key)).slice(0, 10).map((k) => '<button class="qk" onclick="DISC_CAT=\\'' + k + '\\';$(\\'#discIn\\').value=this.textContent;runDiscover($(\\'#discGo\\'),1)">' + esc(CAT[k] ? '\u514D\u8D39' + CAT[k].replace(/^\u514D\u8D39/, '') : k) + '</button>').join('');
+  syncOpen('discover', '\u53D1\u73B0\u65B0\u8BA2\u9605\u6E90', '<div class="row"><input id="discIn" placeholder="\u5173\u952E\u8BCD\uFF0C\u6BD4\u5982\uFF1A\u514D\u8D39 VPS\u3001AI \u989D\u5EA6\u3001\u9650\u514D\u6E38\u620F" onkeydown="if(event.key===\\'Enter\\')runDiscover($(\\'#discGo\\'))" /><button class="btn pri" id="discGo" onclick="runDiscover(this)">\u641C\u7D22</button></div><div class="row"><span class="hint">\u6309\u5DF2\u8BA2\u9605\u7684\u5206\u7C7B\uFF1A</span>' + quick + '</div>');
+  if (kw) $('#discIn').value = kw;
+  setTimeout(() => (auto && kw ? runDiscover($('#discGo')) : $('#discIn').focus()), 0);
+}
+let DISC_CAT = '';
+async function runDiscover(btn, keepCat) {
+  if (!keepCat) DISC_CAT = '';
+  const keyword = $('#discIn').value.trim();
+  if (!keyword) return toast('\u5148\u8F93\u5165\u5173\u952E\u8BCD', 2000, 'err');
+  $('#syncBody').innerHTML = '<div class="empty" style="padding:24px 0">\u6B63\u5728\u641C\u7D22\u5E76\u68C0\u6D4B\u5404\u4E2A\u7F51\u7AD9\u7684\u8BA2\u9605\u5730\u5740\uFF0C\u5927\u7EA6 10\u201320 \u79D2\u2026</div>';
+  await busy(btn, async () => renderSync(await api('/api/admin/sources/discover', { method: 'POST', body: JSON.stringify({ sources: field('sources').value, keyword }) })));
 }
 function syncCount() { const n = $$('#syncBody input:checked').length; $('#syncAdd').textContent = n ? '\u6DFB\u52A0\u9009\u4E2D ' + n + ' \u4E2A' : '\u6DFB\u52A0\u9009\u4E2D'; $('#syncAdd').disabled = !n; }
 $('#syncBody').addEventListener('change', syncCount);
 function syncAll(all) { $$('#syncBody input').forEach((i) => (i.checked = all || SYNC.groups[i.dataset.g].items[i.dataset.i].suggest)); syncCount(); }
+function subSite(u) {
+  let o = u; try { const x = new URL(u); o = x.hostname === 't.me' ? u : x.origin + '/'; } catch {}
+  openBatch(o, true);
+}
 function closeSync() { $('#syncModal').classList.remove('on'); }
 function applySync() {
-  const add = [...$$('#syncBody input:checked')].map((i) => SYNC.groups[i.dataset.g].items[i.dataset.i].src);
+  // \u4ECE\u5206\u7C7B\u5FEB\u6377\u8BCD\u53D1\u73B0\u7684\u6E90\uFF0C\u9ED8\u8BA4\u5206\u7C7B\u5C31\u8BBE\u6210\u90A3\u4E2A\u5206\u7C7B
+  const add = [...$$('#syncBody input:checked')].map((i) => SYNC.groups[i.dataset.g].items[i.dataset.i].src).map((x) => (SYNC_MODE === 'discover' && DISC_CAT && !x.hint ? { ...x, hint: DISC_CAT } : x));
   const l = srcList() || [];
   setSrc([...l, ...add]);
   closeSync();
-  toast('\u5DF2\u6DFB\u52A0 ' + add.length + ' \u4E2A\u6E90\uFF0C\u4FDD\u5B58\u540E\u4E0B\u6B21\u6293\u53D6\u751F\u6548', 3500, 'ok');
+  // \u8DF3\u5230\u6570\u636E\u6E90\u5217\u8868\uFF0C\u65B0\u52A0\u7684\u95EA\u4E00\u4E0B\uFF0C\u65B9\u4FBF\u63A5\u7740\u8BBE\u5206\u7C7B
+  if (location.hash !== '#collect') location.hash = 'collect';
+  setTimeout(() => {
+    const rows = [...$$('#srcList > *')];
+    rows.slice(-add.length).forEach((r) => r.classList.add('srcnew'));
+    $('#srcList').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 120);
+  toast('\u5DF2\u6DFB\u52A0 ' + add.length + ' \u4E2A\u6E90\uFF0C\u53EF\u4EE5\u5C55\u5F00\u8BBE\u7F6E\u5206\u7C7B\uFF0C\u4FDD\u5B58\u540E\u751F\u6548', 3500, 'ok');
 }
 function toggleBeCats(id) {
   const box = $('#be-' + id + ' .bce');
@@ -3090,6 +3253,7 @@ async function loadItems(st) {
       (st !== 'approved' ? '<button class="btn sm" onclick="setStatus(\\'' + it.id + '\\',\\'approved\\', this)">\u901A\u8FC7</button>' : '') +
       (st !== 'rejected' ? '<button class="btn sm" onclick="setStatus(\\'' + it.id + '\\',\\'rejected\\', this)">\u62D2\u7EDD</button>' : '') +
       (st !== 'pending' ? '<button class="btn sm" onclick="setStatus(\\'' + it.id + '\\',\\'pending\\', this)" title="\u4E0B\u6B21\u8FD0\u884C\u91CD\u65B0\u5224\u5B9A">\u91CD\u5224</button>' : '') +
+      '<button class="btn sm" title="\u68C0\u6D4B\u8FD9\u4E2A\u7F51\u7AD9\u7684\u8BA2\u9605\u5730\u5740\u5E76\u52A0\u4E3A\u6570\u636E\u6E90" onclick="subSite(\\'' + esc(it.url) + '\\')">\u8BA2\u9605\u6B64\u7AD9</button>' +
       '<button class="btn sm danger" onclick="del(\\'' + it.id + '\\', this)">\u5220\u9664</button></div></div>';
   }).join('') : '<div class="empty">\u6682\u65E0</div>';
 }
@@ -3714,6 +3878,19 @@ async function handleAdmin(req, env, url) {
     }
     const urls = String(body.urls ?? s.source_sync_urls ?? "").split(/\r?\n/).map((x) => x.trim()).filter((x) => /^https?:\/\//.test(x)).slice(0, 5);
     return json(await checkSources(Array.isArray(current) ? current : [], urls));
+  }
+  if ((p === "/sources/probe" || p === "/sources/discover") && m === "POST") {
+    const s = await getSettings(env);
+    let current = [];
+    try {
+      current = JSON.parse(body.sources ?? s.sources);
+    } catch {
+    }
+    if (!Array.isArray(current)) current = [];
+    if (p === "/sources/probe") return json(await probeInputs(current, String(body.lines || "").split(/\r?\n/)));
+    const kw = String(body.keyword || "").trim().slice(0, 40);
+    if (!kw) return json({ error: "\u8BF7\u8F93\u5165\u5173\u952E\u8BCD" }, 400);
+    return json(await discoverSources(current, kw, (qs) => searchForDiscovery(s, qs)));
   }
   if (p === "/mail/test" && m === "POST") return json(await sendDigest(env, { force: true, test: true, channel: body.channel === "telegram" ? "telegram" : "mail" }));
   if (p === "/mail/send" && m === "POST") return json(await sendDigest(env, { force: true }));

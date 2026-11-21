@@ -2,8 +2,8 @@ import { ensureSchema, getSettings, getBasicSettings, saveSettings, settingsForA
 import { listModels, chat } from './ai.js';
 import { planRun, tick } from './crawler.js';
 import { sendDigest, previewDigest } from './mailer.js';
-import { BACKENDS, BACKEND_MAP, runBackend } from './search.js';
-import { checkSources } from './sources-sync.js';
+import { BACKENDS, BACKEND_MAP, runBackend, searchForDiscovery } from './search.js';
+import { checkSources, probeInputs, discoverSources } from './sources-sync.js';
 import { foldItems } from './fold.js';
 import { CATEGORIES, CAT_MAP, enabledCats } from './categories.js';
 import adminHtml from './admin.html';
@@ -158,6 +158,16 @@ async function handleAdmin(req, env, url) {
     try { current = JSON.parse(body.sources ?? s.sources); } catch {}
     const urls = String(body.urls ?? s.source_sync_urls ?? '').split(/\r?\n/).map((x) => x.trim()).filter((x) => /^https?:\/\//.test(x)).slice(0, 5);
     return json(await checkSources(Array.isArray(current) ? current : [], urls));
+  }
+  if ((p === '/sources/probe' || p === '/sources/discover') && m === 'POST') {
+    const s = await getSettings(env);
+    let current = [];
+    try { current = JSON.parse(body.sources ?? s.sources); } catch {}
+    if (!Array.isArray(current)) current = [];
+    if (p === '/sources/probe') return json(await probeInputs(current, String(body.lines || '').split(/\r?\n/)));
+    const kw = String(body.keyword || '').trim().slice(0, 40);
+    if (!kw) return json({ error: '请输入关键词' }, 400);
+    return json(await discoverSources(current, kw, (qs) => searchForDiscovery(s, qs)));
   }
   if (p === '/mail/test' && m === 'POST') return json(await sendDigest(env, { force: true, test: true, channel: body.channel === 'telegram' ? 'telegram' : 'mail' }));
   if (p === '/mail/send' && m === 'POST') return json(await sendDigest(env, { force: true }));

@@ -105,6 +105,16 @@
   .sitem { display:flex; gap:10px; align-items:center; padding:7px 4px; border-top:1px solid var(--line); cursor:pointer; }
   .sitem input { width:16px; height:16px; accent-color:var(--accent); flex:none; }
   .sitem .snm small { display:block; }
+  .sitem .snm .smp { display:block; color:var(--ink-3); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:560px; }
+  .mtop { padding:12px 18px 4px; display:flex; flex-direction:column; gap:8px; }
+  .mtop:empty { display:none; }
+  .mtop textarea { min-height:110px; font-family:var(--mono, monospace); font-size:12.5px; }
+  .mtop .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .mtop .row input { flex:1; min-width:180px; }
+  .mtop .qk { border:1px solid var(--line); background:#fff; border-radius:999px; padding:3px 10px; font-size:12px; cursor:pointer; color:var(--ink-2); }
+  .mtop .qk:hover { border-color:var(--accent); color:var(--accent); }
+  .srcnew { animation: srcflash 2.4s ease-out; }
+  @keyframes srcflash { from { background:#eef2ff; } to { background:transparent; } }
   .sitem .tag.why { background:var(--warn-bg); color:var(--warn); }
   .sp { flex:1; }
   @keyframes fade { from { opacity:0 } }
@@ -387,7 +397,7 @@
           </div>
         </div>
         <div class="section">
-          <header><h2>数据源</h2><span class="hint" id="srcCount"></span><span class="sp"></span><button class="btn sm" onclick="openSync(this)">↻ 更新源</button><button class="btn sm" onclick="addSource()">＋ 添加</button></header>
+          <header><h2>数据源</h2><span class="hint" id="srcCount"></span><span class="sp"></span><button class="btn sm" onclick="openSync(this)" title="从内置推荐和 freebie-radar 等地址拉取新源">↻ 更新源</button><button class="btn sm" onclick="openDiscover()" title="用已开启的搜索后端找新的订阅源">⌕ 发现新源</button><button class="btn sm" onclick="openBatch()" title="一次粘贴多个网址 / t.me 链接 / @频道">＋ 批量添加</button></header>
           <div class="body" style="padding-top:12px">
             <div class="srcbar"><input type="text" id="srcQ" placeholder="搜索源名称 / 地址" oninput="renderSources()" /><select id="srcF" onchange="renderSources()"><option value="">全部</option><option value="on">已启用</option><option value="off">已停用</option><option value="limited">限定了分类</option></select></div>
             <div class="srclist" id="srcList"></div>
@@ -439,7 +449,7 @@
           <div id="searchBackends"></div>
         </div>
         <div class="section">
-          <header><h2>搜索偏好</h2></header>
+          <header><h2>搜索偏好</h2><span class="sp"></span><button class="btn sm" onclick="openDiscover()">⌕ 用搜索发现新订阅源</button></header>
           <div class="body">
             <div class="grid3">
               <div><label class="f">语言</label><select data-key="search_lang"><option value="zh_only">只要中文</option><option value="zh_first">中文优先</option><option value="any">不限</option></select></div>
@@ -587,7 +597,8 @@
 <div class="savebar"><span class="txt" id="dirtyTxt">有未保存的修改</span><button class="btn" onclick="revert()">撤销</button><button class="btn acc" onclick="save(this)">保存</button></div>
 <div class="modal" id="syncModal" onclick="if(event.target===this)closeSync()">
   <div class="mbox">
-    <header><b>更新源</b><span class="hint" id="syncSum"></span><span class="sp"></span><button class="btn sm" onclick="syncAll(true)">全选</button><button class="btn sm" onclick="syncAll(false)">只选推荐</button><button class="x" onclick="closeSync()" aria-label="关闭">×</button></header>
+    <header><b id="syncTitle">更新源</b><span class="hint" id="syncSum"></span><span class="sp"></span><button class="btn sm" onclick="syncAll(true)">全选</button><button class="btn sm" onclick="syncAll(false)">只选推荐</button><button class="x" onclick="closeSync()" aria-label="关闭">×</button></header>
+    <div class="mtop" id="syncTop"></div>
     <div class="mbody" id="syncBody"></div>
     <footer><span class="hint" id="syncErr"></span><span class="sp"></span><button class="btn" onclick="closeSync()">取消</button><button class="btn pri" id="syncAdd" onclick="applySync()">添加选中</button></footer>
   </div>
@@ -845,30 +856,81 @@ function addSource() {
   toast('已添加，可以改名称和分类，记得保存', 3000, 'ok');
 }
 let SYNC = null;
+function renderSync(r) {
+  SYNC = r;
+  const n = r.groups.reduce((a, g) => a + g.items.length, 0);
+  const fresh = r.groups.reduce((a, g) => a + g.items.filter((x) => x.why !== '已有').length, 0);
+  $('#syncSum').textContent = n ? '找到 ' + fresh + ' 个新源' + (r.existing ? '，' + r.existing + ' 个已有' : '') + (r.unsupported ? '，' + r.unsupported + ' 个类型暂不支持' : '') : '';
+  $('#syncErr').textContent = (r.errors || []).length ? r.errors.join('；') : '';
+  $('#syncBody').innerHTML = n ? r.groups.map((g, gi) => '<h4>' + esc(g.label) + ' · ' + g.items.length + ' 个</h4>' + g.items.map((it, ii) =>
+    '<label class="sitem"><input type="checkbox" data-g="' + gi + '" data-i="' + ii + '"' + (it.suggest ? ' checked' : '') + (it.why === '已有' ? ' disabled' : '') + ' /><div class="snm">' + esc(it.src.name) + '<span class="tag">' + (TYPE_ZH[it.src.type || 'rss'] || it.src.type) + '</span>' + (it.why ? '<span class="tag why">' + esc(it.why) + '</span>' : '<span class="tag on">推荐</span>') + (it.src.hint ? '<span class="tag">' + esc(CAT[it.src.hint] || it.src.hint) + '</span>' : '') + (it.facts ? '<span class="tag">' + esc(it.facts) + '</span>' : '') + '<small>' + esc(srcWhere(it.src)) + '</small>' + (it.sample ? '<span class="smp">' + esc(it.sample) + '</span>' : '') + '</div></label>').join('')).join('')
+    : '<div class="empty" style="padding:30px 0">' + (SYNC_MODE === 'sync' ? '已经是最新的了，没有新的源。' : '没有找到可用的订阅源。') + '</div>';
+  syncCount();
+}
+let SYNC_MODE = 'sync';
+function syncOpen(mode, title, top) {
+  SYNC_MODE = mode; SYNC = { groups: [] };
+  $('#syncTitle').textContent = title;
+  $('#syncTop').innerHTML = top || '';
+  $('#syncSum').textContent = ''; $('#syncErr').textContent = '';
+  $('#syncBody').innerHTML = mode === 'sync' ? '' : '<div class="empty" style="padding:24px 0">' + (mode === 'batch' ? '每行一个：网站首页、RSS 地址、t.me/频道 或 @频道，也可以贴 JSON 源。网页会自动找订阅地址。' : '输入你想订阅的内容，比如「免费 VPS」「AI 额度」，会用已开启的搜索后端找相关网站并检测订阅地址。') + '</div>';
+  syncCount();
+  $('#syncModal').classList.add('on');
+}
 async function openSync(btn) {
   await busy(btn, async () => {
     const r = await api('/api/admin/sources/check', { method: 'POST', body: JSON.stringify({ sources: field('sources').value, urls: field('source_sync_urls').value }) });
-    SYNC = r;
-    const n = r.groups.reduce((a, g) => a + g.items.length, 0);
-    $('#syncSum').textContent = n ? '找到 ' + n + ' 个新源' + (r.existing ? '，' + r.existing + ' 个已有' : '') + (r.unsupported ? '，' + r.unsupported + ' 个类型暂不支持' : '') : '';
-    $('#syncErr').textContent = r.errors.length ? '部分地址拉取失败：' + r.errors.join('；') : '';
-    $('#syncBody').innerHTML = n ? r.groups.map((g, gi) => '<h4>' + esc(g.label) + ' · ' + g.items.length + ' 个</h4>' + g.items.map((it, ii) =>
-      '<label class="sitem"><input type="checkbox" data-g="' + gi + '" data-i="' + ii + '"' + (it.suggest ? ' checked' : '') + ' /><div class="snm">' + esc(it.src.name) + '<span class="tag">' + (TYPE_ZH[it.src.type || 'rss'] || it.src.type) + '</span>' + (it.why ? '<span class="tag why">' + esc(it.why) + '</span>' : '<span class="tag on">推荐</span>') + (it.src.hint ? '<span class="tag">' + esc(CAT[it.src.hint] || it.src.hint) + '</span>' : '') + '<small>' + esc(srcWhere(it.src)) + '</small></div></label>').join('')).join('')
-      : '<div class="empty" style="padding:30px 0">已经是最新的了，没有新的源。</div>';
-    syncCount();
-    $('#syncModal').classList.add('on');
+    syncOpen('sync', '更新源');
+    renderSync(r);
   });
+}
+function openBatch(prefill, auto) {
+  syncOpen('batch', '批量添加', '<textarea id="batchIn" placeholder="https://www.example.com/\nhttps://example.com/feed\nt.me/abskoop\n@zaihuapd"></textarea><div class="row"><span class="hint">一次最多 15 个，会逐个检测能不能抓到内容</span><span class="sp" style="flex:1"></span><button class="btn pri" id="batchGo" onclick="runBatch(this)">检测</button></div>');
+  if (prefill) $('#batchIn').value = prefill;
+  setTimeout(() => (auto ? runBatch($('#batchGo')) : $('#batchIn').focus()), 0);
+}
+async function runBatch(btn) {
+  const lines = $('#batchIn').value.trim();
+  if (!lines) return toast('先粘贴网址', 2000, 'err');
+  await busy(btn, async () => renderSync(await api('/api/admin/sources/probe', { method: 'POST', body: JSON.stringify({ sources: field('sources').value, lines }) })));
+}
+function openDiscover(kw, auto) {
+  const on = ((field('enabled_categories') || {}).value ?? SETTINGS.enabled_categories ?? '').split(',').filter(Boolean);
+  const quick = (on.length ? on : CATS.map((c) => c.key)).slice(0, 10).map((k) => '<button class="qk" onclick="DISC_CAT=\'' + k + '\';$(\'#discIn\').value=this.textContent;runDiscover($(\'#discGo\'),1)">' + esc(CAT[k] ? '免费' + CAT[k].replace(/^免费/, '') : k) + '</button>').join('');
+  syncOpen('discover', '发现新订阅源', '<div class="row"><input id="discIn" placeholder="关键词，比如：免费 VPS、AI 额度、限免游戏" onkeydown="if(event.key===\'Enter\')runDiscover($(\'#discGo\'))" /><button class="btn pri" id="discGo" onclick="runDiscover(this)">搜索</button></div><div class="row"><span class="hint">按已订阅的分类：</span>' + quick + '</div>');
+  if (kw) $('#discIn').value = kw;
+  setTimeout(() => (auto && kw ? runDiscover($('#discGo')) : $('#discIn').focus()), 0);
+}
+let DISC_CAT = '';
+async function runDiscover(btn, keepCat) {
+  if (!keepCat) DISC_CAT = '';
+  const keyword = $('#discIn').value.trim();
+  if (!keyword) return toast('先输入关键词', 2000, 'err');
+  $('#syncBody').innerHTML = '<div class="empty" style="padding:24px 0">正在搜索并检测各个网站的订阅地址，大约 10–20 秒…</div>';
+  await busy(btn, async () => renderSync(await api('/api/admin/sources/discover', { method: 'POST', body: JSON.stringify({ sources: field('sources').value, keyword }) })));
 }
 function syncCount() { const n = $$('#syncBody input:checked').length; $('#syncAdd').textContent = n ? '添加选中 ' + n + ' 个' : '添加选中'; $('#syncAdd').disabled = !n; }
 $('#syncBody').addEventListener('change', syncCount);
 function syncAll(all) { $$('#syncBody input').forEach((i) => (i.checked = all || SYNC.groups[i.dataset.g].items[i.dataset.i].suggest)); syncCount(); }
+function subSite(u) {
+  let o = u; try { const x = new URL(u); o = x.hostname === 't.me' ? u : x.origin + '/'; } catch {}
+  openBatch(o, true);
+}
 function closeSync() { $('#syncModal').classList.remove('on'); }
 function applySync() {
-  const add = [...$$('#syncBody input:checked')].map((i) => SYNC.groups[i.dataset.g].items[i.dataset.i].src);
+  // 从分类快捷词发现的源，默认分类就设成那个分类
+  const add = [...$$('#syncBody input:checked')].map((i) => SYNC.groups[i.dataset.g].items[i.dataset.i].src).map((x) => (SYNC_MODE === 'discover' && DISC_CAT && !x.hint ? { ...x, hint: DISC_CAT } : x));
   const l = srcList() || [];
   setSrc([...l, ...add]);
   closeSync();
-  toast('已添加 ' + add.length + ' 个源，保存后下次抓取生效', 3500, 'ok');
+  // 跳到数据源列表，新加的闪一下，方便接着设分类
+  if (location.hash !== '#collect') location.hash = 'collect';
+  setTimeout(() => {
+    const rows = [...$$('#srcList > *')];
+    rows.slice(-add.length).forEach((r) => r.classList.add('srcnew'));
+    $('#srcList').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 120);
+  toast('已添加 ' + add.length + ' 个源，可以展开设置分类，保存后生效', 3500, 'ok');
 }
 function toggleBeCats(id) {
   const box = $('#be-' + id + ' .bce');
@@ -1089,6 +1151,7 @@ async function loadItems(st) {
       (st !== 'approved' ? '<button class="btn sm" onclick="setStatus(\'' + it.id + '\',\'approved\', this)">通过</button>' : '') +
       (st !== 'rejected' ? '<button class="btn sm" onclick="setStatus(\'' + it.id + '\',\'rejected\', this)">拒绝</button>' : '') +
       (st !== 'pending' ? '<button class="btn sm" onclick="setStatus(\'' + it.id + '\',\'pending\', this)" title="下次运行重新判定">重判</button>' : '') +
+      '<button class="btn sm" title="检测这个网站的订阅地址并加为数据源" onclick="subSite(\'' + esc(it.url) + '\')">订阅此站</button>' +
       '<button class="btn sm danger" onclick="del(\'' + it.id + '\', this)">删除</button></div></div>';
   }).join('') : '<div class="empty">暂无</div>';
 }

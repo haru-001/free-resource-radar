@@ -172,3 +172,13 @@ export async function runBackend(s, id, maxAgeDays) {
   for (const it of r.items) it.source = `${b.name} 搜索`;
   return r;
 }
+
+/** 给「发现新源」用：用最多 2 个可用后端搜这些词，返回去重后的结果 */
+export async function searchForDiscovery(s, queries) {
+  const ready = BACKENDS.filter((b) => backendReady(s, b)).slice(0, 2);
+  if (!ready.length) return { results: [], errors: ['没有可用的搜索后端，去「AI 与搜索」打开一个'] };
+  const results = [], errors = [];
+  const jobs = ready.flatMap((b) => queries.map((q) => b.search(s, q, 3650).then((l) => results.push(...l), (e) => errors.push(`${b.name}：${e.message}`))));
+  await Promise.all(jobs);
+  return { results, errors };
+}
