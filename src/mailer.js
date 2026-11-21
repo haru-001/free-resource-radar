@@ -1,5 +1,6 @@
 // 邮件日报：Resend / Brevo / Cloudflare Email（send_email binding）
 import { getSettings, saveSettings } from './db.js';
+import { foldItems } from './fold.js';
 import { CATEGORIES, mailCats } from './categories.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -21,7 +22,7 @@ export async function collectDigest(env, s) {
      AND category IN (${cats.map(() => '?').join(',')})
      ORDER BY CASE category ${order} ELSE 99 END, score DESC, published_at DESC LIMIT ?`
   ).bind(since, cutoff, ...cats, limit).all();
-  return results || [];
+  return foldItems(results || []);
 }
 
 // 邮件 HTML：表格布局 + 内联样式，兼容 Gmail / Outlook / QQ / 163 / Apple Mail 和手机端
@@ -40,7 +41,7 @@ ${list.map((it) => `
   ${it.summary ? `<div style="font-size:14px;color:#374151;line-height:1.6;margin-top:6px;">${esc(it.summary)}</div>` : ''}
   <div style="font-size:12px;color:#6b7280;line-height:1.6;margin-top:6px;">
     ${it.obtain ? `<span style="color:${it.obtain === 'free' ? '#047857' : '#92400e'};font-weight:bold;">${OBTAIN_ZH[it.obtain] || ''}</span>&nbsp; ` : ''}${it.signup ? `<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px;">注册：${esc(it.signup)}</span>&nbsp; ` : ''}
-    ${it.published_at ? ymd(it.published_at) + ' · ' : ''}${esc(it.source || '')}${it.score != null ? ' · ' + it.score + '分' : ''}
+    ${it.published_at ? ymd(it.published_at) + ' · ' : ''}${esc(it.srcs ? it.srcs.map((x) => x.n).join(' / ') : it.source || '')}${it.score != null ? ' · ' + it.score + '分' : ''}
   </div>
 </td></tr>`).join('')}`;
 

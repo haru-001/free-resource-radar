@@ -67,6 +67,14 @@ function tag(block, name) {
   const end = block.indexOf('</' + name + '>', gt);
   return end < 0 ? '' : block.slice(gt + 1, end);
 }
+/** 目标链接的比较键：去掉协议、www / m.、末尾斜杠和跟踪参数 */
+export function targetKey(u) {
+  try {
+    const x = new URL(normalizeUrl(u));
+    return (x.hostname.replace(/^(www|m)\./, '').toLowerCase() + x.pathname.replace(/\/+$/, '') + x.search).slice(0, 300);
+  } catch { return String(u || '').slice(0, 300); }
+}
+const mergeSources = (a, b) => { const out = [...a]; for (const x of b) if (!out.some((y) => y.u === x.u)) out.push(x); return out.slice(0, 12); };
 export function parseTelegram(html, ch) {
   const out = [];
   const parts = html.split('class="tgme_widget_message_wrap');
@@ -88,6 +96,7 @@ export function parseTelegram(html, ch) {
       url: `https://t.me/${post[1]}`,
       published_at: dt ? parseDate(dt[1]) : null,
       raw_text: (text.slice(0, 1200) + (link ? `\n链接：${decodeEntities(link[1])}` : '')).slice(0, 1500),
+      target: link ? decodeEntities(link[1]) : null, // 频道消息指向的原文，用来和其它来源合并
     });
   }
   return out;
@@ -286,7 +295,7 @@ function heuristicJudge(item, s) {
 // 所以一次“抓取”被拆成若干步骤存进 D1（jobs 表）：每个数据源 / 搜索引擎 / AI 判定批次 / 清理 / 推送各一步，
 // 定时任务每分钟执行一步（steps_per_tick 可调），后台“立即抓取”由浏览器逐步驱动。
 
-const ZERO_STATS = () => ({ fetched: 0, blocked: 0, block_rule: 0, noise: 0, dup_title: 0, non_zh: 0, hard_signup: 0, too_old: 0, undated: 0, off_topic: 0, candidates: 0, new: 0, trusted: 0, judged: 0, approved: 0, rejected: 0, expired_removed: 0, errors: 0 });
+const ZERO_STATS = () => ({ merged: 0, fetched: 0, blocked: 0, block_rule: 0, noise: 0, dup_title: 0, non_zh: 0, hard_signup: 0, too_old: 0, undated: 0, off_topic: 0, candidates: 0, new: 0, trusted: 0, judged: 0, approved: 0, rejected: 0, expired_removed: 0, errors: 0 });
 // AI 可选：开关没关、且接口地址 / Key / 模型都填了才用
 const aiReadyOf = (s) => s.ai_enabled !== 'false' && !!(s.ai_api_key && s.ai_base_url && s.ai_model);
 
@@ -370,7 +379,11 @@ async function ingest(env, c, src, items, stats, log) {
     if (candidates.has(id)) continue;
     if (fp.length >= 8 && runFp.has(fp)) { stats.dup_title++; continue; }
     if (fp.length >= 8) runFp.add(fp);
-    candidates.set(id, { ...it, url, id, fp });
+    // 目标链接相同（比如 TG 频道转发的博客文章）：合并成一条，记下其它来源
+    const tkey = targetKey(it.target || url);
+    const twin = [...candidates.values()].find((x) => x.tkey === tkey);
+    if (twin) { twin.also = mergeSources(twin.also || [], [{ n: it.source, u: url }]); stats.merged++; continue; }
+    candidates.set(id, { ...it, url, id, fp, tkey });
   }
   stats.candidates += candidates.size;
   if (!candidates.size) return;
@@ -386,10 +399,28 @@ async function ingest(env, c, src, items, stats, log) {
     ).bind(...chunk, ...fps).all();
     for (const row of rows || []) { existing.add(row.id); if (row.fp) existingFp.add(row.fp); }
   }
+  // 库里已有同一目标链接的条目：把来源追加过去，不再新建
+  const byTarget = new Map();
+  const tkeys = [...new Set([...candidates.values()].map((x) => x.tkey))];
+  for (let i = 0; i < tkeys.length; i += 90) {
+    const chunk = tkeys.slice(i, i + 90);
+    const { results: rows } = await env.DB.prepare(`SELECT id, target, source, url, sources FROM items WHERE target IN (${chunk.map(() => '?').join(',')})`).bind(...chunk).all();
+    for (const row of rows || []) if (!byTarget.has(row.target)) byTarget.set(row.target, row);
+  }
   const today = dayOf(c.now);
   const stmts = [];
   for (const [id, it] of candidates) {
     if (existing.has(id)) continue;
+    const prev = byTarget.get(it.tkey);
+    if (prev && prev.id !== id) {
+      let list = [];
+      try { list = JSON.parse(prev.sources || '[]'); } catch {}
+      list = mergeSources(list, [{ n: it.source, u: it.url }, ...(it.also || [])].filter((x) => x.u !== prev.url));
+      prev.sources = JSON.stringify(list);
+      stmts.push(env.DB.prepare('UPDATE items SET sources = ? WHERE id = ?').bind(prev.sources, prev.id), env.DB.prepare('INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)').bind(id, it.fp || null, c.now));
+      stats.merged++;
+      continue;
+    }
     if (it.fp && it.fp.length >= 8 && existingFp.has(it.fp)) { stats.dup_title++; continue; }
     stats.new++;
     // 白嫖专源直接通过，不消耗 AI 额度
@@ -397,10 +428,10 @@ async function ingest(env, c, src, items, stats, log) {
     if (direct) { stats.trusted++; stats.approved++; }
     stmts.push(
       direct
-        ? env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, c.now, 'approved', it.fp || null, today, it.category, it.name || null, it.summary || (it.raw_text || '').slice(0, 120), it.signup || null, 'free', 80, 'trusted', c.now)
-        : env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, cats, hint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, c.now, 'pending', it.fp || null, today, it.cats || null, it.hint || null),
+        ? env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at, target, sources) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, c.now, 'approved', it.fp || null, today, it.category, it.name || null, it.summary || (it.raw_text || '').slice(0, 120), it.signup || null, 'free', 80, 'trusted', c.now, it.tkey, it.also ? JSON.stringify(it.also) : null)
+        : env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, cats, hint, target, sources) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, c.now, 'pending', it.fp || null, today, it.cats || null, it.hint || null, it.tkey, it.also ? JSON.stringify(it.also) : null),
       env.DB.prepare('INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)').bind(id, it.fp || null, c.now)
     );
   }

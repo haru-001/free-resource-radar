@@ -1083,7 +1083,7 @@ async function loadItems(st) {
     return '<div class="item" id="it-' + it.id + '"><div class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '—') + '</div><div>' +
       '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + esc(it.name || it.title) + '</a>' + ob +
       (it.summary ? '<div class="sum">' + esc(it.summary) + '</div>' : '') +
-      '<div class="meta">' + [esc(it.source), CAT[it.category] || '', it.signup ? '注册：' + esc(it.signup) : '', ago(it.published_at), it.judged_by ? esc(it.judged_by) : ''].filter(Boolean).join('<i>·</i>') + '</div>' +
+      '<div class="meta">' + [esc(it.source) + (() => { try { const l = JSON.parse(it.sources || '[]'); return l.length ? ' <span class="tag zh" title="' + esc(l.map((x) => x.n).join('、')) + '">+' + l.length + ' 个来源</span>' : ''; } catch { return ''; } })(), CAT[it.category] || '', it.signup ? '注册：' + esc(it.signup) : '', ago(it.published_at), it.judged_by ? esc(it.judged_by) : ''].filter(Boolean).join('<i>·</i>') + '</div>' +
       (it.name && it.name !== it.title ? '<div class="meta">' + esc(it.title) + '</div>' : '') +
       '</div><div class="acts">' +
       (st !== 'approved' ? '<button class="btn sm" onclick="setStatus(\'' + it.id + '\',\'approved\', this)">通过</button>' : '') +

@@ -172,9 +172,10 @@ export async function ensureSchema(env) {
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_seen_at ON seen(seen_at)'),
   ]);
   // 增量迁移：新列（已存在会报错，忽略）
-  for (const col of ['obtain TEXT', 'fp TEXT', 'day TEXT', 'cats TEXT', 'hint TEXT']) {
+  for (const col of ['obtain TEXT', 'fp TEXT', 'day TEXT', 'cats TEXT', 'hint TEXT', 'target TEXT', 'sources TEXT']) {
     try { await env.DB.prepare(`ALTER TABLE items ADD COLUMN ${col}`).run(); } catch {}
   }
+  try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_items_target ON items(target)').run(); } catch {}
   try { await env.DB.prepare('ALTER TABLE jobs ADD COLUMN claimed_at INTEGER').run(); } catch {}
   for (const sql of [
     'CREATE INDEX IF NOT EXISTS idx_items_fp ON items(fp)',

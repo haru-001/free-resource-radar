@@ -189,6 +189,8 @@
     .card:hover { transform:none; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+  .srcs { color:var(--accent-2, #312e81); }
+  .srcs a { color:inherit; text-decoration:underline dotted; text-underline-offset:2px; }
 </style>
 </head>
 <body>
@@ -273,7 +275,7 @@ function rowHtml(it, i) {
   return '<div class="row" style="--c:' + (c.color || '') + '"><div>' +
     '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + hl(it.name || it.title) + '</a>' + chips(it) +
     (it.summary ? '<div class="sum">' + hl(it.summary) + '</div>' : '') +
-    '<div class="meta">' + ['<span class="cat">' + dot(c) + esc(c.label) + '</span>', it.signup ? '注册：' + esc(it.signup) : '', '<span class="host">' + esc(host(it.url)) + '</span>', hl(it.source || '')].filter(Boolean).join('<i>·</i>') + '</div></div>' +
+    '<div class="meta">' + ['<span class="cat">' + dot(c) + esc(c.label) + '</span>', it.signup ? '注册：' + esc(it.signup) : '', '<span class="host">' + esc(host(it.url)) + '</span>', (it.srcs ? '<span class="srcs" title="' + esc(it.srcs.map((x) => x.n).join('、')) + '">' + it.srcs.length + ' 个来源：' + it.srcs.map((x) => '<a href="' + esc(x.u) + '" target="_blank" rel="noopener">' + hl(x.n || '') + '</a>').join(' / ') + '</span>' : hl(it.source || ''))].filter(Boolean).join('<i>·</i>') + '</div></div>' +
     '<div class="side"><span class="time">' + ago(it.published_at) + '</span><button class="copy press" data-i="' + i + '">复制链接</button></div></div>';
 }
 function cardHtml(it) {
@@ -292,7 +294,7 @@ function matches(it, skip) {
   if (skip !== 'day' && state.day && it.day !== state.day) return false;
   if (state.q) {
     const q = state.q.toLowerCase();
-    if (!((it.name || '') + ' ' + it.title + ' ' + (it.summary || '') + ' ' + (it.source || '') + ' ' + it.url).toLowerCase().includes(q)) return false;
+    if (!((it.name || '') + ' ' + it.title + ' ' + (it.summary || '') + ' ' + (it.srcs ? it.srcs.map((x) => x.n).join(' ') : it.source || '') + ' ' + it.url).toLowerCase().includes(q)) return false;
   }
   return true;
 }

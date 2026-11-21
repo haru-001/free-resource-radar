@@ -4,6 +4,7 @@ import { planRun, tick } from './crawler.js';
 import { sendDigest, previewDigest } from './mailer.js';
 import { BACKENDS, BACKEND_MAP, runBackend } from './search.js';
 import { checkSources } from './sources-sync.js';
+import { foldItems } from './fold.js';
 import { CATEGORIES, CAT_MAP, enabledCats } from './categories.js';
 import adminHtml from './admin.html';
 import publicHtml from './public.html';
@@ -63,7 +64,7 @@ async function publicData(env) {
   return memo('data', ttl, async () => {
     const cutoff = Date.now() - (Number(st.max_age_days) || 180) * 86400000;
     const [items, last] = await Promise.all([
-      env.DB.prepare("SELECT id, title, url, source, published_at, day, category, name, summary, signup, score, obtain FROM items WHERE status = 'approved' AND (published_at IS NULL OR published_at >= ?) ORDER BY day DESC, score DESC, published_at DESC LIMIT 1500").bind(cutoff).all(),
+      env.DB.prepare("SELECT id, title, url, source, published_at, day, category, name, summary, signup, score, obtain, target, sources FROM items WHERE status = 'approved' AND (published_at IS NULL OR published_at >= ?) ORDER BY day DESC, score DESC, published_at DESC LIMIT 1500").bind(cutoff).all(),
       env.DB.prepare("SELECT MAX(finished_at) AS t FROM runs WHERE trigger != 'mail'").first(),
     ]);
     const data = {
@@ -73,7 +74,7 @@ async function publicData(env) {
       every: Math.min(24, Math.max(1, Number(st.crawl_every_hours) || 24)),
       last_run: last?.t || null,
       categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color })),
-      items: items.results || [],
+      items: foldItems(items.results || []),
     };
     return JSON.stringify(data);
   });

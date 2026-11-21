@@ -340,11 +340,15 @@ async function ensureSchema(env) {
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_seen_fp ON seen(fp)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_seen_at ON seen(seen_at)")
   ]);
-  for (const col of ["obtain TEXT", "fp TEXT", "day TEXT", "cats TEXT", "hint TEXT"]) {
+  for (const col of ["obtain TEXT", "fp TEXT", "day TEXT", "cats TEXT", "hint TEXT", "target TEXT", "sources TEXT"]) {
     try {
       await env.DB.prepare(`ALTER TABLE items ADD COLUMN ${col}`).run();
     } catch {
     }
+  }
+  try {
+    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_items_target ON items(target)").run();
+  } catch {
   }
   try {
     await env.DB.prepare("ALTER TABLE jobs ADD COLUMN claimed_at INTEGER").run();
@@ -605,6 +609,32 @@ async function judgeBatch(items, s) {
   return map;
 }
 
+// src/fold.js
+function foldItems(list) {
+  const by = /* @__PURE__ */ new Map(), out = [];
+  for (const it of list) {
+    let extra = [];
+    try {
+      extra = JSON.parse(it.sources || "[]");
+    } catch {
+    }
+    const key = it.target || it.url;
+    const head = by.get(key);
+    const mine = [{ n: it.source, u: it.url }, ...extra];
+    if (head) {
+      for (const x of mine) if (!head.srcs.some((y) => y.u === x.u)) head.srcs.push(x);
+      continue;
+    }
+    const { target, sources, ...rest } = it;
+    const o = { ...rest, srcs: mine };
+    by.set(key, o);
+    out.push(o);
+  }
+  for (const o of out) if (o.srcs.length < 2) delete o.srcs;
+  else o.srcs = o.srcs.slice(0, 8);
+  return out;
+}
+
 // src/mailer.js
 var esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var recipients = (s) => [...new Set(String(s || "").split(/[,;，；\s]+/).map((x) => x.trim().toLowerCase()).filter((x) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))].slice(0, 10);
@@ -623,7 +653,7 @@ async function collectDigest(env, s) {
      AND category IN (${cats.map(() => "?").join(",")})
      ORDER BY CASE category ${order} ELSE 99 END, score DESC, published_at DESC LIMIT ?`
   ).bind(since, cutoff, ...cats, limit).all();
-  return results || [];
+  return foldItems(results || []);
 }
 function renderDigest(items, s, dateStr) {
   const groups = {};
@@ -639,7 +669,7 @@ ${list.map((it) => `
   ${it.summary ? `<div style="font-size:14px;color:#374151;line-height:1.6;margin-top:6px;">${esc(it.summary)}</div>` : ""}
   <div style="font-size:12px;color:#6b7280;line-height:1.6;margin-top:6px;">
     ${it.obtain ? `<span style="color:${it.obtain === "free" ? "#047857" : "#92400e"};font-weight:bold;">${OBTAIN_ZH[it.obtain] || ""}</span>&nbsp; ` : ""}${it.signup ? `<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px;">\u6CE8\u518C\uFF1A${esc(it.signup)}</span>&nbsp; ` : ""}
-    ${it.published_at ? ymd(it.published_at) + " \xB7 " : ""}${esc(it.source || "")}${it.score != null ? " \xB7 " + it.score + "\u5206" : ""}
+    ${it.published_at ? ymd(it.published_at) + " \xB7 " : ""}${esc(it.srcs ? it.srcs.map((x) => x.n).join(" / ") : it.source || "")}${it.score != null ? " \xB7 " + it.score + "\u5206" : ""}
   </div>
 </td></tr>`).join("")}`;
   const body = items.length ? Object.keys(CAT).filter((c) => groups[c]).map((c) => section(c, groups[c])).join("") : `<tr><td style="padding:30px 24px;font-family:${font};font-size:14px;color:#6b7280;text-align:center;">\u4ECA\u5929\u6CA1\u6709\u65B0\u7684\u8D44\u6E90\u3002</td></tr>`;
@@ -1130,6 +1160,19 @@ function tag(block, name) {
   const end = block.indexOf("</" + name + ">", gt);
   return end < 0 ? "" : block.slice(gt + 1, end);
 }
+function targetKey(u) {
+  try {
+    const x = new URL(normalizeUrl(u));
+    return (x.hostname.replace(/^(www|m)\./, "").toLowerCase() + x.pathname.replace(/\/+$/, "") + x.search).slice(0, 300);
+  } catch {
+    return String(u || "").slice(0, 300);
+  }
+}
+var mergeSources = (a, b) => {
+  const out = [...a];
+  for (const x of b) if (!out.some((y) => y.u === x.u)) out.push(x);
+  return out.slice(0, 12);
+};
 function parseTelegram(html2, ch) {
   const out = [];
   const parts = html2.split('class="tgme_widget_message_wrap');
@@ -1151,7 +1194,9 @@ function parseTelegram(html2, ch) {
       url: `https://t.me/${post[1]}`,
       published_at: dt ? parseDate(dt[1]) : null,
       raw_text: (text.slice(0, 1200) + (link ? `
-\u94FE\u63A5\uFF1A${decodeEntities(link[1])}` : "")).slice(0, 1500)
+\u94FE\u63A5\uFF1A${decodeEntities(link[1])}` : "")).slice(0, 1500),
+      target: link ? decodeEntities(link[1]) : null
+      // 频道消息指向的原文，用来和其它来源合并
     });
   }
   return out;
@@ -1344,7 +1389,7 @@ function heuristicJudge(item, s) {
     judged_by: "keywords"
   };
 }
-var ZERO_STATS = () => ({ fetched: 0, blocked: 0, block_rule: 0, noise: 0, dup_title: 0, non_zh: 0, hard_signup: 0, too_old: 0, undated: 0, off_topic: 0, candidates: 0, new: 0, trusted: 0, judged: 0, approved: 0, rejected: 0, expired_removed: 0, errors: 0 });
+var ZERO_STATS = () => ({ merged: 0, fetched: 0, blocked: 0, block_rule: 0, noise: 0, dup_title: 0, non_zh: 0, hard_signup: 0, too_old: 0, undated: 0, off_topic: 0, candidates: 0, new: 0, trusted: 0, judged: 0, approved: 0, rejected: 0, expired_removed: 0, errors: 0 });
 var aiReadyOf = (s) => s.ai_enabled !== "false" && !!(s.ai_api_key && s.ai_base_url && s.ai_model);
 function ctxOf(s, now) {
   const maxAgeDays = Math.max(1, Number(s.max_age_days) || 180);
@@ -1483,7 +1528,14 @@ ${it.raw_text || ""}`)) {
       continue;
     }
     if (fp.length >= 8) runFp.add(fp);
-    candidates.set(id, { ...it, url, id, fp });
+    const tkey = targetKey(it.target || url);
+    const twin = [...candidates.values()].find((x) => x.tkey === tkey);
+    if (twin) {
+      twin.also = mergeSources(twin.also || [], [{ n: it.source, u: url }]);
+      stats.merged++;
+      continue;
+    }
+    candidates.set(id, { ...it, url, id, fp, tkey });
   }
   stats.candidates += candidates.size;
   if (!candidates.size) return;
@@ -1501,10 +1553,30 @@ ${it.raw_text || ""}`)) {
       if (row.fp) existingFp.add(row.fp);
     }
   }
+  const byTarget = /* @__PURE__ */ new Map();
+  const tkeys = [...new Set([...candidates.values()].map((x) => x.tkey))];
+  for (let i = 0; i < tkeys.length; i += 90) {
+    const chunk = tkeys.slice(i, i + 90);
+    const { results: rows } = await env.DB.prepare(`SELECT id, target, source, url, sources FROM items WHERE target IN (${chunk.map(() => "?").join(",")})`).bind(...chunk).all();
+    for (const row of rows || []) if (!byTarget.has(row.target)) byTarget.set(row.target, row);
+  }
   const today = dayOf(c.now);
   const stmts = [];
   for (const [id, it] of candidates) {
     if (existing.has(id)) continue;
+    const prev = byTarget.get(it.tkey);
+    if (prev && prev.id !== id) {
+      let list = [];
+      try {
+        list = JSON.parse(prev.sources || "[]");
+      } catch {
+      }
+      list = mergeSources(list, [{ n: it.source, u: it.url }, ...it.also || []].filter((x) => x.u !== prev.url));
+      prev.sources = JSON.stringify(list);
+      stmts.push(env.DB.prepare("UPDATE items SET sources = ? WHERE id = ?").bind(prev.sources, prev.id), env.DB.prepare("INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)").bind(id, it.fp || null, c.now));
+      stats.merged++;
+      continue;
+    }
     if (it.fp && it.fp.length >= 8 && existingFp.has(it.fp)) {
       stats.dup_title++;
       continue;
@@ -1516,7 +1588,7 @@ ${it.raw_text || ""}`)) {
       stats.approved++;
     }
     stmts.push(
-      direct ? env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "approved", it.fp || null, today, it.category, it.name || null, it.summary || (it.raw_text || "").slice(0, 120), it.signup || null, "free", 80, "trusted", c.now) : env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, cats, hint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "pending", it.fp || null, today, it.cats || null, it.hint || null),
+      direct ? env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at, target, sources) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "approved", it.fp || null, today, it.category, it.name || null, it.summary || (it.raw_text || "").slice(0, 120), it.signup || null, "free", 80, "trusted", c.now, it.tkey, it.also ? JSON.stringify(it.also) : null) : env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, cats, hint, target, sources) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "pending", it.fp || null, today, it.cats || null, it.hint || null, it.tkey, it.also ? JSON.stringify(it.also) : null),
       env.DB.prepare("INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)").bind(id, it.fp || null, c.now)
     );
   }
@@ -3012,7 +3084,7 @@ async function loadItems(st) {
     return '<div class="item" id="it-' + it.id + '"><div class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '\u2014') + '</div><div>' +
       '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + esc(it.name || it.title) + '</a>' + ob +
       (it.summary ? '<div class="sum">' + esc(it.summary) + '</div>' : '') +
-      '<div class="meta">' + [esc(it.source), CAT[it.category] || '', it.signup ? '\u6CE8\u518C\uFF1A' + esc(it.signup) : '', ago(it.published_at), it.judged_by ? esc(it.judged_by) : ''].filter(Boolean).join('<i>\xB7</i>') + '</div>' +
+      '<div class="meta">' + [esc(it.source) + (() => { try { const l = JSON.parse(it.sources || '[]'); return l.length ? ' <span class="tag zh" title="' + esc(l.map((x) => x.n).join('\u3001')) + '">+' + l.length + ' \u4E2A\u6765\u6E90</span>' : ''; } catch { return ''; } })(), CAT[it.category] || '', it.signup ? '\u6CE8\u518C\uFF1A' + esc(it.signup) : '', ago(it.published_at), it.judged_by ? esc(it.judged_by) : ''].filter(Boolean).join('<i>\xB7</i>') + '</div>' +
       (it.name && it.name !== it.title ? '<div class="meta">' + esc(it.title) + '</div>' : '') +
       '</div><div class="acts">' +
       (st !== 'approved' ? '<button class="btn sm" onclick="setStatus(\\'' + it.id + '\\',\\'approved\\', this)">\u901A\u8FC7</button>' : '') +
@@ -3254,6 +3326,8 @@ var public_default = `<!doctype html>
     .card:hover { transform:none; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+  .srcs { color:var(--accent-2, #312e81); }
+  .srcs a { color:inherit; text-decoration:underline dotted; text-underline-offset:2px; }
 </style>
 </head>
 <body>
@@ -3338,7 +3412,7 @@ function rowHtml(it, i) {
   return '<div class="row" style="--c:' + (c.color || '') + '"><div>' +
     '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + hl(it.name || it.title) + '</a>' + chips(it) +
     (it.summary ? '<div class="sum">' + hl(it.summary) + '</div>' : '') +
-    '<div class="meta">' + ['<span class="cat">' + dot(c) + esc(c.label) + '</span>', it.signup ? '\u6CE8\u518C\uFF1A' + esc(it.signup) : '', '<span class="host">' + esc(host(it.url)) + '</span>', hl(it.source || '')].filter(Boolean).join('<i>\xB7</i>') + '</div></div>' +
+    '<div class="meta">' + ['<span class="cat">' + dot(c) + esc(c.label) + '</span>', it.signup ? '\u6CE8\u518C\uFF1A' + esc(it.signup) : '', '<span class="host">' + esc(host(it.url)) + '</span>', (it.srcs ? '<span class="srcs" title="' + esc(it.srcs.map((x) => x.n).join('\u3001')) + '">' + it.srcs.length + ' \u4E2A\u6765\u6E90\uFF1A' + it.srcs.map((x) => '<a href="' + esc(x.u) + '" target="_blank" rel="noopener">' + hl(x.n || '') + '</a>').join(' / ') + '</span>' : hl(it.source || ''))].filter(Boolean).join('<i>\xB7</i>') + '</div></div>' +
     '<div class="side"><span class="time">' + ago(it.published_at) + '</span><button class="copy press" data-i="' + i + '">\u590D\u5236\u94FE\u63A5</button></div></div>';
 }
 function cardHtml(it) {
@@ -3357,7 +3431,7 @@ function matches(it, skip) {
   if (skip !== 'day' && state.day && it.day !== state.day) return false;
   if (state.q) {
     const q = state.q.toLowerCase();
-    if (!((it.name || '') + ' ' + it.title + ' ' + (it.summary || '') + ' ' + (it.source || '') + ' ' + it.url).toLowerCase().includes(q)) return false;
+    if (!((it.name || '') + ' ' + it.title + ' ' + (it.summary || '') + ' ' + (it.srcs ? it.srcs.map((x) => x.n).join(' ') : it.source || '') + ' ' + it.url).toLowerCase().includes(q)) return false;
   }
   return true;
 }
@@ -3531,7 +3605,7 @@ async function publicData(env) {
   return memo("data", ttl, async () => {
     const cutoff = Date.now() - (Number(st.max_age_days) || 180) * 864e5;
     const [items, last] = await Promise.all([
-      env.DB.prepare("SELECT id, title, url, source, published_at, day, category, name, summary, signup, score, obtain FROM items WHERE status = 'approved' AND (published_at IS NULL OR published_at >= ?) ORDER BY day DESC, score DESC, published_at DESC LIMIT 1500").bind(cutoff).all(),
+      env.DB.prepare("SELECT id, title, url, source, published_at, day, category, name, summary, signup, score, obtain, target, sources FROM items WHERE status = 'approved' AND (published_at IS NULL OR published_at >= ?) ORDER BY day DESC, score DESC, published_at DESC LIMIT 1500").bind(cutoff).all(),
       env.DB.prepare("SELECT MAX(finished_at) AS t FROM runs WHERE trigger != 'mail'").first()
     ]);
     const data = {
@@ -3541,7 +3615,7 @@ async function publicData(env) {
       every: Math.min(24, Math.max(1, Number(st.crawl_every_hours) || 24)),
       last_run: last?.t || null,
       categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color })),
-      items: items.results || []
+      items: foldItems(items.results || [])
     };
     return JSON.stringify(data);
   });
