@@ -1,6 +1,6 @@
 {
   "name": "free-resource-radar",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,5 +11,18 @@
   "devDependencies": {
     "esbuild": "^0.24.0",
     "wrangler": "^4.45.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "存资源和设置的 D1 数据库，保持默认即可，数据表会自动创建。"
+      },
+      "SECRETS": {
+        "description": "存 AI Key、邮箱授权码等敏感信息的 KV，保持默认即可。"
+      },
+      "ADMIN_TOKEN": {
+        "description": "后台 `/admin` 的登录密码，**请改成你自己的一串长密码**。"
+      }
+    }
   }
 }

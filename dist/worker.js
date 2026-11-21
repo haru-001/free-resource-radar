@@ -1976,10 +1976,14 @@ function safeEqual(a, b) {
   for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] || 0) ^ (y[i] || 0);
   return diff === 0;
 }
+var envToken = (env) => {
+  const t = String(env.ADMIN_TOKEN || "").trim();
+  return t && t !== "change-me" ? t : "";
+};
 async function isAdmin(req, env) {
   const got = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   if (!got) return false;
-  if (env.ADMIN_TOKEN) return safeEqual(got, env.ADMIN_TOKEN);
+  if (envToken(env)) return safeEqual(got, envToken(env));
   const h = await getAdminHash(env);
   return !!h && safeEqual(await sha256("frr:" + got), h);
 }
@@ -2137,10 +2141,10 @@ var index_default = {
       }
       if (url.pathname.startsWith("/api/admin/")) {
         if (url.pathname === "/api/admin/status") {
-          return json({ initialized: !!env.ADMIN_TOKEN || !!await getAdminHash(env), env_token: !!env.ADMIN_TOKEN, storage: storageMode(env) });
+          return json({ initialized: !!envToken(env) || !!await getAdminHash(env), env_token: !!envToken(env), storage: storageMode(env) });
         }
         if (url.pathname === "/api/admin/setup" && req.method === "POST") {
-          if (env.ADMIN_TOKEN || await getAdminHash(env)) return json({ error: "\u5DF2\u7ECF\u8BBE\u7F6E\u8FC7\u7BA1\u7406\u5458\u5BC6\u7801" }, 409);
+          if (envToken(env) || await getAdminHash(env)) return json({ error: "\u5DF2\u7ECF\u8BBE\u7F6E\u8FC7\u7BA1\u7406\u5458\u5BC6\u7801" }, 409);
           const { password } = await req.json().catch(() => ({}));
           if (!password || String(password).length < 8) return json({ error: "\u5BC6\u7801\u81F3\u5C11 8 \u4F4D" }, 400);
           await setAdminHash(env, String(password));
@@ -2148,7 +2152,7 @@ var index_default = {
         }
         if (!await isAdmin(req, env)) return json({ error: "\u672A\u6388\u6743" }, 401);
         if (url.pathname === "/api/admin/password" && req.method === "POST") {
-          if (env.ADMIN_TOKEN) return json({ error: "\u5F53\u524D\u4F7F\u7528\u73AF\u5883\u53D8\u91CF ADMIN_TOKEN\uFF0C\u8BF7\u5728 Cloudflare \u63A7\u5236\u53F0\u4FEE\u6539" }, 400);
+          if (envToken(env)) return json({ error: "\u5F53\u524D\u4F7F\u7528\u73AF\u5883\u53D8\u91CF ADMIN_TOKEN\uFF0C\u8BF7\u5728 Cloudflare \u63A7\u5236\u53F0\u4FEE\u6539" }, 400);
           const { password } = await req.json().catch(() => ({}));
           if (!password || String(password).length < 8) return json({ error: "\u5BC6\u7801\u81F3\u5C11 8 \u4F4D" }, 400);
           await setAdminHash(env, String(password));

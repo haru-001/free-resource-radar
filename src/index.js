@@ -17,11 +17,14 @@ function safeEqual(a, b) {
   for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] || 0) ^ (y[i] || 0);
   return diff === 0;
 }
+// 部署时没改默认值的 ADMIN_TOKEN 视为未设置，改用后台首次设置的密码
+const envToken = (env) => { const t = String(env.ADMIN_TOKEN || '').trim(); return t && t !== 'change-me' ? t : ''; };
+
 // 鉴权：优先用环境变量 ADMIN_TOKEN；没设置时用首次打开后台时设置的密码（哈希存 D1）
 async function isAdmin(req, env) {
   const got = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
   if (!got) return false;
-  if (env.ADMIN_TOKEN) return safeEqual(got, env.ADMIN_TOKEN);
+  if (envToken(env)) return safeEqual(got, envToken(env));
   const h = await getAdminHash(env);
   return !!h && safeEqual(await sha256('frr:' + got), h);
 }
@@ -168,10 +171,10 @@ export default {
       }
       if (url.pathname.startsWith('/api/admin/')) {
         if (url.pathname === '/api/admin/status') {
-          return json({ initialized: !!env.ADMIN_TOKEN || !!(await getAdminHash(env)), env_token: !!env.ADMIN_TOKEN, storage: storageMode(env) });
+          return json({ initialized: !!envToken(env) || !!(await getAdminHash(env)), env_token: !!envToken(env), storage: storageMode(env) });
         }
         if (url.pathname === '/api/admin/setup' && req.method === 'POST') {
-          if (env.ADMIN_TOKEN || (await getAdminHash(env))) return json({ error: '已经设置过管理员密码' }, 409);
+          if (envToken(env) || (await getAdminHash(env))) return json({ error: '已经设置过管理员密码' }, 409);
           const { password } = await req.json().catch(() => ({}));
           if (!password || String(password).length < 8) return json({ error: '密码至少 8 位' }, 400);
           await setAdminHash(env, String(password));
@@ -179,7 +182,7 @@ export default {
         }
         if (!(await isAdmin(req, env))) return json({ error: '未授权' }, 401);
         if (url.pathname === '/api/admin/password' && req.method === 'POST') {
-          if (env.ADMIN_TOKEN) return json({ error: '当前使用环境变量 ADMIN_TOKEN，请在 Cloudflare 控制台修改' }, 400);
+          if (envToken(env)) return json({ error: '当前使用环境变量 ADMIN_TOKEN，请在 Cloudflare 控制台修改' }, 400);
           const { password } = await req.json().catch(() => ({}));
           if (!password || String(password).length < 8) return json({ error: '密码至少 8 位' }, 400);
           await setAdminHash(env, String(password));
