@@ -83,7 +83,8 @@ export const DEFAULT_SETTINGS = {
   mail_api_key: '',          // Resend / Brevo 的 Key，存 KV
   mail_from: '',             // 发件地址；SMTP 留空则使用 smtp_user（QQ 要求一致）
   mail_from_name: '免费资源雷达',
-  mail_to: '',               // 收件人，多个用逗号或换行分隔
+  mail_to: '',               // 收件人，多个用逗号分隔（最多 10 个）
+  mail_separate: 'true',     // 每个收件人单独发一封，互相看不到地址
   mail_subject: '免费资源雷达 · 今日白嫖',
   mail_only_new: 'true',     // 只发上次之后新通过的
   mail_send_empty: 'false',  // 没有新内容也发
@@ -101,9 +102,15 @@ export const DEFAULT_SETTINGS = {
   block_rules: ['# 每行一条，普通文本为关键词，/正则/i 为正则；命中即丢弃，不送 AI', '已失效', '/已(关闭|停止)注册/'].join('\n'),
   max_age_days: '180',    // 超过半年的消息过滤掉
   retention_days: '15',
-  run_hour: '9',          // 每天几点开始抓取（北京时间，0-23）；抓完自动推送
+  run_hour: '9',          // 每天第一次抓取的时间（北京时间，0-23）
+  crawl_every_hours: '6', // 每隔几小时抓一次（从 run_hour 起算；24 = 每天一次）
+  mail_hours: '9,21',     // 每天几点推送（北京时间，逗号分隔；若刚好在抓取，抓完再推）
   steps_per_tick: '1',    // 每次定时调用执行几步；免费版保持 1（10ms CPU 限制），付费版可调大   // 抓到的数据按日期存储，保留 15 天后自动清理
   keep_undated: 'false',  // 无发布日期的条目是否保留
+  // 访问触发与缓存
+  trigger_min_seconds: '30', // 触发地址 / 访问触发的最小间隔（秒），间隔内的请求直接返回不执行
+  visit_trigger: 'false',    // 有人打开资源页时顺带推进一步抓取（定时任务的备用方案）
+  public_cache_seconds: '60', // 资源页数据缓存秒数，缓存期内不查数据库
   // 分类：勾选要收集的；推送分类留空 = 与收集相同
   enabled_categories: 'domain,hosting,cloud,ai,software,dev,game,edu',
   mail_categories: '',
@@ -201,6 +208,32 @@ export async function saveSettings(env, patch) {
   }
   await Promise.all(kvWrites);
   if (stmts.length) await env.DB.batch(stmts);
+}
+
+// 只读普通设置（不读 KV / 密钥），资源页等公开请求用，更快
+export async function getBasicSettings(env) {
+  const { results } = await env.DB.prepare('SELECT key, value FROM settings').all();
+  const s = { ...DEFAULT_SETTINGS };
+  for (const r of results || []) if (r.key in DEFAULT_SETTINGS && !KV_KEYS.includes(r.key)) s[r.key] = r.value;
+  return s;
+}
+
+// ---------- 内部小状态（存 secrets 表，key 以 meta: 开头） ----------
+export async function getMeta(env, k) {
+  const r = await env.DB.prepare('SELECT value FROM secrets WHERE key = ?').bind('meta:' + k).first();
+  return r?.value ?? null;
+}
+export function setMeta(env, k, v) {
+  return env.DB.prepare('INSERT INTO secrets (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind('meta:' + k, String(v)).run();
+}
+// 触发地址的密钥：首次读取时自动生成
+export async function getCronKey(env, regenerate = false) {
+  let k = regenerate ? null : await getMeta(env, 'cron_key');
+  if (!k) {
+    k = [...crypto.getRandomValues(new Uint8Array(12))].map((b) => b.toString(16).padStart(2, '0')).join('');
+    await setMeta(env, 'cron_key', k);
+  }
+  return k;
 }
 
 export const lines = (txt) =>

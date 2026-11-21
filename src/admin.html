@@ -2,203 +2,364 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>管理 · 免费资源雷达</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='5' fill='%23312e81'/></svg>" />
+<meta name="theme-color" content="#f7f7fb" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%234f46e5'/><stop offset='1' stop-color='%23312e81'/></linearGradient></defs><rect width='32' height='32' rx='9' fill='url(%23g)'/><circle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2' opacity='.4'/><circle cx='16' cy='16' r='4' fill='%23fff'/></svg>" />
 <style>
   :root {
-    --canvas:#f6f7f9; --canvas-subtle:#eceef2; --surface:#fff; --hover:#f7f8fb; --muted:#f1f3f6;
-    --ink-950:#111318; --ink-700:#374151; --ink-600:#4b5563; --ink-500:#525c6b; --ink-400:#646f80; --ink-300:#d1d5de; --ink-200:#e6e8ec;
-    --brand:#111318; --brand-hover:#272b36; --brand-subtle:#eef0ff; --brand-border:#c7d0f8; --accent:#312e81;
-    --deal:#047857; --deal-subtle:#ecfdf5; --code:#92400e; --code-subtle:#fef3c7; --alert:#dc2626; --alert-subtle:#fef2f2;
-    --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --bg:#f7f7fb; --rail:#f2f2f8; --surface:#fff; --hover:#f6f6fb; --muted:#f1f1f7; --line:#e7e7ef; --line-2:#d6d7e2;
+    --ink:#14151c; --ink-2:#3a3d4a; --ink-3:#5f6372; --ink-4:#8a8e9c;
+    --brand:#14151c; --accent:#4f46e5; --accent-2:#312e81; --accent-bg:#eef0ff; --accent-line:#c9cdfb;
+    --deal:#047857; --deal-bg:#e8f8f0; --cond:#9a5b0b; --cond-bg:#fdf3e1; --alert:#dc2626; --alert-bg:#fef2f2; --warn:#b45309; --warn-bg:#fff7e6;
+    --shadow:0 1px 2px rgba(20,21,28,.04), 0 6px 20px rgba(20,21,28,.06);
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   }
-  * { box-sizing:border-box; }
-  html, body { margin:0; height:100%; }
-  body { font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif; color:var(--ink-950); background:var(--surface); -webkit-font-smoothing:antialiased; }
-  ::selection { background:var(--brand-subtle); }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; }
+  body { font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; color:var(--ink); background:var(--bg); -webkit-font-smoothing:antialiased; }
+  ::selection { background:var(--accent-bg); }
   a { color:var(--accent); text-decoration:none; }
   a:hover { text-decoration:underline; }
-  .app { display:grid; grid-template-columns:240px minmax(0,1fr); min-height:100vh; }
-  /* 左导轨 */
-  .rail { background:var(--canvas); border-right:1px solid var(--ink-200); padding:18px 12px; position:sticky; top:0; height:100vh; overflow:auto; }
-  .brand { display:flex; align-items:center; gap:8px; font-weight:600; font-size:14px; padding:2px 8px 16px; }
-  .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); flex:none; }
-  .nav-title { font:600 11px/1.3 var(--mono); color:var(--ink-400); text-transform:uppercase; letter-spacing:.04em; padding:14px 8px 6px; }
-  .nav a { display:flex; justify-content:space-between; align-items:center; padding:7px 10px; border-radius:6px; color:var(--ink-700); font-size:13px; }
-  .nav a:hover { background:var(--canvas-subtle); text-decoration:none; }
-  .nav a.on { background:var(--canvas-subtle); color:var(--ink-950); font-weight:600; }
-  .nav .n { font:600 11px var(--mono); color:var(--ink-400); font-variant-numeric:tabular-nums; }
-  /* 主画布 */
+  code { font:12px var(--mono); background:var(--muted); padding:1px 6px; border-radius:5px; }
+  .app { display:grid; grid-template-columns:244px minmax(0,1fr); min-height:100vh; }
+
+  /* ---------- 侧栏 ---------- */
+  .rail { background:var(--rail); border-right:1px solid var(--line); padding:20px 14px; position:sticky; top:0; height:100vh; overflow:auto; display:flex; flex-direction:column; }
+  .brand { display:flex; align-items:center; gap:11px; padding:0 6px 20px; color:var(--ink); }
+  .brand:hover { text-decoration:none; }
+  .brand:hover b { color:var(--accent); }
+  .logo { width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,#6366f1,#312e81); display:grid; place-items:center; flex:none; box-shadow:0 4px 12px rgba(79,70,229,.28); }
+  .logo i { width:9px; height:9px; border-radius:50%; background:#fff; box-shadow:0 0 0 5px rgba(255,255,255,.25); }
+  .brand b { display:block; font-size:14.5px; font-weight:700; transition:color .12s; }
+  .brand small { display:block; font-size:12px; color:var(--ink-4); }
+  .nav-title { font-size:12px; font-weight:600; color:var(--ink-4); padding:14px 10px 6px; }
+  .nav a { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:9px; color:var(--ink-2); font-size:13.5px; transition:background-color .12s; }
+  .nav a svg { flex:none; color:var(--ink-4); }
+  .nav a .lb { flex:1; }
+  .nav a:hover { background:color-mix(in srgb, var(--ink) 5%, transparent); text-decoration:none; }
+  .nav a.on { background:var(--surface); color:var(--ink); font-weight:600; box-shadow:var(--shadow); }
+  .nav a.on svg { color:var(--accent); }
+  .nav .n { font:600 11px/18px var(--mono); color:#fff; background:var(--accent); border-radius:999px; padding:0 7px; font-variant-numeric:tabular-nums; }
+  .nav .n:empty { display:none; }
+  .rail .foot { margin-top:auto; padding-top:16px; }
+
+  /* ---------- 顶栏 ---------- */
   .main { min-width:0; }
-  .top { position:sticky; top:0; z-index:5; background:rgba(255,255,255,.92); backdrop-filter:blur(8px); border-bottom:1px solid var(--ink-200); padding:14px 28px; display:flex; align-items:center; gap:10px; }
-  .top h1 { font-size:17px; font-weight:600; margin:0; flex:1; }
-  .page { padding:22px 28px 60px; max-width:980px; }
-  .panel { display:none; }
+  .top { position:sticky; top:0; z-index:10; background:color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter:saturate(1.6) blur(14px); -webkit-backdrop-filter:saturate(1.6) blur(14px); border-bottom:1px solid var(--line); padding:12px 32px; display:flex; align-items:center; gap:10px; min-height:60px; }
+  .top h1 { font-size:18px; font-weight:700; margin:0; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .menu { display:none; }
+  .page { padding:24px 32px 120px; max-width:1000px; }
+  .panel { display:none; animation:in .18s ease; }
   .panel.on { display:block; }
-  .section { border:1px solid var(--ink-200); border-radius:8px; margin-bottom:16px; }
-  .section > header { display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid var(--ink-200); }
-  .section > header h2 { font-size:14px; font-weight:600; margin:0; flex:1; }
-  .section .body { padding:14px 16px; display:grid; gap:14px; }
-  .grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 16px; }
-  .grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px 16px; }
-  label.f { display:block; font-size:12px; color:var(--ink-500); margin-bottom:4px; }
+  @keyframes in { from { opacity:0; transform:translateY(4px); } }
+  .desc { color:var(--ink-3); margin:-6px 0 18px; font-size:13px; }
+
+  .section { background:var(--surface); border:1px solid var(--line); border-radius:14px; margin-bottom:16px; }
+  .section > header { display:flex; align-items:center; gap:10px; padding:14px 18px; border-bottom:1px solid var(--line); }
+  .section > header h2 { font-size:14.5px; font-weight:650; margin:0; flex:1; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .section .body { padding:16px 18px; display:grid; gap:16px; }
+  .grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px 18px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px 18px; }
+  label.f { display:block; font-size:12.5px; color:var(--ink-3); margin-bottom:5px; font-weight:500; }
   input[type=text], input[type=password], input[type=number], select, textarea {
-    width:100%; height:36px; padding:0 10px; border:1px solid var(--ink-200); border-radius:6px; font:inherit; color:var(--ink-950); background:var(--surface); outline:none; }
-  textarea { height:auto; min-height:110px; padding:8px 10px; font:12px/1.55 var(--mono); resize:vertical; }
-  input:focus, select:focus, textarea:focus { border-color:var(--brand-border); box-shadow:0 0 0 3px var(--brand-subtle); }
-  .hint { font-size:12px; color:var(--ink-400); }
+    width:100%; height:38px; padding:0 12px; border:1px solid var(--line); border-radius:9px; font:inherit; font-size:13.5px; color:var(--ink); background:var(--surface); outline:none; transition:border-color .12s, box-shadow .12s, background-color .12s; }
+  textarea { height:auto; min-height:120px; padding:9px 12px; font:12.5px/1.6 var(--mono); resize:vertical; }
+  input:focus, select:focus, textarea:focus { border-color:var(--accent-line); box-shadow:0 0 0 4px var(--accent-bg); }
+  .changed input:not([type=checkbox]), .changed select, .changed textarea, input.changed, select.changed, textarea.changed { border-color:#f4c46a; background:var(--warn-bg); }
+  .sw.changed::after, .chk.changed::after { content:"未保存"; font-size:11px; color:var(--warn); background:var(--warn-bg); border-radius:999px; padding:0 7px; }
+  [data-csv].changed { outline:2px dashed #f4c46a; outline-offset:5px; border-radius:12px; }
+  .rcpt { display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-height:38px; padding:4px 6px; border:1px solid var(--line); border-radius:9px; background:var(--surface); cursor:text; transition:border-color .12s, box-shadow .12s; }
+  .rcpt:focus-within { border-color:var(--accent-line); box-shadow:0 0 0 4px var(--accent-bg); }
+  .rcpt.changed { border-color:#f4c46a; background:var(--warn-bg); }
+  .rcpt .em { display:inline-flex; align-items:center; gap:4px; background:var(--accent-bg); color:var(--accent-2); border-radius:7px; padding:2px 4px 2px 9px; font-size:13px; }
+  .rcpt .em.bad { background:var(--alert-bg); color:var(--alert); }
+  .rcpt .em button { border:none; background:transparent; color:inherit; cursor:pointer; width:20px; height:20px; border-radius:5px; font-size:14px; line-height:1; opacity:.6; }
+  .rcpt .em button:hover { opacity:1; background:color-mix(in srgb, currentColor 12%, transparent); }
+  .rcpt input { flex:1; min-width:150px; border:none !important; box-shadow:none !important; height:28px; padding:0 4px; background:transparent !important; }
+  .pills { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .pills button { border:1px solid var(--line); background:var(--surface); border-radius:999px; padding:3px 11px; font:inherit; font-size:12.5px; color:var(--ink-3); cursor:pointer; transition:.12s; }
+  .pills button:active { transform:scale(.96); }
+  .pills button.on { background:var(--accent-bg); border-color:var(--accent-line); color:var(--accent-2); font-weight:600; }
+  .sched { font-size:12.5px; color:var(--ink-3); margin-top:6px; }
+  .sched b { color:var(--accent-2); font-weight:600; }
+  .hint { font-size:12.5px; color:var(--ink-4); line-height:1.6; }
   .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .row > .grow { flex:1; min-width:180px; }
-  .btn { height:32px; padding:0 12px; border-radius:6px; border:1px solid var(--ink-200); background:var(--surface); color:var(--ink-700); font:inherit; cursor:pointer; white-space:nowrap; }
-  .btn:hover { background:var(--hover); }
+  .btn { height:36px; padding:0 14px; border-radius:9px; border:1px solid var(--line); background:var(--surface); color:var(--ink-2); font:inherit; font-size:13.5px; font-weight:500; cursor:pointer; white-space:nowrap; display:inline-flex; align-items:center; justify-content:center; gap:6px; transition:transform .08s, background-color .12s, border-color .12s, box-shadow .12s; }
+  .btn:hover { background:var(--hover); border-color:var(--line-2); }
+  .btn:active { transform:scale(.97); }
   .btn.pri { background:var(--brand); border-color:var(--brand); color:#fff; }
-  .btn.pri:hover { background:var(--brand-hover); }
+  .btn.pri:hover { background:#2b2e3a; }
+  .btn.acc { background:var(--accent); border-color:var(--accent); color:#fff; }
   .btn.danger { color:var(--alert); }
-  .btn:disabled { opacity:.55; cursor:wait; }
-  .btn.sm { height:26px; padding:0 8px; font-size:12px; }
+  .btn.sm { height:30px; padding:0 10px; font-size:12.5px; border-radius:8px; }
+  .btn:disabled { opacity:.7; cursor:progress; }
+  .btn.loading::before { content:""; width:12px; height:12px; border-radius:50%; border:2px solid currentColor; border-right-color:transparent; animation:spin .7s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .btn .dot { width:7px; height:7px; border-radius:50%; background:#f59e0b; display:none; }
+  body.dirty .btn.save .dot { display:inline-block; }
+
   /* 开关 */
-  .sw { display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; color:var(--ink-700); user-select:none; }
-  .sw input { appearance:none; width:30px; height:18px; border-radius:999px; background:var(--ink-300); position:relative; cursor:pointer; transition:.15s; margin:0; }
-  .sw input::after { content:""; position:absolute; top:2px; left:2px; width:14px; height:14px; border-radius:50%; background:#fff; transition:.15s; }
-  .sw input:checked { background:var(--brand); }
-  .sw input:checked::after { left:14px; }
-  .tag { font:600 11px/18px var(--mono); padding:0 6px; border-radius:4px; background:var(--muted, #f1f3f6); color:var(--ink-500); margin-left:6px; vertical-align:2px; }
-  .tag.free { background:#ecfdf5; color:#047857; }
-  .tag.zh { background:#eef0ff; color:#312e81; }
-  .quota { font-size:13px; color:var(--ink-700); padding-top:7px; }
-  a.reg { color:var(--accent); font-size:13px; text-decoration:none; }
-  a.reg:hover { text-decoration:underline; }
-  .chk { display:inline-flex; align-items:center; gap:6px; margin-right:14px; font-size:13px; color:var(--ink-700); }
-  /* 分类勾选卡片 */
-  .cats { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:8px; }
-  .cat { position:relative; display:flex; gap:10px; align-items:flex-start; border:1px solid var(--ink-200); border-radius:8px; padding:10px 12px; cursor:pointer; user-select:none; }
-  .cat:hover { border-color:var(--ink-300); background:var(--hover); }
+  .sw { display:inline-flex; align-items:center; gap:9px; cursor:pointer; font-size:13.5px; color:var(--ink-2); user-select:none; }
+  .sw input { appearance:none; -webkit-appearance:none; width:36px; height:21px; border-radius:999px; background:var(--line-2); position:relative; cursor:pointer; transition:.18s; margin:0; flex:none; }
+  .sw input::after { content:""; position:absolute; top:2.5px; left:2.5px; width:16px; height:16px; border-radius:50%; background:#fff; transition:.18s; box-shadow:0 1px 3px rgba(0,0,0,.2); }
+  .sw input:checked { background:var(--accent); }
+  .sw input:checked::after { left:17.5px; }
+  .tag { font:600 11px/19px inherit; font-family:inherit; padding:0 8px; border-radius:999px; background:var(--muted); color:var(--ink-3); white-space:nowrap; }
+  .tag.free { background:var(--deal-bg); color:var(--deal); }
+  .tag.zh { background:var(--accent-bg); color:var(--accent-2); }
+  .tag.on { background:var(--deal-bg); color:var(--deal); }
+  .tag.off { background:var(--muted); color:var(--ink-4); }
+  .chk { display:inline-flex; align-items:center; gap:7px; margin:4px 16px 4px 0; font-size:13.5px; color:var(--ink-2); cursor:pointer; }
+  .chk input { width:16px; height:16px; accent-color:var(--accent); }
+  .callout { background:var(--accent-bg); border:1px solid var(--accent-line); color:var(--accent-2); border-radius:10px; padding:10px 14px; font-size:13px; line-height:1.65; }
+
+  /* 分类卡片 */
+  .cats { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:10px; }
+  .cat { position:relative; display:flex; gap:10px; align-items:flex-start; border:1px solid var(--line); border-radius:11px; padding:11px 12px; cursor:pointer; user-select:none; transition:border-color .12s, background-color .12s, transform .08s; }
+  .cat:hover { border-color:var(--line-2); background:var(--hover); }
+  .cat:active { transform:scale(.98); }
   .cat input { position:absolute; opacity:0; pointer-events:none; }
-  .cat .ic { width:10px; height:10px; border-radius:50%; flex:none; margin-top:5px; }
-  .cat .tx { flex:1; min-width:0; padding-right:18px; }
-  .cat b { display:block; font-size:13px; font-weight:600; }
-  .cat small { display:block; color:var(--ink-400); font-size:11px; line-height:1.4; margin-top:2px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
-  .cat .ck { position:absolute; right:8px; top:8px; width:16px; height:16px; border-radius:4px; border:1px solid var(--ink-300); display:grid; place-items:center; font-size:11px; color:transparent; }
-  .cat:has(input:checked) { border-color:var(--brand); background:var(--brand-subtle); }
-  .cat:has(input:checked) .ck { background:var(--brand); border-color:var(--brand); color:#fff; }
-  .cats.mini { grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); }
-  .cats.mini .cat { padding:7px 10px; }
+  .cat .ic { width:10px; height:10px; border-radius:50%; flex:none; margin-top:6px; }
+  .cat .tx { flex:1; min-width:0; padding-right:20px; }
+  .cat b { display:block; font-size:13.5px; font-weight:600; }
+  .cat small { display:block; color:var(--ink-4); font-size:11.5px; line-height:1.4; margin-top:2px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .cat .ck { position:absolute; right:10px; top:11px; width:18px; height:18px; border-radius:6px; border:1.5px solid var(--line-2); display:grid; place-items:center; font-size:11px; color:transparent; transition:.12s; }
+  .cat:has(input:checked) { border-color:var(--accent-line); background:var(--accent-bg); }
+  .cat:has(input:checked) .ck { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .cats.mini { grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); }
+  .cats.mini .cat { padding:8px 10px; }
+  .cats.mini .cat .ic { margin-top:5px; }
   .cats.mini small { display:none; }
+
+  /* 搜索后端：紧凑行 */
+  .be { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) auto; gap:10px 16px; align-items:center; padding:14px 18px; border-top:1px solid var(--line); }
+  .be:first-child { border-top:none; }
+  .be .nm { font-weight:650; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .be .q { font-size:12.5px; color:var(--ink-3); margin-top:3px; }
+  .be .ops { display:flex; gap:8px; align-items:center; justify-content:flex-end; }
+  .be .ln { grid-column:1 / -1; display:flex; gap:14px; font-size:12.5px; margin-top:-4px; }
+  .be pre { grid-column:1 / -1; margin:0; }
+  .be.off .nm, .be.off .q { opacity:.55; }
+
   /* 列表 */
-  .tabs { display:flex; gap:18px; border-bottom:1px solid var(--ink-200); margin-bottom:4px; }
-  .tabs button { background:none; border:none; padding:8px 0; font:inherit; color:var(--ink-500); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; }
-  .tabs button.on { color:var(--ink-950); font-weight:600; border-color:var(--accent); }
-  .tabs .n { font:600 11px var(--mono); color:var(--ink-400); margin-left:4px; }
-  .item { display:grid; grid-template-columns:40px minmax(0,1fr) auto; gap:10px; padding:12px 6px; border-bottom:1px solid var(--ink-200); align-items:start; }
+  .tabs { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; align-items:center; }
+  .tabs button { background:var(--surface); border:1px solid var(--line); padding:6px 14px; font:inherit; font-size:13px; color:var(--ink-3); cursor:pointer; border-radius:999px; transition:.12s; }
+  .tabs button:active { transform:scale(.97); }
+  .tabs button.on { color:#fff; background:var(--ink); border-color:var(--ink); font-weight:600; }
+  .tabs .n { font:600 11px var(--mono); margin-left:5px; opacity:.7; }
+  .list { background:var(--surface); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+  .item { display:grid; grid-template-columns:44px minmax(0,1fr) auto; gap:12px; padding:14px 16px; border-top:1px solid var(--line); align-items:start; transition:background-color .12s, opacity .2s; }
+  .item:first-child { border-top:none; }
   .item:hover { background:var(--hover); }
-  .score { font:600 12px var(--mono); color:var(--ink-400); text-align:right; padding-top:1px; font-variant-numeric:tabular-nums; }
-  .score.hi { color:var(--deal); }
-  .t { font-size:14px; font-weight:500; color:var(--ink-950); line-height:1.35; word-break:break-word; }
+  .item.gone { opacity:.3; pointer-events:none; }
+  .score { font:700 13px/22px var(--mono); color:var(--ink-4); text-align:center; background:var(--muted); border-radius:7px; font-variant-numeric:tabular-nums; }
+  .score.hi { color:var(--deal); background:var(--deal-bg); }
+  .t { font-size:14.5px; font-weight:600; color:var(--ink); line-height:1.4; word-break:break-word; }
   .t:hover { color:var(--accent); text-decoration:none; }
-  .free { color:var(--deal); font-size:12px; margin-left:6px; }
-  .cond { color:var(--code); font-size:12px; margin-left:6px; }
-  .sum { color:var(--ink-600); margin-top:3px; }
-  .meta { color:var(--ink-400); font-size:12px; margin-top:3px; }
-  .meta i { font-style:normal; margin:0 5px; color:var(--ink-300); }
-  .acts { display:flex; gap:4px; opacity:.35; transition:.12s; }
+  .ob { font-size:11px; font-weight:600; border-radius:999px; padding:1px 8px; margin-left:6px; vertical-align:1px; }
+  .ob.free { color:var(--deal); background:var(--deal-bg); }
+  .ob.cond { color:var(--cond); background:var(--cond-bg); }
+  .sum { color:var(--ink-3); margin-top:3px; font-size:13.5px; }
+  .meta { color:var(--ink-4); font-size:12px; margin-top:4px; }
+  .meta i { font-style:normal; margin:0 6px; color:var(--line-2); }
+  .acts { display:flex; gap:6px; opacity:.4; transition:.12s; }
   .item:hover .acts { opacity:1; }
-  .empty { color:var(--ink-400); padding:40px 0; text-align:center; }
-  details { border-bottom:1px solid var(--ink-200); padding:10px 4px; }
-  summary { cursor:pointer; color:var(--ink-700); }
-  pre { background:var(--muted); border-radius:6px; padding:10px 12px; font:12px/1.55 var(--mono); white-space:pre-wrap; word-break:break-all; margin:8px 0 0; }
-  .callout { background:var(--brand-subtle); border:1px solid var(--brand-border); color:var(--accent); border-radius:6px; padding:8px 12px; font-size:12px; }
-  #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink-950); color:#fff; padding:9px 16px; border-radius:8px; box-shadow:0 8px 24px rgba(17,19,24,.18); display:none; max-width:min(560px,90vw); z-index:20; }
-  #gate { position:fixed; inset:0; background:rgba(246,247,249,.96); display:none; align-items:center; justify-content:center; z-index:30; }
-  #gate .box { width:340px; background:#fff; border:1px solid var(--ink-200); border-radius:8px; padding:22px; box-shadow:0 12px 32px rgba(17,19,24,.08); }
-  #gate h3 { margin:0 0 4px; font-size:17px; }
+  .empty { color:var(--ink-4); padding:56px 0; text-align:center; }
+  .runbox { background:var(--surface); border:1px solid var(--accent-line); border-radius:14px; margin-bottom:16px; overflow:hidden; display:none; }
+  .runbox header { display:flex; align-items:center; gap:10px; padding:11px 16px; background:var(--accent-bg); color:var(--accent-2); font-weight:600; font-size:13.5px; }
+  .runbox header span { flex:1; }
+  .runbox .prog { height:3px; background:var(--accent-line); }
+  .runbox .prog i { display:block; height:100%; width:0; background:var(--accent); transition:width .3s; }
+  .runbox pre { margin:0; border-radius:0; max-height:320px; overflow:auto; }
+  details.run { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px 16px; margin-bottom:8px; }
+  details.run summary { cursor:pointer; color:var(--ink-2); }
+  pre { background:var(--muted); border-radius:9px; padding:11px 14px; font:12px/1.6 var(--mono); white-space:pre-wrap; word-break:break-all; margin:10px 0 0; color:var(--ink-2); }
+
+  /* 未保存提醒条 */
+  .savebar { position:fixed; left:50%; bottom:calc(20px + env(safe-area-inset-bottom)); transform:translate(-50%,140%); z-index:25; display:flex; align-items:center; gap:10px; background:var(--ink); color:#fff; padding:8px 8px 8px 18px; border-radius:14px; box-shadow:0 12px 36px rgba(20,21,28,.28); transition:transform .25s cubic-bezier(.2,.8,.2,1); max-width:calc(100vw - 24px); font-size:13.5px; }
+  body.dirty .savebar { transform:translate(-50%,0); }
+  .savebar .txt { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .savebar .txt::before { content:""; display:inline-block; width:8px; height:8px; border-radius:50%; background:#f59e0b; margin-right:9px; vertical-align:1px; }
+  .savebar .btn { height:34px; border-color:rgba(255,255,255,.2); background:transparent; color:#fff; }
+  .savebar .btn.acc { background:#fff; color:var(--ink); border-color:#fff; }
+
+  #toast { position:fixed; left:50%; top:16px; transform:translate(-50%,-12px); background:var(--ink); color:#fff; padding:10px 18px; border-radius:11px; box-shadow:0 12px 32px rgba(20,21,28,.22); opacity:0; pointer-events:none; transition:opacity .18s, transform .18s; max-width:min(560px,92vw); z-index:40; font-size:13.5px; }
+  #toast.on { opacity:1; transform:translate(-50%,0); }
+  #toast.ok::before { content:"✓  "; color:#34d399; font-weight:700; }
+  #toast.err { background:var(--alert); }
+  #gate { position:fixed; inset:0; background:radial-gradient(1200px 600px at 50% -10%, var(--accent-bg), var(--bg)); display:none; align-items:center; justify-content:center; z-index:30; padding:16px; }
+  #gate .box { width:min(380px,100%); background:var(--surface); border:1px solid var(--line); border-radius:18px; padding:28px; box-shadow:0 20px 48px rgba(20,21,28,.1); }
+  #gate .logo { margin-bottom:16px; width:40px; height:40px; }
+  #gate h3 { margin:0 0 4px; font-size:18px; }
+  .scrim { display:none; }
+
   @media (max-width:1023px) { .grid3 { grid-template-columns:repeat(2,minmax(0,1fr)); } }
   @media (max-width:760px) {
     .app { grid-template-columns:1fr; }
-    .rail { position:static; height:auto; padding:12px; border-right:none; border-bottom:1px solid var(--ink-200); }
-    .rail .nav { display:flex; overflow-x:auto; gap:4px; }
-    .rail .nav a { flex:none; }
-    .nav-title, .rail .foot { display:none; }
-    .brand { padding-bottom:10px; }
-    .top, .page { padding-left:14px; padding-right:14px; }
+    .rail { position:fixed; left:0; top:0; bottom:0; width:min(280px,84vw); z-index:35; transform:translateX(-105%); transition:transform .22s cubic-bezier(.2,.8,.2,1); box-shadow:10px 0 40px rgba(0,0,0,.18); padding-top:calc(20px + env(safe-area-inset-top)); }
+    body.drawer .rail { transform:none; }
+    .scrim { display:block; position:fixed; inset:0; background:rgba(10,10,20,.4); z-index:34; opacity:0; pointer-events:none; transition:opacity .2s; }
+    body.drawer .scrim { opacity:1; pointer-events:auto; }
+    .menu { display:grid; place-items:center; width:38px; height:38px; border-radius:10px; border:1px solid var(--line); background:var(--surface); color:var(--ink-2); flex:none; }
+    .top { padding:10px 14px; gap:8px; }
+    .top h1 { font-size:16.5px; }
+    .top .btn { height:34px; padding:0 11px; font-size:13px; }
+    .top .btn .lbl-long { display:none; }
+    .page { padding:16px 12px 130px; }
+    .section > header { padding:12px 14px; }
+    .section .body { padding:14px; }
     .grid2, .grid3 { grid-template-columns:1fr; }
-    .item { grid-template-columns:32px minmax(0,1fr); }
-    .acts { grid-column:2; opacity:1; }
+    .be { grid-template-columns:1fr; padding:14px; }
+    .be .ops { justify-content:flex-start; }
+    .item { grid-template-columns:38px minmax(0,1fr); padding:13px 12px; }
+    .acts { grid-column:2; opacity:1; flex-wrap:wrap; }
+    .savebar { left:12px; right:12px; transform:translateY(160%); justify-content:space-between; }
+    body.dirty .savebar { transform:none; }
   }
 </style>
 </head>
 <body>
 <div id="gate"><div class="box">
+  <span class="logo"><i></i></span>
   <div id="loginBox">
-    <h3>管理区</h3>
-    <div class="hint" style="margin-bottom:14px">输入管理员密码</div>
+    <h3>管理后台</h3>
+    <div class="hint" style="margin-bottom:16px">输入管理员密码</div>
     <input type="password" id="tokenInput" placeholder="密码" onkeydown="if(event.key==='Enter')login()" />
-    <div class="row" style="margin-top:14px"><button class="btn pri" onclick="login()">进入</button><a href="/" class="hint">返回资源页</a></div>
+    <div class="row" style="margin-top:16px"><button class="btn pri" style="flex:1" onclick="login()">进入</button><a href="/" class="btn">返回资源页</a></div>
   </div>
   <div id="setupBox" style="display:none">
     <h3>设置管理员密码</h3>
-    <div class="hint" style="margin-bottom:14px">首次使用，请设置后台密码（至少 8 位）。设置后只能用这个密码登录。</div>
+    <div class="hint" style="margin-bottom:16px">首次使用，请设置后台密码（至少 8 位）。设置后只能用这个密码登录。</div>
     <input type="password" id="pw1" placeholder="密码" style="margin-bottom:8px" />
     <input type="password" id="pw2" placeholder="再输入一次" onkeydown="if(event.key==='Enter')setup()" />
-    <div class="row" style="margin-top:14px"><button class="btn pri" onclick="setup()">完成设置</button></div>
+    <div class="row" style="margin-top:16px"><button class="btn pri" style="flex:1" onclick="setup()">完成设置</button></div>
   </div>
 </div></div>
 
+<div class="scrim" onclick="drawer(false)"></div>
 <div class="app">
   <aside class="rail">
-    <div class="brand"><span class="dot"></span>免费资源雷达</div>
-    <div class="nav-title">管理</div>
+    <a class="brand" href="/" title="返回资源页"><span class="logo"><i></i></span><span><b>免费资源雷达</b><small>管理后台 · 点此回首页</small></span></a>
     <nav class="nav" id="nav">
-      <a href="#items" data-p="items">资源审核 <span class="n" id="navPending"></span></a>
-      <a href="#ai" data-p="ai">AI 引擎</a>
-      <a href="#search" data-p="search">联网搜索</a>
-      <a href="#push" data-p="push">邮件与推送</a>
-      <a href="#cats" data-p="cats">分类订阅</a>
-      <a href="#collect" data-p="collect">采集与过滤</a>
-      <a href="#runs" data-p="runs">运行记录</a>
-      <a href="#account" data-p="account">账号与存储</a>
+      <a href="#items" data-p="items"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg><span class="lb">资源审核</span><span class="n" id="navPending"></span></a>
+      <a href="#collect" data-p="collect"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2"/></svg><span class="lb">采集与分类</span></a>
+      <a href="#engine" data-p="engine"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18 9l-4.1 1.4L12 15l-1.9-4.6L6 9l4.1-1.4z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg><span class="lb">AI 与搜索</span></a>
+      <a href="#push" data-p="push"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg><span class="lb">推送</span></a>
+      <a href="#rules" data-p="rules"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h10M4 18h6"/></svg><span class="lb">高级规则</span></a>
+      <a href="#runs" data-p="runs"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="lb">运行记录</span></a>
+      <a href="#account" data-p="account"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span class="lb">账号与安全</span></a>
     </nav>
-    <div class="nav-title">其他</div>
     <nav class="nav foot">
-      <a href="/" target="_blank">资源页 ↗</a>
-      <a href="/feed.xml" target="_blank">RSS ↗</a>
-      <a href="javascript:logout()">退出登录</a>
+      <a href="/feed.xml" target="_blank"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg><span class="lb">RSS 订阅</span></a>
+      <a href="javascript:logout()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg><span class="lb">退出登录</span></a>
     </nav>
   </aside>
 
   <main class="main">
     <div class="top">
+      <button class="menu" onclick="drawer(true)" aria-label="菜单"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
       <h1 id="title">资源审核</h1>
       <button class="btn" onclick="runNow(this)">立即抓取</button>
-      <button class="btn pri" onclick="save(this)">保存设置</button>
+      <button class="btn pri save" onclick="save(this)"><span class="dot"></span><span>保存<span class="lbl-long">设置</span></span></button>
     </div>
     <div class="page">
 
       <!-- 资源审核 -->
       <div class="panel" id="p-items">
+        <div class="runbox" id="runBox"><header><span id="runTitle">正在抓取</span><button class="btn sm" onclick="$('#runBox').style.display='none'">收起</button></header><div class="prog"><i id="runProg"></i></div><pre id="runOut"></pre></div>
         <div class="tabs">
           <button data-st="approved" onclick="loadItems('approved')">已通过<span class="n"></span></button>
           <button data-st="pending" onclick="loadItems('pending')">待判定<span class="n"></span></button>
           <button data-st="rejected" onclick="loadItems('rejected')">已拒绝<span class="n"></span></button>
           <span style="flex:1"></span>
-          <button class="danger" onclick="clearStatus()" style="color:var(--alert)">清空当前</button>
+          <button onclick="clearStatus()" style="color:var(--alert)">清空当前</button>
         </div>
-        <pre id="runOut" style="display:none"></pre>
-        <div id="items"></div>
+        <div id="items" class="list"><div class="empty">加载中…</div></div>
       </div>
 
-      <!-- AI -->
-      <div class="panel" id="p-ai">
+      <!-- 采集与分类 -->
+      <div class="panel" id="p-collect">
         <div class="section">
-          <header><h2>AI 判定</h2><label class="sw"><input type="checkbox" data-key="ai_enabled" />启用</label></header>
+          <header><h2>收集哪些分类</h2><span class="hint" id="catCount"></span></header>
           <div class="body">
-            <div class="callout"><b>可选。</b>不填也能用，会按关键词判定；填好接口地址、Key、模型并保存后自动改用 AI，结果更准。支持任何 OpenAI 兼容接口：OpenAI、DeepSeek、OpenRouter、硅基流动、各类中转。<span class="storageNote"></span></div>
+            <div class="cats" data-csv="enabled_categories" id="catBox"></div>
+            <div class="row">
+              <button class="btn sm" onclick="catAll('#catBox', true)">全选</button>
+              <button class="btn sm" onclick="catAll('#catBox', false)">全不选</button>
+              <button class="btn sm" onclick="catPreset()">恢复推荐</button>
+              <span class="hint">关键词预筛、AI 判定、搜索词和白嫖专源都跟着勾选的分类走。</span>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>筛选条件</h2></header>
+          <div class="body">
+            <label class="sw"><input type="checkbox" data-key="simple_signup_only" />只要注册简单的（邮箱 / GitHub / Google 登录；不要绑卡、手机验证、实名、邀请码）</label>
+            <div>
+              <label class="f">允许的获取方式</label>
+              <div data-csv="allowed_obtain">
+                <label class="chk"><input type="checkbox" value="free" />直接白嫖</label>
+                <label class="chk"><input type="checkbox" value="conditional" />有条件</label>
+                <label class="chk"><input type="checkbox" value="trial" />试用</label>
+                <label class="chk"><input type="checkbox" value="lottery" />抽奖</label>
+                <label class="chk"><input type="checkbox" value="promo" />推广</label>
+                <label class="chk"><input type="checkbox" value="paid" />需付费</label>
+              </div>
+            </div>
+            <div class="row" style="gap:22px">
+              <label class="sw"><input type="checkbox" data-key="filter_english" />过滤纯英文内容</label>
+              <label class="sw"><input type="checkbox" data-key="noise_filter" />跳过求助 / 吐槽帖</label>
+              <label class="sw"><input type="checkbox" data-key="keep_undated" />保留没有发布日期的</label>
+            </div>
+            <div class="grid2">
+              <div><label class="f">只要最近多少天发布的</label><input type="number" data-key="max_age_days" min="1" /></div>
+              <div><label class="f">数据保留天数（到期自动清理）</label><input type="number" data-key="retention_days" min="1" max="365" /></div>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>定时与触发</h2></header>
+          <div class="body">
+            <div class="grid3">
+              <div><label class="f">多久抓一次</label><select data-key="crawl_every_hours"><option value="2">每 2 小时</option><option value="3">每 3 小时</option><option value="4">每 4 小时</option><option value="6">每 6 小时</option><option value="8">每 8 小时</option><option value="12">每 12 小时</option><option value="24">每天一次</option></select></div>
+              <div><label class="f">从几点开始（北京时间 0-23）</label><input type="number" data-key="run_hour" min="0" max="23" /></div>
+              <div><label class="f">每次触发执行几步（免费版保持 1）</label><input type="number" data-key="steps_per_tick" min="1" max="50" /></div>
+            </div>
+            <div class="sched" id="crawlSched"></div>
+            <div>
+              <label class="f">触发地址（访问一次推进一步；到点自动开始当天的抓取）</label>
+              <div class="row">
+                <input class="grow" type="text" id="cronUrl" readonly onclick="this.select()" />
+                <button class="btn" onclick="copyText($('#cronUrl').value, '已复制触发地址')">复制</button>
+                <button class="btn" onclick="hitCron(this)">访问一次</button>
+                <button class="btn" onclick="resetCronKey(this)">换密钥</button>
+              </div>
+              <div class="hint" style="margin-top:6px">Cloudflare 自带的每分钟定时已经够用。想多一层保险，可以把这个地址填到 <a href="https://cron-job.org" target="_blank" rel="noopener">cron-job.org</a> 或 <a href="https://uptimerobot.com" target="_blank" rel="noopener">UptimeRobot</a>，设成每 1–5 分钟访问一次。<span id="cronLast"></span></div>
+            </div>
+            <div class="grid3">
+              <div><label class="f">触发最小间隔（秒）</label><input type="number" data-key="trigger_min_seconds" min="5" /></div>
+              <div><label class="f">资源页缓存（秒，0 = 不缓存）</label><input type="number" data-key="public_cache_seconds" min="0" max="3600" /></div>
+              <div><label class="f">有人打开资源页时</label><label class="sw" style="margin-top:8px"><input type="checkbox" data-key="visit_trigger" />顺带推进一步</label></div>
+            </div>
+            <div class="hint">间隔内的触发请求会直接返回、不执行，防止被频繁访问拖垮。缓存期内资源页不查数据库，打开更快；后台操作后缓存会立即刷新。</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI 与搜索 -->
+      <div class="panel" id="p-engine">
+        <div class="section">
+          <header><h2>AI 判定 <span class="tag" id="aiState"></span></h2><label class="sw"><input type="checkbox" data-key="ai_enabled" />启用</label></header>
+          <div class="body">
+            <div class="callout"><b>可选。</b>不填也能用，会按关键词判定；填好接口地址、Key 和模型并保存后，自动改用 AI，结果更准。支持任何 OpenAI 兼容接口：OpenAI、DeepSeek、OpenRouter、硅基流动和各类中转。<span class="storageNote"></span></div>
             <div class="grid2">
               <div><label class="f">接口地址</label><input type="text" data-key="ai_base_url" placeholder="https://api.openai.com/v1" /></div>
               <div><label class="f">API Key</label><input type="password" data-key="ai_api_key" autocomplete="off" /></div>
             </div>
             <div>
-              <label class="f">默认模型</label>
+              <label class="f">模型</label>
               <div class="row">
                 <input class="grow" type="text" data-key="ai_model" list="ai-models" placeholder="手动输入，或获取列表后选择" />
                 <datalist id="ai-models"></datalist>
@@ -207,33 +368,34 @@
                 <button class="btn" onclick="testModel('ai', this)">测试</button>
               </div>
             </div>
-            <div class="row"><button class="btn" onclick="rejudge(this)">用 AI 重新判定</button><span class="hint">配好并保存后，可以把之前用关键词判定过的条目交给 AI 再判一遍。</span></div>
-            <div class="grid3">
-              <div><label class="f">每次请求判定条数</label><input type="number" data-key="ai_batch_size" min="1" max="20" /></div>
-              <div><label class="f">每次运行最多判定</label><input type="number" data-key="ai_max_items" min="1" /></div>
-              <div><label class="f">最低通过分数</label><input type="number" data-key="ai_min_score" min="0" max="100" /></div>
-            </div>
-            <div class="hint">AI 输出：是否相关、分类（按「分类订阅」里勾选的）、获取方式、注册是否简单、一句话中文简介、0-100 分。</div>
+            <details>
+              <summary class="hint" style="cursor:pointer">更多：批量大小、判定上限、通过分数、重新判定</summary>
+              <div class="grid3" style="margin-top:12px">
+                <div><label class="f">每次请求判定条数</label><input type="number" data-key="ai_batch_size" min="1" max="20" /></div>
+                <div><label class="f">每次运行最多判定</label><input type="number" data-key="ai_max_items" min="1" /></div>
+                <div><label class="f">最低通过分数</label><input type="number" data-key="ai_min_score" min="0" max="100" /></div>
+              </div>
+              <div class="row" style="margin-top:12px"><button class="btn" onclick="rejudge(this)">用 AI 重新判定</button><span class="hint">把之前用关键词判过的条目交给 AI 再判一遍。</span></div>
+            </details>
           </div>
         </div>
-      </div>
-
-      <!-- 搜索 -->
-      <div class="panel" id="p-search">
-        <div class="callout" style="margin-bottom:16px">联网搜索按勾选的分类自动生成中文搜索词，结果和其他来源一样经过过滤和判定。<b>AnySearch、Keenable 免 Key 开箱即用</b>；其余几家注册拿到免费 Key 填上就自动参与。开启的几家会并行搜索（免费版每步并行 2 家）。填了 Key 就固定走 Key，不会自动切换。接口资料参考 <a href="https://github.com/bestnite/search" target="_blank" rel="noopener">bestnite/search</a>。</div>
-        <div id="searchBackends"></div>
         <div class="section">
-          <header><h2>搜索偏好与过滤</h2></header>
+          <header><h2>联网搜索 <span class="tag" id="searchState"></span></h2></header>
+          <div id="searchBackends"></div>
+        </div>
+        <div class="section">
+          <header><h2>搜索偏好</h2></header>
           <div class="body">
-            <div class="grid2">
-              <div><label class="f">语言</label><select data-key="search_lang"><option value="zh_only">只要中文</option><option value="zh_first">中文优先（不足时补英文）</option><option value="any">不限</option></select></div>
-              <div><label class="f">每个查询返回条数</label><input type="number" data-key="search_max_results" min="1" max="50" /></div>
+            <div class="grid3">
+              <div><label class="f">语言</label><select data-key="search_lang"><option value="zh_only">只要中文</option><option value="zh_first">中文优先</option><option value="any">不限</option></select></div>
+              <div><label class="f">每次最多查几个词</label><input type="number" data-key="search_max_queries" min="1" max="20" /></div>
+              <div><label class="f">每个词返回条数</label><input type="number" data-key="search_max_results" min="1" max="50" /></div>
             </div>
             <div class="grid2">
-              <div><label class="f">搜索词（每行一个；留空按勾选分类自动生成）</label><textarea data-key="search_queries"></textarea></div>
+              <div><label class="f">自定义搜索词（每行一个；留空按分类自动生成）</label><textarea data-key="search_queries"></textarea></div>
               <div><label class="f">屏蔽站点（每行一个域名，对所有来源生效）</label><textarea data-key="search_block_domains"></textarea></div>
             </div>
-            <div class="hint">搜索结果依次经过：屏蔽站点 → 语言 → 噪音标题 → 屏蔽规则 → 明显要绑卡 / 实名 → 发布时间 → 关键词 → AI 判定。</div>
+            <div class="hint">开启的几家并行搜索（免费版每步并行 2 家）。接口资料参考 <a href="https://github.com/bestnite/search" target="_blank" rel="noopener">bestnite/search</a>。</div>
           </div>
         </div>
       </div>
@@ -245,39 +407,43 @@
           <div class="body">
             <div class="grid2">
               <div><label class="f">发送方式</label><select data-key="mail_provider" onchange="applyShow()"><option value="smtp">SMTP（默认 QQ 邮箱）</option><option value="resend">Resend</option><option value="brevo">Brevo</option><option value="cloudflare">Cloudflare Email Routing</option></select></div>
-              <div><label class="f">收件人（多个用逗号分隔）</label><input type="text" data-key="mail_to" placeholder="me@example.com" /></div>
+              <div><label class="f">每天几点推送（北京时间）</label><input type="text" data-key="mail_hours" placeholder="9,21" /></div>
+            </div>
+            <div class="pills" id="mailHourPills" style="margin-top:-8px"></div>
+            <div class="sched" id="mailSched" style="margin-top:-8px"></div>
+            <div>
+              <label class="f">收件人（输入后按回车或逗号添加，最多 10 个）</label>
+              <div class="rcpt" id="rcpt" onclick="$('#rcptIn').focus()"><input id="rcptIn" type="text" placeholder="添加邮箱，如 me@qq.com" autocomplete="off" /></div>
+              <input type="hidden" data-key="mail_to" />
+              <label class="sw" style="margin-top:10px"><input type="checkbox" data-key="mail_separate" />每人单独发一封（收件人之间看不到彼此的地址）</label>
             </div>
             <div data-show="mail_provider=smtp" class="grid3">
-              <div><label class="f">SMTP 服务器</label><input type="text" data-key="smtp_host" /></div>
-              <div><label class="f">端口</label><input type="number" data-key="smtp_port" /></div>
-              <div><label class="f">加密</label><select data-key="smtp_secure"><option value="ssl">SSL（465）</option><option value="starttls">STARTTLS（587）</option></select></div>
               <div><label class="f">QQ 邮箱账号</label><input type="text" data-key="smtp_user" placeholder="123456@qq.com" /></div>
               <div><label class="f">授权码（不是 QQ 密码）</label><input type="password" data-key="smtp_pass" autocomplete="off" /></div>
               <div><label class="f">发件地址（留空 = 账号）</label><input type="text" data-key="mail_from" /></div>
             </div>
-            <div data-show="mail_provider=smtp" class="hint">QQ 邮箱 → 设置 → 账号与安全 → 安全设置 → 开启 POP3/IMAP/SMTP 服务，生成授权码。QQ 要求发件地址与登录账号一致。</div>
+            <div data-show="mail_provider=smtp" class="hint">QQ 邮箱 → 设置 → 账号与安全 → 安全设置 → 开启 POP3/IMAP/SMTP 服务，生成授权码。</div>
+            <details data-show="mail_provider=smtp">
+              <summary class="hint" style="cursor:pointer">更改 SMTP 服务器（用 QQ 邮箱不用动）</summary>
+              <div class="grid3" style="margin-top:12px">
+                <div><label class="f">SMTP 服务器</label><input type="text" data-key="smtp_host" /></div>
+                <div><label class="f">端口</label><input type="number" data-key="smtp_port" /></div>
+                <div><label class="f">加密</label><select data-key="smtp_secure"><option value="ssl">SSL（465）</option><option value="starttls">STARTTLS（587）</option></select></div>
+              </div>
+            </details>
             <div data-show="mail_provider=resend,brevo" class="grid2">
               <div><label class="f">API Key</label><input type="password" data-key="mail_api_key" autocomplete="off" /></div>
-              <div><label class="f">发件地址（需已验证域名）</label><input type="text" data-key="mail_from" class="mirror" /></div>
+              <div><label class="f">发件地址（需已验证域名）</label><input type="text" data-key="mail_from" /></div>
             </div>
-            <div data-show="mail_provider=cloudflare" class="hint">需要取消 wrangler.toml 中 [[send_email]] 的注释，发件域名开启 Email Routing，收件人在 Email Routing 中验证。发件地址填你域名下的地址。</div>
+            <div data-show="mail_provider=cloudflare" class="hint">需要取消 wrangler.toml 中 [[send_email]] 的注释，发件域名开启 Email Routing，收件人在 Email Routing 中验证。</div>
             <div class="grid3">
               <div><label class="f">发件人名称</label><input type="text" data-key="mail_from_name" /></div>
               <div><label class="f">标题</label><input type="text" data-key="mail_subject" /></div>
               <div><label class="f">每封最多条数</label><input type="number" data-key="mail_max_items" min="1" max="200" /></div>
             </div>
-            <div><label class="f">资源页地址（邮件底部“查看全部”）</label><input type="text" data-key="mail_site_url" placeholder="https://xxx.workers.dev" /></div>
-            <div class="row">
-              <label class="sw"><input type="checkbox" data-key="mail_only_new" />只推上次之后新通过的</label>
-              <label class="sw"><input type="checkbox" data-key="mail_send_empty" />没有新内容也推</label>
-            </div>
-            <div><label class="f">推送哪些分类（都不勾 = 与收集的分类相同）</label>
-              <div class="cats mini" data-csv="mail_categories" id="mailCatBox"></div>
-            </div>
             <div class="row">
               <button class="btn" onclick="mailPreview(this)">预览邮件</button>
               <button class="btn" onclick="pushAction('test', 'mail', this)">发送测试邮件</button>
-              <span class="hint">先保存再测试。</span>
             </div>
           </div>
         </div>
@@ -291,97 +457,59 @@
             <div class="row"><button class="btn" onclick="pushAction('test', 'telegram', this)">发送测试消息</button></div>
           </div>
         </div>
-        <div class="row"><button class="btn pri" onclick="pushAction('send', null, this)">立即推送日报</button><span class="hint">每天定时抓取结束后，按启用的渠道自动推送。</span></div>
-      </div>
-
-      <!-- 分类订阅 -->
-      <div class="panel" id="p-cats">
         <div class="section">
-          <header><h2>收集哪些分类</h2><span class="hint" id="catCount"></span></header>
+          <header><h2>推送内容</h2></header>
           <div class="body">
-            <div class="cats" data-csv="enabled_categories" id="catBox"></div>
-            <div class="row">
-              <button class="btn sm" onclick="catAll('#catBox', true)">全选</button>
-              <button class="btn sm" onclick="catAll('#catBox', false)">全不选</button>
-              <button class="btn sm" onclick="catPreset()">恢复推荐</button>
-              <span class="hint">只收集勾选的分类：关键词预筛、AI 判定、联网搜索词和白嫖专源都会跟着变。至少勾一个。</span>
+            <div class="row" style="gap:22px">
+              <label class="sw"><input type="checkbox" data-key="mail_only_new" />只推上次之后新通过的</label>
+              <label class="sw"><input type="checkbox" data-key="mail_send_empty" />没有新内容也推</label>
             </div>
+            <div><label class="f">推送哪些分类（都不勾 = 与收集的相同）</label><div class="cats mini" data-csv="mail_categories" id="mailCatBox"></div></div>
+            <div><label class="f">资源页地址（邮件底部“查看全部”，首次登录后台时自动填写）</label><input type="text" data-key="mail_site_url" placeholder="https://xxx.workers.dev" /></div>
+            <div class="row"><button class="btn pri" onclick="pushAction('send', null, this)">立即推送日报</button><span class="hint">到了推送时间按启用的渠道自动推送。</span></div>
           </div>
         </div>
-        <div class="section">
-          <header><h2>注册门槛</h2></header>
-          <div class="body">
-            <label class="sw"><input type="checkbox" data-key="simple_signup_only" />只要注册简单的（邮箱 / GitHub / Google 登录，不要绑卡、手机验证、实名、邀请码）</label>
-          </div>
-        </div>
-        <div class="row"><button class="btn pri" onclick="save(this)">保存设置</button></div>
       </div>
 
-      <!-- 采集与过滤 -->
-      <div class="panel" id="p-collect">
+      <!-- 高级规则 -->
+      <div class="panel" id="p-rules">
+        <p class="desc">一般不用改。分类自带关键词，下面只是补充。</p>
         <div class="section">
-          <header><h2>时效与质量</h2></header>
+          <header><h2>屏蔽规则</h2></header>
           <div class="body">
-            <div class="grid3">
-              <div><label class="f">最大消息年龄（天）</label><input type="number" data-key="max_age_days" min="1" /></div>
-              <div><label class="f">数据保留天数（按抓取日期，到期自动清理）</label><input type="number" data-key="retention_days" min="1" max="365" /></div>
-              <div><label class="f">每天几点抓取（北京时间 0-23，抓完自动推送）</label><input type="number" data-key="run_hour" min="0" max="23" /></div>
-              <div><label class="f">每分钟执行几步（免费版保持 1）</label><input type="number" data-key="steps_per_tick" min="1" max="50" /></div>
-              <div><label class="f">无发布日期</label><label class="sw" style="margin-top:8px"><input type="checkbox" data-key="keep_undated" />保留</label></div>
-              <div><label class="f">噪音标题（求助 / 吐槽）</label><label class="sw" style="margin-top:8px"><input type="checkbox" data-key="noise_filter" />跳过</label></div>
-              <div><label class="f">纯英文内容（标题和正文都没有中文）</label><label class="sw" style="margin-top:8px"><input type="checkbox" data-key="filter_english" />过滤</label></div>
-            </div>
-            <div>
-              <label class="f">允许的获取方式</label>
-              <div data-csv="allowed_obtain">
-                <label class="chk"><input type="checkbox" value="free" />直接白嫖</label>
-                <label class="chk"><input type="checkbox" value="conditional" />有条件</label>
-                <label class="chk"><input type="checkbox" value="trial" />试用</label>
-                <label class="chk"><input type="checkbox" value="lottery" />抽奖</label>
-                <label class="chk"><input type="checkbox" value="promo" />推广</label>
-                <label class="chk"><input type="checkbox" value="paid" />需付费</label>
-              </div>
-            </div>
-            <div><label class="f">屏蔽规则（关键词或 /正则/，命中直接丢弃，不送 AI）</label><textarea data-key="block_rules"></textarea></div>
+            <div><label class="f">每行一条：关键词或 /正则/，命中直接丢弃，不送 AI</label><textarea data-key="block_rules"></textarea></div>
           </div>
         </div>
         <div class="section">
           <header><h2>关键词预筛</h2></header>
           <div class="body">
             <div class="grid3">
-              <div><label class="f">额外主题词（各分类已内置关键词，这里只需补充）</label><textarea data-key="topic_keywords"></textarea></div>
+              <div><label class="f">额外主题词</label><textarea data-key="topic_keywords"></textarea></div>
               <div><label class="f">免费词（命中其一）</label><textarea data-key="free_keywords"></textarea></div>
-              <div><label class="f">复杂注册词</label><textarea data-key="hard_signup_keywords"></textarea></div>
+              <div><label class="f">复杂注册词（命中即丢弃）</label><textarea data-key="hard_signup_keywords"></textarea></div>
             </div>
           </div>
         </div>
         <div class="section">
-          <header><h2>数据源</h2></header>
+          <header><h2>数据源</h2><span class="hint" id="srcCount"></span></header>
           <div class="body">
-            <textarea data-key="sources" style="min-height:300px"></textarea>
-            <div class="hint">type：rss（url）/ v2ex（node）/ hn（query）/ reddit（query, subreddit）/ github（query）/ epic / gamerpower / openrouter_free。enabled:false 停用；filter:false 跳过关键词预筛；trusted:true + category 直接入库不送 AI（category:"auto" 按关键词自动归类）；include 为标题必须匹配的正则。</div>
+            <textarea data-key="sources" style="min-height:320px"></textarea>
+            <div class="hint">type：rss（url）/ v2ex（node）/ hn（query）/ reddit（query, subreddit）/ github（query）/ epic / gamerpower / openrouter_free。enabled:false 停用；filter:false 跳过关键词预筛；trusted:true + category 直接入库不送 AI（category:"auto" 自动归类）；include 为标题必须匹配的正则。</div>
           </div>
         </div>
       </div>
 
-      <!-- 账号与存储 -->
+      <!-- 账号与安全 -->
       <div class="panel" id="p-account">
         <div class="section">
-          <header><h2>存储</h2></header>
-          <div class="body">
-            <div id="storageInfo" class="hint"></div>
-            <div class="hint">资源按抓取日期（北京时间）存储，默认保留 15 天后自动清理；为避免重复推送，“已见过”的链接记录保留到最大消息年龄。保留天数在「采集与过滤」里改。</div>
-          </div>
-        </div>
-        <div class="section">
-          <header><h2>资源页访问密码</h2><span class="hint" id="siteLockState"></span></header>
+          <header><h2>资源页访问密码</h2><span class="tag" id="siteLockState"></span></header>
           <div class="body">
             <div class="row">
               <input class="grow" type="password" id="sitePw" placeholder="设置后，打开资源页要先输入密码" autocomplete="new-password" />
-              <button class="btn" onclick="setSitePw(this, true)">保存</button>
+              <button class="btn" onclick="setSitePw(this, true)">设置</button>
               <button class="btn" onclick="setSitePw(this, false)">取消密码</button>
             </div>
-            <div class="hint">留空则资源页公开。设置后 RSS 订阅地址改为 <code id="rssKeyed">/feed.xml?key=访问密码</code>。管理后台仍用管理员密码。</div>
+            <div class="hint">留空则资源页公开。设置后 RSS 地址改为 <code>/feed.xml?key=访问密码</code>。管理后台仍用管理员密码。</div>
           </div>
         </div>
         <div class="section">
@@ -394,44 +522,34 @@
             </div>
           </div>
         </div>
+        <div class="section">
+          <header><h2>存储</h2></header>
+          <div class="body">
+            <div id="storageInfo" class="hint"></div>
+            <div class="hint">资源按抓取日期（北京时间）存储，到期自动清理；“已见过”的链接记录保留到最大消息年龄，避免重复推送。</div>
+          </div>
+        </div>
       </div>
 
       <!-- 运行记录 -->
-      <div class="panel" id="p-runs"><div id="runs"></div></div>
+      <div class="panel" id="p-runs"><div id="runs"><div class="empty">加载中…</div></div></div>
     </div>
   </main>
 </div>
+<div class="savebar"><span class="txt" id="dirtyTxt">有未保存的修改</span><button class="btn" onclick="revert()">撤销</button><button class="btn acc" onclick="save(this)">保存</button></div>
 <div id="toast"></div>
 
 <script>
 let TOKEN = localStorage.getItem('frr_token') || '';
 let CUR = 'approved';
 let SETTINGS = {};
-const TITLES = { items: '资源审核', ai: 'AI 引擎', search: '联网搜索', push: '邮件与推送', collect: '采集与过滤', runs: '运行记录', account: '账号与存储', cats: '分类订阅' };
+let SNAP = {};
+const TITLES = { items: '资源审核', collect: '采集与分类', engine: 'AI 与搜索', push: '推送', rules: '高级规则', runs: '运行记录', account: '账号与安全' };
+const ALIAS = { ai: 'engine', search: 'engine', cats: 'collect' };
 const CATS = /*__CATS__*/[];
 const BACKENDS = /*__BACKENDS__*/[];
-function renderBackends() {
-  $('#searchBackends').innerHTML = BACKENDS.map((b) => '<div class="section">' +
-    '<header><h2>' + esc(b.name) + (b.keyless ? ' <span class="tag free">免 Key 可用</span>' : ' <span class="tag">需注册</span>') + (b.zh ? ' <span class="tag zh">中文</span>' : '') + '</h2>' +
-    '<label class="sw"><input type="checkbox" data-key="' + b.id + '_enabled" />启用</label></header><div class="body">' +
-    '<div class="grid2"><div><label class="f">API Key' + (b.keyless ? '（可选，留空走免费公共接口）' : '（填了才会参与搜索）') + '</label><input type="password" data-key="' + b.id + '_api_key" autocomplete="off" /></div>' +
-    '<div><label class="f">免费额度</label><div class="quota">' + esc(b.free) + (b.note ? '<span class="hint"> · ' + esc(b.note) + '</span>' : '') + '</div></div></div>' +
-    '<div class="row"><button class="btn" onclick="testSearch(\'' + b.id + '\', this)">测试搜索</button>' +
-    '<a class="reg" href="' + esc(b.signup) + '" target="_blank" rel="noopener">' + (b.keyless ? '注册拿 Key（提高额度）' : '去注册拿 API Key') + ' ↗</a></div>' +
-    '</div></div>').join('');
-}
 const CAT = Object.fromEntries(CATS.map((c) => [c.key, c.label]));
 const REC = ['domain', 'hosting', 'cloud', 'ai', 'software', 'dev', 'game', 'edu'];
-function renderCats() {
-  const tile = (c, mini) => '<label class="cat" title="' + esc(c.kw.join(' · ')) + '"><input type="checkbox" value="' + c.key + '"><span class="ic" style="background:' + c.color + '"></span><span class="tx"><b>' + c.label + '</b>' + (mini ? '' : '<small>' + esc(c.kw.join(' · ') || '其它未归类的免费资源') + '</small>') + '</span><span class="ck">✓</span></label>';
-  const list = CATS.filter((c) => c.key !== 'other');
-  $('#catBox').innerHTML = list.map((c) => tile(c, false)).join('');
-  $('#mailCatBox').innerHTML = list.map((c) => tile(c, true)).join('');
-  $('#catBox').addEventListener('change', catCount);
-}
-function catCount() { $('#catCount').textContent = '已选 ' + $$('#catBox input:checked').length + ' / ' + $$('#catBox input').length; }
-function catAll(sel, on) { $$(sel + ' input').forEach((i) => (i.checked = on)); catCount(); }
-function catPreset() { $$('#catBox input').forEach((i) => (i.checked = REC.includes(i.value))); catCount(); }
 const OB = { free: '直接白嫖', conditional: '有条件', lottery: '抽奖', trial: '试用', promo: '推广', paid: '需付费' };
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
@@ -440,11 +558,52 @@ const fmt = (t) => (t ? new Date(t).toLocaleString('zh-CN', { hour12: false }) :
 function ago(t) {
   if (!t) return '';
   const m = Math.round((Date.now() - t) / 60000);
-  if (m < 60) return Math.max(m, 1) + ' 分钟前';
+  if (m < 1) return '刚刚';
+  if (m < 60) return m + ' 分钟前';
   if (m < 1440) return Math.round(m / 60) + ' 小时前';
   return Math.round(m / 1440) + ' 天前';
 }
-function toast(msg, ms = 3500) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = 'none'), ms); }
+function toast(msg, ms = 3200, kind = '') { const t = $('#toast'); t.textContent = msg; t.className = 'on ' + kind; clearTimeout(t._h); t._h = setTimeout(() => (t.className = ''), ms); }
+function drawer(on) { document.body.classList.toggle('drawer', on); }
+function copyText(t, msg) { navigator.clipboard?.writeText(t).then(() => toast(msg || '已复制', 2000, 'ok'), () => toast('复制失败，请手动选中复制')); }
+
+function renderBackends() {
+  $('#searchBackends').innerHTML = BACKENDS.map((b) => '<div class="be" id="be-' + b.id + '">' +
+    '<div><div class="nm">' + esc(b.name) + (b.keyless ? '<span class="tag free">免 Key</span>' : '') + (b.zh ? '<span class="tag zh">中文</span>' : '') + '<span class="tag st"></span></div>' +
+    '<div class="q">' + esc(b.free) + (b.note ? ' · ' + esc(b.note) : '') + '</div></div>' +
+    '<div><input type="password" data-key="' + b.id + '_api_key" autocomplete="off" placeholder="' + (b.keyless ? 'API Key（可选，留空走免费接口）' : '填 API Key 后自动参与') + '" /></div>' +
+    '<div class="ops"><label class="sw"><input type="checkbox" data-key="' + b.id + '_enabled" /></label><button class="btn sm" onclick="testSearch(\'' + b.id + '\', this)">测试</button></div>' +
+    '<div class="ln"><a href="' + esc(b.signup) + '" target="_blank" rel="noopener">' + (b.keyless ? '注册拿 Key（提高额度）' : '去注册拿免费 API Key') + ' ↗</a></div>' +
+    '<pre class="out" style="display:none"></pre></div>').join('');
+}
+function backendStates() {
+  let on = 0;
+  for (const b of BACKENDS) {
+    const en = field(b.id + '_enabled').checked, key = field(b.id + '_api_key').value;
+    const ready = en && (b.keyless || key);
+    if (ready) on++;
+    const st = $('#be-' + b.id + ' .st'), row = $('#be-' + b.id);
+    st.textContent = ready ? '参与搜索' : !en ? '已关闭' : '待填 Key';
+    st.className = 'tag st ' + (ready ? 'on' : 'off');
+    row.classList.toggle('off', !ready);
+  }
+  $('#searchState').textContent = on + ' 家可用';
+  $('#searchState').className = 'tag ' + (on ? 'on' : 'off');
+  const aiOn = field('ai_enabled').checked && field('ai_base_url').value && field('ai_api_key').value && field('ai_model').value;
+  $('#aiState').textContent = aiOn ? '使用 AI' : '关键词判定';
+  $('#aiState').className = 'tag ' + (aiOn ? 'on' : 'off');
+  try { const n = JSON.parse(field('sources').value).filter((x) => x.enabled !== false).length; $('#srcCount').textContent = '启用 ' + n + ' 个'; } catch { $('#srcCount').textContent = 'JSON 格式有误'; }
+}
+function renderCats() {
+  const tile = (c, mini) => '<label class="cat" title="' + esc(c.kw.join(' · ')) + '"><input type="checkbox" value="' + c.key + '"><span class="ic" style="background:' + c.color + '"></span><span class="tx"><b>' + c.label + '</b>' + (mini ? '' : '<small>' + esc(c.kw.join(' · ') || '其它未归类的免费资源') + '</small>') + '</span><span class="ck">✓</span></label>';
+  const list = CATS.filter((c) => c.key !== 'other');
+  $('#catBox').innerHTML = list.map((c) => tile(c, false)).join('');
+  $('#mailCatBox').innerHTML = list.map((c) => tile(c, true)).join('');
+}
+function catCount() { $('#catCount').textContent = '已选 ' + $$('#catBox input:checked').length + ' / ' + $$('#catBox input').length; }
+function catAll(sel, on) { $$(sel + ' input').forEach((i) => (i.checked = on)); onEdit(); }
+function catPreset() { $$('#catBox input').forEach((i) => (i.checked = REC.includes(i.value))); onEdit(); }
+
 let STATUS = { initialized: true, storage: 'd1', env_token: false };
 function showGate() {
   $('#gate').style.display = 'flex';
@@ -454,15 +613,15 @@ function showGate() {
 }
 async function setup() {
   const a = $('#pw1').value, b = $('#pw2').value;
-  if (a.length < 8) return toast('密码至少 8 位');
-  if (a !== b) return toast('两次输入不一致');
+  if (a.length < 8) return toast('密码至少 8 位', 3000, 'err');
+  if (a !== b) return toast('两次输入不一致', 3000, 'err');
   const r = await fetch('/api/admin/setup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: a }) });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) return toast(j.error || '设置失败');
+  if (!r.ok) return toast(j.error || '设置失败', 4000, 'err');
   STATUS.initialized = true;
   TOKEN = a; localStorage.setItem('frr_token', TOKEN);
   $('#gate').style.display = 'none';
-  toast('密码已设置');
+  toast('密码已设置', 2500, 'ok');
   init();
 }
 function setSitePw(btn, on) {
@@ -472,45 +631,50 @@ function setSitePw(btn, on) {
     await api('/api/admin/site-password', { method: 'POST', body: JSON.stringify({ password: pw }) });
     $('#sitePw').value = '';
     STATUS.site_locked = on; siteLockLabel();
-    toast(on ? '已设置访问密码' : '资源页已公开');
+    toast(on ? '已设置访问密码' : '资源页已公开', 2500, 'ok');
   });
 }
-function siteLockLabel() { $('#siteLockState').textContent = STATUS.site_locked ? '已开启' : '未开启（公开）'; }
+function siteLockLabel() { const el = $('#siteLockState'); el.textContent = STATUS.site_locked ? '已开启' : '公开'; el.className = 'tag ' + (STATUS.site_locked ? 'on' : 'off'); }
 function changePw(btn) {
   return busy(btn, async () => {
     const pw = $('#newPw').value;
     await api('/api/admin/password', { method: 'POST', body: JSON.stringify({ password: pw }) });
     TOKEN = pw; localStorage.setItem('frr_token', TOKEN); $('#newPw').value = '';
-    toast('密码已修改');
+    toast('密码已修改', 2500, 'ok');
   });
 }
 function login() { TOKEN = $('#tokenInput').value.trim(); localStorage.setItem('frr_token', TOKEN); $('#gate').style.display = 'none'; init(); }
-function logout() { localStorage.removeItem('frr_token'); TOKEN = ''; showGate(); }
+function logout() { localStorage.removeItem('frr_token'); TOKEN = ''; drawer(false); showGate(); }
 
 async function api(path, opts = {}) {
   const r = await fetch(path, { ...opts, headers: { 'content-type': 'application/json', authorization: 'Bearer ' + TOKEN } });
   const j = await r.json().catch(() => ({ error: '响应不是 JSON（HTTP ' + r.status + '）' }));
-  if (r.status === 401) { showGate(); throw new Error('口令错误'); }
+  if (r.status === 401) { showGate(); throw new Error('密码错误或已失效'); }
   if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
   return j;
 }
+// 按钮点击立即给反馈：转圈 + 禁用，结束后恢复
 async function busy(btn, fn) {
-  if (btn) btn.disabled = true;
-  try { return await fn(); } catch (e) { toast('出错：' + e.message, 7000); } finally { if (btn) btn.disabled = false; }
+  if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+  try { return await fn(); } catch (e) { toast('出错：' + e.message, 7000, 'err'); } finally { if (btn) { btn.disabled = false; btn.classList.remove('loading'); } }
 }
 
 // ---- 路由 ----
 function route() {
-  const p = (location.hash || '#items').slice(1);
+  let p = (location.hash || '#items').slice(1);
+  p = ALIAS[p] || p;
   const key = TITLES[p] ? p : 'items';
   $$('.panel').forEach((el) => el.classList.toggle('on', el.id === 'p-' + key));
   $$('#nav a').forEach((a) => a.classList.toggle('on', a.dataset.p === key));
   $('#title').textContent = TITLES[key];
+  drawer(false);
   if (key === 'runs' && TOKEN) loadRuns();
+  if (key === 'collect' && TOKEN) loadCronKey();
+  window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);
 
-// ---- 设置 ----
+// ---- 设置 + 未保存提醒 ----
 function fill(s) {
   SETTINGS = s;
   $$('[data-key]').forEach((el) => {
@@ -522,17 +686,85 @@ function fill(s) {
     box.querySelectorAll('input').forEach((i) => (i.checked = vals.includes(i.value)));
   });
   applyShow();
-  catCount();
+  renderRcpt();
+  SNAP = collect();
+  onEdit();
 }
 function collect() {
   const out = {};
   $$('[data-key]').forEach((el) => {
-    if (el.closest('[data-show]') && el.closest('[data-show]').style.display === 'none') return; // 隐藏的重复字段不覆盖
+    const sh = el.closest('[data-show]');
+    if (sh && sh.style.display === 'none' && out[el.dataset.key] !== undefined) return; // 同名字段只取显示的那个
     out[el.dataset.key] = el.type === 'checkbox' ? String(el.checked) : el.value;
   });
   $$('[data-csv]').forEach((box) => { out[box.dataset.csv] = [...box.querySelectorAll('input:checked')].map((i) => i.value).join(','); });
   return out;
 }
+function changedKeys() { const cur = collect(); return Object.keys(cur).filter((k) => cur[k] !== SNAP[k]); }
+// ---- 收件人 ----
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const rcptList = () => field('mail_to').value.split(/[,;，；\s]+/).map((x) => x.trim()).filter(Boolean);
+function renderRcpt() {
+  const box = $('#rcpt');
+  box.querySelectorAll('.em').forEach((e) => e.remove());
+  const inp = $('#rcptIn');
+  rcptList().forEach((a, i) => {
+    const el = document.createElement('span');
+    el.className = 'em' + (EMAIL_RE.test(a) ? '' : ' bad');
+    el.title = EMAIL_RE.test(a) ? a : '格式不对，不会发送';
+    el.innerHTML = esc(a) + '<button type="button" aria-label="移除">×</button>';
+    el.querySelector('button').onclick = (e) => { e.stopPropagation(); const l = rcptList(); l.splice(i, 1); setRcpt(l); };
+    box.insertBefore(el, inp);
+  });
+  inp.placeholder = rcptList().length ? (rcptList().length >= 10 ? '最多 10 个' : '继续添加') : '添加邮箱，如 me@qq.com';
+}
+function setRcpt(list) { field('mail_to').value = [...new Set(list)].slice(0, 10).join(','); renderRcpt(); onEdit(); }
+function addRcpt(raw) {
+  const add = String(raw).split(/[,;，；\s]+/).map((x) => x.trim()).filter(Boolean);
+  if (!add.length) return;
+  const bad = add.filter((a) => !EMAIL_RE.test(a));
+  if (bad.length) toast('邮箱格式不对：' + bad.join('、'), 3500, 'err');
+  setRcpt([...rcptList(), ...add.filter((a) => EMAIL_RE.test(a))]);
+  $('#rcptIn').value = '';
+}
+$('#rcptIn').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ',' || e.key === '，' || e.key === ';' || e.key === ' ') { e.preventDefault(); addRcpt(e.target.value); }
+  else if (e.key === 'Backspace' && !e.target.value) { const l = rcptList(); l.pop(); setRcpt(l); }
+});
+$('#rcptIn').addEventListener('blur', (e) => addRcpt(e.target.value));
+$('#rcptIn').addEventListener('paste', (e) => { e.preventDefault(); addRcpt((e.clipboardData || window.clipboardData).getData('text')); });
+
+// ---- 时间表预览 ----
+const hoursOf = (v) => [...new Set(String(v || '').split(/[,，\s]+/).map(Number).filter((h) => Number.isInteger(h) && h >= 0 && h <= 23))].sort((a, b) => a - b);
+function schedText() {
+  const every = Math.min(24, Math.max(1, Number(field('crawl_every_hours').value) || 24)), start = Number(field('run_hour').value) || 0;
+  const hs = []; for (let k = 0; k * every < 24; k++) hs.push((start + k * every) % 24);
+  hs.sort((a, b) => a - b);
+  $('#crawlSched').innerHTML = '每天抓取 <b>' + hs.length + '</b> 次：' + hs.map((h) => '<b>' + h + ':00</b>').join('、') + '（每次约 15–20 分钟跑完）';
+  const mh = hoursOf(field('mail_hours').value);
+  $('#mailSched').innerHTML = mh.length ? '每天推送 <b>' + mh.length + '</b> 次：' + mh.map((h) => '<b>' + h + ':00</b>').join('、') + '。如果那时正在抓取，会等抓完再发；每次只推上次之后新通过的。' : '<span style="color:var(--alert)">没有填推送时间，不会自动推送</span>';
+  const cur = mh.join(',');
+  $$('#mailHourPills button').forEach((b) => b.classList.toggle('on', b.dataset.v === cur));
+}
+$('#mailHourPills').innerHTML = [['9', '每天一次 9 点'], ['9,21', '早晚各一次'], ['9,15,21', '一天三次']].map(([v, l]) => '<button type="button" data-v="' + v + '">' + l + '</button>').join('');
+$('#mailHourPills').onclick = (e) => { const b = e.target.closest('button'); if (b) { field('mail_hours').value = b.dataset.v; onEdit(); } };
+
+function onEdit() {
+  const ch = changedKeys();
+  $('#rcpt').classList.toggle('changed', ch.includes('mail_to'));
+  schedText();
+  document.body.classList.toggle('dirty', ch.length > 0);
+  $('#dirtyTxt').textContent = '有 ' + ch.length + ' 项修改还没保存';
+  $$('[data-key]').forEach((el) => { const c = ch.includes(el.dataset.key); (el.type === 'checkbox' ? el.closest('label') : el).classList.toggle('changed', c); });
+  $$('[data-csv]').forEach((box) => box.classList.toggle('changed', ch.includes(box.dataset.csv)));
+  catCount();
+  backendStates();
+}
+function revert() { fill(SETTINGS); toast('已撤销修改', 2000); }
+document.addEventListener('input', (e) => { if (e.target.closest('[data-key],[data-csv]')) onEdit(); });
+document.addEventListener('change', (e) => { if (e.target.closest('[data-key],[data-csv]')) onEdit(); });
+window.addEventListener('beforeunload', (e) => { if (document.body.classList.contains('dirty')) { e.preventDefault(); e.returnValue = ''; } });
+document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save($('.top .save')); } });
 function applyShow() {
   $$('[data-show]').forEach((el) => {
     const [k, vals] = el.dataset.show.split('=');
@@ -546,10 +778,12 @@ function save(btn) {
   return busy(btn, async () => {
     const data = collect();
     if (!data.enabled_categories) throw new Error('至少勾选一个分类');
-    try { JSON.parse(data.sources); } catch (e) { throw new Error('数据源 JSON 格式错误：' + e.message); }
+    if ($('#rcptIn').value.trim()) { addRcpt($('#rcptIn').value); Object.assign(data, collect()); }
+    try { JSON.parse(data.sources); } catch (e) { location.hash = '#rules'; throw new Error('数据源 JSON 格式错误：' + e.message); }
+    const n = changedKeys().length;
     const r = await api('/api/admin/settings', { method: 'PUT', body: JSON.stringify(data) });
     fill(r.settings);
-    toast('已保存');
+    toast(n ? '已保存 ' + n + ' 项修改' : '已保存', 2500, 'ok');
   });
 }
 
@@ -559,38 +793,60 @@ function fetchModels(target, btn) {
     $('#' + target + '-models').innerHTML = r.models.map((m) => '<option value="' + esc(m) + '">').join('');
     const cur = field(target + '_model').value;
     $('#' + target + '-select').innerHTML = '<option value="">— 共 ' + r.models.length + ' 个模型 —</option>' + r.models.map((m) => '<option' + (m === cur ? ' selected' : '') + ' value="' + esc(m) + '">' + esc(m) + '</option>').join('');
-    toast('获取到 ' + r.models.length + ' 个模型，选好后记得保存');
+    toast('获取到 ' + r.models.length + ' 个模型', 3000, 'ok');
   });
 }
-function pick(target, v) { if (v) field(target + '_model').value = v; }
+function pick(target, v) { if (v) { field(target + '_model').value = v; onEdit(); } }
 function testModel(target, btn) {
   return busy(btn, async () => {
     const body = { target, base_url: field(target + '_base_url').value, api_key: field(target + '_api_key').value, model: field(target + '_model').value };
     const r = await api('/api/admin/test', { method: 'POST', body: JSON.stringify(body) });
-    toast('连接成功（' + r.ms + 'ms）：' + r.reply, 6000);
+    toast('连接成功（' + r.ms + 'ms）：' + r.reply, 5000, 'ok');
   });
 }
 function testSearch(provider, btn) {
   return busy(btn, async () => {
+    const out = $('#be-' + provider + ' .out');
+    if (changedKeys().some((k) => k.startsWith(provider + '_'))) toast('测试用的是已保存的设置，记得先保存', 3500);
     const r = await api('/api/admin/search-test', { method: 'POST', body: JSON.stringify({ provider }) });
-    const out = $('#runOut');
-    location.hash = '#items';
     out.style.display = 'block';
-    out.textContent = provider + ' 返回 ' + r.count + ' 条（' + r.ms + 'ms，使用已保存的设置）\n' + (r.errors || []).map((e) => '! ' + e + '\n').join('') + '\n' + r.sample.map((x) => '· ' + (x.date || '无日期') + '  ' + x.title + '\n  ' + x.url).join('\n');
+    out.textContent = '返回 ' + r.count + ' 条（' + r.ms + 'ms）\n' + (r.errors || []).map((e) => '! ' + e + '\n').join('') + r.sample.map((x) => '· ' + (x.date || '无日期') + '  ' + x.title).join('\n');
   });
+}
+
+// ---- 触发地址 ----
+async function loadCronKey() {
+  try {
+    const r = await api('/api/admin/cron-key');
+    $('#cronUrl').value = location.origin + '/api/cron?key=' + r.key;
+    $('#cronLast').textContent = r.last ? ' 上次被触发：' + ago(r.last) + '。' : '';
+  } catch {}
+}
+function hitCron(btn) {
+  return busy(btn, async () => {
+    const r = await fetch($('#cronUrl').value).then((x) => x.json());
+    if (r.error) throw new Error(r.error);
+    const msg = r.throttled ? '间隔太短，' + r.retry_after + ' 秒后再试' : r.action === 'step' || r.action === 'started' ? '已推进一步' + (r.current ? '：' + r.current : '') + (r.left != null ? '，剩 ' + r.left + ' 步' : '') : (r.message || '没有要执行的');
+    toast(msg, 4000, r.throttled ? '' : 'ok');
+    loadCronKey();
+  });
+}
+function resetCronKey(btn) {
+  if (!confirm('换新密钥后，旧的触发地址立即失效。继续？')) return;
+  return busy(btn, async () => { await api('/api/admin/cron-key', { method: 'POST' }); await loadCronKey(); toast('已换新密钥，记得更新外部定时服务里的地址', 4000, 'ok'); });
 }
 
 function runNow(btn) { return runSteps(btn, '/api/admin/run', '立即抓取', '抓取中'); }
 function rejudge(btn) {
-  if (!confirm('把之前用关键词判定过的条目全部交给 AI 重新判定？每次最多判定「每次运行最多判定」设置的条数。')) return;
+  if (!confirm('把之前用关键词判定过的条目全部交给 AI 重新判定？')) return;
   return runSteps(btn, '/api/admin/rejudge', btn.textContent, '判定中');
 }
 function runSteps(btn, endpoint, label, doing) {
   return busy(btn, async () => {
     const plan = await api(endpoint, { method: 'POST' });
-    if (plan.reset != null) toast('已重置 ' + plan.reset + ' 条，开始用 AI 判定');
-    location.hash = '#items';
-    const out = $('#runOut'); out.style.display = 'block';
+    if (location.hash !== '#items') location.hash = '#items';
+    const box = $('#runBox'), out = $('#runOut'), prog = $('#runProg');
+    box.style.display = 'block'; $('#runTitle').textContent = (plan.reset != null ? '已重置 ' + plan.reset + ' 条，AI 判定中' : doing) + '…'; prog.style.width = '3%'; out.textContent = '准备中…';
     const lines = [];
     let r;
     // 逐步执行：每一步都是一次独立请求，不会触发免费版的 CPU 限制
@@ -600,30 +856,36 @@ function runSteps(btn, endpoint, label, doing) {
       if (r.busy) { await new Promise((ok) => setTimeout(ok, 1500)); continue; } // 定时任务正在执行某一步，稍等
       lines.push(...(r.log || []));
       const doneN = r.total - r.left;
-      btn.textContent = doing + ' ' + doneN + '/' + r.total;
-      out.textContent = (r.current ? '▶ ' + r.current + '\n\n' : '') + lines.join('\n');
+      prog.style.width = Math.max(3, Math.round((doneN / r.total) * 100)) + '%';
+      $('#runTitle').textContent = doing + ' ' + doneN + ' / ' + r.total + (r.current ? ' · ' + r.current : '');
+      out.textContent = lines.slice(-200).join('\n');
+      out.scrollTop = out.scrollHeight;
       if (r.done) break;
     }
-    btn.textContent = label;
-    if (!r || r.idle) { toast(plan.existing ? '已有抓取在进行，已接着执行' : '没有可执行的步骤'); return; }
+    if (!r || r.idle) { $('#runTitle').textContent = '没有可执行的步骤'; toast(plan.existing ? '已有抓取在进行，已接着执行' : '没有可执行的步骤'); return; }
     const s = r.stats;
+    prog.style.width = '100%';
+    $('#runTitle').textContent = plan.reset != null ? '判定完成：通过 ' + s.approved : '抓取完成：新增 ' + s.new + '，通过 ' + s.approved;
     out.textContent = '抓到 ' + s.fetched + ' · 候选 ' + s.candidates + ' · 新增 ' + s.new + '（专源直通 ' + (s.trusted || 0) + '）· 判定 ' + s.judged + ' · 通过 ' + s.approved + ' · 错误 ' + s.errors +
-      '\n过滤：超期 ' + s.too_old + ' · 无日期 ' + s.undated + ' · 不相关 ' + s.off_topic + ' · 噪音 ' + s.noise + ' · 屏蔽 ' + (s.block_rule + s.blocked) + ' · 重复标题 ' + s.dup_title + '\n\n' + lines.join('\n');
-    toast((plan.reset != null ? '判定完成：' : '抓取完成：新增 ' + s.new + '，') + '通过 ' + s.approved);
+      '\n过滤：超期 ' + s.too_old + ' · 无日期 ' + s.undated + ' · 非中文 ' + (s.non_zh || 0) + ' · 不相关 ' + s.off_topic + ' · 噪音 ' + s.noise + ' · 屏蔽 ' + (s.block_rule + s.blocked) + ' · 重复标题 ' + s.dup_title + '\n\n' + lines.join('\n');
+    toast($('#runTitle').textContent, 4000, 'ok');
     loadItems(CUR);
   });
 }
 function pushAction(kind, channel, btn) {
   return busy(btn, async () => {
+    if (document.body.classList.contains('dirty')) toast('推送用的是已保存的设置，记得先保存', 3500);
     const r = await api('/api/admin/mail/' + kind, { method: 'POST', body: JSON.stringify({ channel }) });
-    toast(r.skipped ? '未发送：' + r.skipped : '已发送 ' + r.sent + ' 条 → ' + r.to.join(', ') + (r.errors && r.errors.length ? '；失败：' + r.errors.join('；') : ''), 7000);
+    toast(r.skipped ? '未发送：' + r.skipped : '已发送 ' + r.sent + ' 条 → ' + r.to.join(', ') + (r.errors && r.errors.length ? '；失败：' + r.errors.join('；') : ''), 7000, r.skipped ? '' : 'ok');
   });
 }
 function mailPreview(btn) {
   return busy(btn, async () => {
+    const w = window.open('', '_blank');
     const r = await fetch('/api/admin/mail/preview', { headers: { authorization: 'Bearer ' + TOKEN } });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    window.open(URL.createObjectURL(new Blob([await r.text()], { type: 'text/html' })), '_blank');
+    if (!r.ok) { w && w.close(); throw new Error('HTTP ' + r.status); }
+    const url = URL.createObjectURL(new Blob([await r.text()], { type: 'text/html' }));
+    if (w) w.location = url; else window.open(url, '_blank');
   });
 }
 
@@ -631,33 +893,42 @@ function mailPreview(btn) {
 async function loadItems(st) {
   CUR = st;
   $$('.tabs [data-st]').forEach((b) => b.classList.toggle('on', b.dataset.st === st));
-  const r = await api('/api/admin/items?status=' + st);
+  $('#items').style.opacity = '.5';
+  const r = await api('/api/admin/items?status=' + st).finally(() => ($('#items').style.opacity = ''));
+  if (CUR !== st) return;
   $$('.tabs [data-st]').forEach((b) => (b.querySelector('.n').textContent = r.counts[b.dataset.st] || 0));
   $('#navPending').textContent = r.counts.pending || '';
   $('#items').innerHTML = r.items.length ? r.items.map((it) => {
-    const ob = it.obtain ? '<span class="' + (it.obtain === 'free' ? 'free' : 'cond') + '">' + OB[it.obtain] + '</span>' : '';
-    return '<div class="item"><div class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '—') + '</div><div>' +
+    const ob = it.obtain ? '<span class="ob ' + (it.obtain === 'free' ? 'free' : 'cond') + '">' + OB[it.obtain] + '</span>' : '';
+    return '<div class="item" id="it-' + it.id + '"><div class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '—') + '</div><div>' +
       '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + esc(it.name || it.title) + '</a>' + ob +
       (it.summary ? '<div class="sum">' + esc(it.summary) + '</div>' : '') +
       '<div class="meta">' + [esc(it.source), CAT[it.category] || '', it.signup ? '注册：' + esc(it.signup) : '', ago(it.published_at), it.judged_by ? esc(it.judged_by) : ''].filter(Boolean).join('<i>·</i>') + '</div>' +
       (it.name && it.name !== it.title ? '<div class="meta">' + esc(it.title) + '</div>' : '') +
       '</div><div class="acts">' +
-      (st !== 'approved' ? '<button class="btn sm" onclick="setStatus(\'' + it.id + '\',\'approved\')">通过</button>' : '') +
-      (st !== 'rejected' ? '<button class="btn sm" onclick="setStatus(\'' + it.id + '\',\'rejected\')">拒绝</button>' : '') +
-      (st !== 'pending' ? '<button class="btn sm" onclick="setStatus(\'' + it.id + '\',\'pending\')" title="下次运行重新判定">重判</button>' : '') +
-      '<button class="btn sm danger" onclick="del(\'' + it.id + '\')">删除</button></div></div>';
+      (st !== 'approved' ? '<button class="btn sm" onclick="setStatus(\'' + it.id + '\',\'approved\', this)">通过</button>' : '') +
+      (st !== 'rejected' ? '<button class="btn sm" onclick="setStatus(\'' + it.id + '\',\'rejected\', this)">拒绝</button>' : '') +
+      (st !== 'pending' ? '<button class="btn sm" onclick="setStatus(\'' + it.id + '\',\'pending\', this)" title="下次运行重新判定">重判</button>' : '') +
+      '<button class="btn sm danger" onclick="del(\'' + it.id + '\', this)">删除</button></div></div>';
   }).join('') : '<div class="empty">暂无</div>';
 }
-async function setStatus(id, status) { await busy(null, async () => { await api('/api/admin/items/' + id, { method: 'POST', body: JSON.stringify({ status }) }); loadItems(CUR); }); }
-async function del(id) { if (!confirm('删除这条？')) return; await busy(null, async () => { await api('/api/admin/items/' + id, { method: 'DELETE' }); loadItems(CUR); }); }
+// 操作后立即从列表淡出，不等整页刷新
+async function setStatus(id, status, btn) { await busy(btn, async () => { await api('/api/admin/items/' + id, { method: 'POST', body: JSON.stringify({ status }) }); $('#it-' + id)?.classList.add('gone'); toast({ approved: '已通过', rejected: '已拒绝', pending: '已放回待判定' }[status], 1500, 'ok'); bumpCount(status); }); }
+async function del(id, btn) { if (!confirm('删除这条？')) return; await busy(btn, async () => { await api('/api/admin/items/' + id, { method: 'DELETE' }); $('#it-' + id)?.classList.add('gone'); bumpCount(null); }); }
+function bumpCount(to) {
+  const n = (st, d) => { const el = $('.tabs [data-st="' + st + '"] .n'); el.textContent = Math.max(0, (Number(el.textContent) || 0) + d); };
+  n(CUR, -1); if (to) n(to, 1);
+  $('#navPending').textContent = Number($('.tabs [data-st="pending"] .n').textContent) || '';
+}
 async function clearStatus() { if (!confirm('清空当前分类的全部条目？')) return; await busy(null, async () => { await api('/api/admin/items?status=' + CUR, { method: 'DELETE' }); loadItems(CUR); }); }
 
 async function loadRuns() {
-  const runs = await api('/api/admin/runs');
+  const runs = await api('/api/admin/runs').catch(() => []);
   $('#runs').innerHTML = runs.length ? runs.map((r) => {
     const s = JSON.parse(r.stats || '{}');
     const line = (r.finished_at ? '' : '进行中 · ') + (r.trigger === 'mail' ? (r.log || '').split('\n')[0] : '抓到 ' + (s.fetched || 0) + ' · 新增 ' + (s.new || 0) + ' · 通过 ' + (s.approved || 0) + ' · 错误 ' + (s.errors || 0));
-    return '<details><summary>' + fmt(r.started_at) + '<span class="hint"> · ' + esc(r.trigger) + ' · </span>' + esc(line) + '</summary><pre>' + esc((r.log || '') + '\n\n' + JSON.stringify(s, null, 2)) + '</pre></details>';
+    const trig = { cron: '定时', manual: '手动', url: '触发地址', visit: '访问触发', rejudge: '重新判定', mail: '推送' }[r.trigger] || r.trigger;
+    return '<details class="run"><summary>' + fmt(r.started_at) + '<span class="hint"> · ' + esc(trig) + ' · </span>' + esc(line) + '</summary><pre>' + esc((r.log || '') + '\n\n' + JSON.stringify(s, null, 2)) + '</pre></details>';
   }).join('') : '<div class="empty">还没有运行过</div>';
 }
 
@@ -666,13 +937,15 @@ async function init() {
   route();
   STATUS = await fetch('/api/admin/status').then((r) => r.json()).catch(() => STATUS);
   const where = STATUS.storage === 'kv' ? 'Cloudflare KV' : 'D1 独立的 secrets 表';
-  $$('.storageNote').forEach((el) => (el.textContent = '接口地址、Key、授权码等敏感信息保存在 ' + where + '，后台只显示打码值。'));
-  $('#storageInfo').textContent = '资源与设置：D1 数据库。敏感信息：' + where + (STATUS.storage === 'kv' ? '' : '（如需改存 KV，给 Worker 绑定一个变量名为 SECRETS 的 KV 命名空间，重新保存一次设置即可）') + '。';
+  $$('.storageNote').forEach((el) => (el.textContent = ' Key 等敏感信息保存在 ' + where + '，后台只显示打码值。'));
+  $('#storageInfo').textContent = '资源与设置：D1 数据库。敏感信息：' + where + (STATUS.storage === 'kv' ? '' : '（如需改存 KV，给 Worker 绑定一个变量名为 SECRETS 的 KV 命名空间，再保存一次设置）') + '。';
   $('#pwEnvNote').style.display = STATUS.env_token ? '' : 'none';
-  siteLockLabel();
   $('#pwForm').style.display = STATUS.env_token ? 'none' : '';
+  siteLockLabel();
   if (!STATUS.initialized || !TOKEN) return showGate();
-  try { fill(await api('/api/admin/settings')); await loadItems(CUR); } catch (e) { toast(e.message, 6000); }
+  // 设置和列表并行加载
+  const [s] = await Promise.all([api('/api/admin/settings').catch((e) => { toast(e.message, 6000, 'err'); return null; }), loadItems(CUR).catch(() => {})]);
+  if (s) fill(s);
 }
 init();
 </script>

@@ -3,7 +3,7 @@ import { getSettings, saveSettings } from './db.js';
 import { CATEGORIES, mailCats } from './categories.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const recipients = (s) => String(s || '').split(/[,;\s]+/).map((x) => x.trim()).filter((x) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+export const recipients = (s) => [...new Set(String(s || '').split(/[,;，；\s]+/).map((x) => x.trim().toLowerCase()).filter((x) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))].slice(0, 10);
 const ymd = (t) => new Date(t + 8 * 3600000).toISOString().slice(0, 10); // 按北京时间显示日期
 const CAT = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
 const OBTAIN_ZH = { free: '直接白嫖', conditional: '有条件', lottery: '抽奖', trial: '试用', promo: '推广', paid: '需付费' };
@@ -119,9 +119,20 @@ function buildMime({ fromName, from, to, subject, html, text }) {
   ].join('\r\n');
 }
 
-export async function sendMail(env, s, { subject, html, text }) {
-  const to = recipients(s.mail_to);
-  if (!to.length) throw new Error('未填写有效的收件人');
+// 多个收件人：默认每人单独发一封（互相看不到地址），某个地址失败不影响其它
+export async function sendMail(env, s, msg) {
+  const all = recipients(s.mail_to);
+  if (!all.length) throw new Error('未填写有效的收件人');
+  if (s.mail_separate === 'false' || all.length === 1) return sendMailTo(env, s, msg, all);
+  const ok = [], failed = [];
+  for (const addr of all) {
+    try { await sendMailTo(env, s, msg, [addr]); ok.push(addr); } catch (e) { failed.push(`${addr}：${e.message}`); }
+  }
+  if (!ok.length) throw new Error(failed.join('；'));
+  return { provider: s.mail_provider || 'smtp', to: ok, failed };
+}
+
+async function sendMailTo(env, s, { subject, html, text }, to) {
   const provider = s.mail_provider || 'smtp';
   const fromName = s.mail_from_name || '免费资源雷达';
 
@@ -203,7 +214,7 @@ export async function sendTelegram(s, items, title) {
 
 // ---------- 定时任务 / 后台调用 ----------
 // channel: 'mail' | 'telegram' | undefined（按启用的渠道）
-export async function sendDigest(env, { force = false, test = false, channel } = {}) {
+export async function sendDigest(env, { force = false, test = false, channel, label = '' } = {}) {
   const s = await getSettings(env);
   const startedAt = Date.now();
   const mailReady = !!String(s.mail_to || '').trim() && (s.mail_provider === 'smtp' || !s.mail_provider ? !!(s.smtp_user && s.smtp_pass) : s.mail_provider === 'cloudflare' ? !!s.mail_from : !!(s.mail_api_key && s.mail_from));
@@ -215,12 +226,16 @@ export async function sendDigest(env, { force = false, test = false, channel } =
   const items = test ? (await collectDigest(env, { ...s, mail_only_new: 'false' })).slice(0, 5) : await collectDigest(env, s);
   if (!test && !items.length && s.mail_send_empty !== 'true') return { skipped: '没有新内容' };
   const dateStr = ymd(Date.now());
-  const subject = `${test ? '[测试] ' : ''}${s.mail_subject} · ${dateStr}${items.length ? `（${items.length} 条）` : ''}`;
+  const subject = `${test ? '[测试] ' : ''}${s.mail_subject} · ${dateStr}${label ? ' ' + label : ''}${items.length ? `（${items.length} 条）` : ''}`;
   const results = [];
   const errors = [];
   for (const ch of channels) {
     try {
-      if (ch === 'mail') results.push(await sendMail(env, s, { subject, ...renderDigest(items, s, dateStr) }));
+      if (ch === 'mail') {
+        const r = await sendMail(env, s, { subject, ...renderDigest(items, s, dateStr) });
+        if (r.failed?.length) errors.push('部分邮件失败：' + r.failed.join('；'));
+        results.push(r);
+      }
       else results.push(await sendTelegram(s, items, subject));
     } catch (e) {
       errors.push(`${ch === 'mail' ? '邮件' : 'Telegram'}：${e.message}`);

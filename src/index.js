@@ -1,4 +1,4 @@
-import { ensureSchema, getSettings, saveSettings, settingsForAdmin, storageMode, getAdminHash, setAdminHash, sha256, dayOf, getSitePassHash, setSitePass } from './db.js';
+import { ensureSchema, getSettings, getBasicSettings, saveSettings, settingsForAdmin, storageMode, getAdminHash, setAdminHash, sha256, dayOf, getSitePassHash, setSitePass, getMeta, setMeta, getCronKey } from './db.js';
 import { listModels, chat } from './ai.js';
 import { planRun, tick } from './crawler.js';
 import { sendDigest, previewDigest } from './mailer.js';
@@ -36,8 +36,50 @@ function resolveAi(target, body, s) {
   return { baseUrl: body.base_url || s.ai_base_url, apiKey: key, model: body.model || s.ai_model, extra: '{}' };
 }
 
+// ---------- 缓存：同一个 Worker 实例内存缓存公开数据，缓存期内不查数据库 ----------
+const MEMO = new Map();
+async function memo(key, ttlMs, fn) {
+  const hit = MEMO.get(key);
+  if (hit && hit.exp > Date.now()) return hit.v;
+  const v = await fn();
+  MEMO.set(key, { v, exp: Date.now() + ttlMs });
+  return v;
+}
+const clearMemo = () => MEMO.clear();
+const etagOf = (s) => { let h = 2166136261; for (let i = 0; i < s.length; i += 7) h = Math.imul(h ^ s.charCodeAt(i), 16777619); return `W/"${(h >>> 0).toString(36)}-${s.length.toString(36)}"`; };
+function cached(req, body, type, extra = {}) {
+  const etag = etagOf(body);
+  const headers = { 'content-type': type, etag, 'cache-control': 'no-cache', ...extra };
+  if (req.headers.get('if-none-match') === etag) return new Response(null, { status: 304, headers });
+  return new Response(body, { headers });
+}
+const basic = (env) => memo('basic', 15000, () => getBasicSettings(env));
+
+// 资源页一次拿全：统计 + 保留期内全部已通过条目（前端本地筛选，点分类不再请求）
+async function publicData(env) {
+  const st = await basic(env);
+  const ttl = Math.max(0, Number(st.public_cache_seconds) || 0) * 1000;
+  return memo('data', ttl, async () => {
+    const cutoff = Date.now() - (Number(st.max_age_days) || 180) * 86400000;
+    const [items, last] = await Promise.all([
+      env.DB.prepare("SELECT id, title, url, source, published_at, day, category, name, summary, signup, score, obtain FROM items WHERE status = 'approved' AND (published_at IS NULL OR published_at >= ?) ORDER BY day DESC, score DESC, published_at DESC LIMIT 1500").bind(cutoff).all(),
+      env.DB.prepare("SELECT MAX(finished_at) AS t FROM runs WHERE trigger != 'mail'").first(),
+    ]);
+    const data = {
+      today: dayOf(Date.now()),
+      retention_days: Number(st.retention_days) || 15,
+      run_hour: Number(st.run_hour) || 0,
+      every: Math.min(24, Math.max(1, Number(st.crawl_every_hours) || 24)),
+      last_run: last?.t || null,
+      categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color })),
+      items: items.results || [],
+    };
+    return JSON.stringify(data);
+  });
+}
+
 async function publicItems(env, url) {
-  const s = await getSettings(env);
+  const s = await basic(env);
   const cutoff = Date.now() - (Number(s.max_age_days) || 180) * 86400000;
   const where = ["status = 'approved'", '(published_at IS NULL OR published_at >= ?)'];
   const args = [cutoff];
@@ -98,6 +140,8 @@ async function handleAdmin(req, env, url) {
     return json({ ok: true, locked: !!String(body.password || '').trim() });
   }
   if (p === '/step' && m === 'POST') return json(await tick(env, Math.min(5, Math.max(1, Number(body.n) || 1))));
+  if (p === '/cron-key' && m === 'GET') return json({ key: await getCronKey(env), last: Number(await getMeta(env, 'trigger_last')) || 0 });
+  if (p === '/cron-key' && m === 'POST') return json({ key: await getCronKey(env, true) });
   if (p === '/search-test' && m === 'POST') {
     const s = await getSettings(env);
     if (!BACKEND_MAP[body.provider]) return json({ error: '未知搜索后端' }, 400);
@@ -154,8 +198,9 @@ function setupPage(missing, asJson) {
 // ---------- 资源页访问密码 ----------
 // 设置后：资源页、/api/items、/api/stats、/feed.xml 都需要密码。网页登录后写 30 天 Cookie；RSS 用 /feed.xml?key=密码
 const SITE_COOKIE = 'frr_site';
+const siteHash = (env) => memo('sitehash', 30000, () => getSitePassHash(env));
 async function siteGate(req, env, url) {
-  const h = await getSitePassHash(env);
+  const h = await siteHash(env);
   if (!h) return { ok: true };
   const token = await sha256('cookie:' + h);
   const cookie = (req.headers.get('cookie') || '').split(/;\s*/).find((c) => c.startsWith(SITE_COOKIE + '='));
@@ -191,13 +236,25 @@ export default {
         const g = await siteGate(req, env, url);
         if (!g.ok) return url.pathname.startsWith('/api/') || url.pathname === '/feed.xml' ? json({ error: '需要访问密码' }, 401) : html(lockPage(), 401);
       }
-      if (url.pathname === '/' || url.pathname === '/index.html') return html(publicHtml);
+      if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/api/data') {
+        maybeVisitTick(env, ctx);
+        const data = await publicData(env);
+        if (url.pathname === '/api/data') return cached(req, data, 'application/json; charset=utf-8');
+        // 首屏数据直接内嵌进页面，打开即显示，不用再等接口
+        return cached(req, publicHtml.replace('/*__BOOT__*/null', data.replace(/</g, '\\u003c')), 'text/html; charset=utf-8');
+      }
+      // 触发地址：给 cron-job.org、UptimeRobot 等外部定时服务用，或者自己访问一下手动推进
+      if (url.pathname === '/api/cron') {
+        const key = url.searchParams.get('key') || req.headers.get('x-cron-key') || '';
+        if (!key || !safeEqual(key, await memo('cronkey', 60000, () => getCronKey(env)))) return json({ error: '触发密钥不对' }, 403);
+        return json(await triggerTick(env, 'url'));
+      }
       if (url.pathname === '/admin' || url.pathname === '/admin/') return html(adminHtml
         .replace('/*__CATS__*/[]', JSON.stringify(CATEGORIES.map(({ key, label, color, kw }) => ({ key, label, color, kw: kw.slice(0, 6) }))))
         .replace('/*__BACKENDS__*/[]', JSON.stringify(BACKENDS.map(({ id, name, keyless, free, signup, note, zh }) => ({ id, name, keyless, free, signup, note, zh })))));
       if (url.pathname === '/api/items') return json(await publicItems(env, url));
       if (url.pathname === '/api/stats') {
-        const st = await getSettings(env);
+        const st = await basic(env);
         const cutoff = Date.now() - (Number(st.max_age_days) || 180) * 86400000;
         const base = "FROM items WHERE status = 'approved' AND (published_at IS NULL OR published_at >= ?)";
         const [cats, obs, last, days] = await Promise.all([
@@ -212,11 +269,12 @@ export default {
         return json(out);
       }
       if (url.pathname === '/feed.xml') {
-        const items = await publicItems(env, new URL(url.origin + '/?limit=50'));
+        const st = await basic(env);
+        const items = await memo('feed', Math.max(0, Number(st.public_cache_seconds) || 0) * 1000, () => publicItems(env, new URL(url.origin + '/?limit=50')));
         const body = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>免费资源雷达</title><link>${xmlEsc(url.origin)}</link><description>每日自动抓取并经 AI 筛选</description>${items
           .map((it) => `<item><title>${xmlEsc(it.name || it.title)}</title><link>${xmlEsc(it.url)}</link><guid isPermaLink="false">${it.id}</guid>${it.published_at ? `<pubDate>${new Date(it.published_at).toUTCString()}</pubDate>` : ''}<description>${xmlEsc([it.summary, it.signup && '注册：' + it.signup].filter(Boolean).join(' | '))}</description></item>`)
           .join('')}</channel></rss>`;
-        return new Response(body, { headers: { 'content-type': 'application/rss+xml; charset=utf-8' } });
+        return cached(req, body, 'application/rss+xml; charset=utf-8');
       }
       if (url.pathname.startsWith('/api/admin/')) {
         if (url.pathname === '/api/admin/status') {
@@ -230,6 +288,7 @@ export default {
           return json({ ok: true });
         }
         if (!(await isAdmin(req, env))) return json({ error: '未授权' }, 401);
+        if (req.method !== 'GET') clearMemo(); // 后台有改动，公开数据缓存立即失效（本实例）
         if (url.pathname === '/api/admin/password' && req.method === 'POST') {
           if (envToken(env)) return json({ error: '当前使用环境变量 ADMIN_TOKEN，请在 Cloudflare 控制台修改' }, 400);
           const { password } = await req.json().catch(() => ({}));
@@ -255,21 +314,78 @@ export default {
     const missing = setupMissing(env);
     if (missing.length) { console.error('部署未完成，缺少绑定：' + missing.map((x) => x[0]).join(', ')); return; }
     await ensureSchema(env);
-    ctx.waitUntil((async () => {
-      try {
-        const s = await getSettings(env);
-        const steps = Math.min(50, Math.max(1, Number(s.steps_per_tick) || 1));
-        const r = await tick(env, steps);
-        if (!r.idle) return;
-        const now = Date.now();
-        const hour = new Date(now + 8 * 3600000).getUTCHours();
-        if (hour < (Number(s.run_hour) || 0)) return;
-        const startOfDay = Date.parse(dayOf(now) + 'T00:00:00+08:00');
-        const ran = await env.DB.prepare("SELECT id FROM runs WHERE trigger = 'cron' AND started_at >= ? LIMIT 1").bind(startOfDay).first();
-        if (ran) return;
-        await planRun(env, 'cron');
-        await tick(env, steps);
-      } catch (e) { console.error('scheduled failed', e); }
-    })());
+    ctx.waitUntil(autoTick(env, 'cron').catch((e) => console.error('scheduled failed', e)));
   },
 };
+
+// 推进一次：有进行中的抓取就执行下一步；没有且到了每天的抓取时间（今天还没跑过）就新建一次
+async function autoTick(env, trigger) {
+  const s = await getSettings(env);
+  const steps = Math.min(50, Math.max(1, Number(s.steps_per_tick) || 1));
+  const r = await tick(env, steps);
+  if (!r.idle) { clearMemo(); return { ...r, action: 'step' }; }
+  const now = Date.now();
+  // 抓取：从 run_hour 起每隔 crawl_every_hours 小时一次
+  const every = Math.min(24, Math.max(1, Number(s.crawl_every_hours) || 24));
+  const crawlSlot = latestSlot(now, slotHours(Number(s.run_hour) || 0, every));
+  const ran = await env.DB.prepare("SELECT id FROM runs WHERE trigger IN ('cron', 'url', 'visit') AND started_at >= ? LIMIT 1").bind(crawlSlot).first();
+  if (ran) {
+    // 推送：到了推送时间（3 小时内）且这个时间点还没推过；正在抓取时会等抓完
+    const mailSlot = latestSlot(now, parseHours(s.mail_hours));
+    if (mailSlot && now - mailSlot < 3 * 3600000 && Number(await getMeta(env, 'mail_slot')) < mailSlot) {
+      await setMeta(env, 'mail_slot', mailSlot);
+      const h = new Date(mailSlot + 8 * 3600000).getUTCHours();
+      const label = h < 11 ? '早报' : h < 17 ? '午报' : '晚报';
+      const t0 = Date.now();
+      let line;
+      try {
+        const r = await sendDigest(env, { label });
+        line = r.skipped ? `– ${label}跳过：${r.skipped}` : `✓ ${label}已推送 ${r.sent} 条（${r.providers.join(' + ')}）→ ${r.to.join(', ')}${r.errors.length ? '\n✗ ' + r.errors.join('\n✗ ') : ''}`;
+      } catch (e) { line = `✗ ${label}推送失败：${e.message}`; }
+      if (!line.includes('没有可用的推送渠道')) await env.DB.prepare("INSERT INTO runs (trigger, started_at, finished_at, stats, log) VALUES ('mail', ?, ?, '{}', ?)").bind(t0, Date.now(), line).run();
+      return { idle: true, action: 'mail', message: line };
+    }
+    return { idle: true, action: 'wait', message: '这一轮已经抓取过了，下一轮：' + nextSlotText(now, slotHours(Number(s.run_hour) || 0, every)) };
+  }
+  const plan = await planRun(env, trigger);
+  const r2 = await tick(env, steps);
+  clearMemo();
+  return { ...r2, action: 'started', run_id: plan.run_id, steps: plan.steps };
+}
+
+// ---- 时间点（北京时间） ----
+const BJ = 8 * 3600000;
+const parseHours = (v) => [...new Set(String(v || '').split(/[,，\s]+/).map(Number).filter((h) => Number.isInteger(h) && h >= 0 && h <= 23))].sort((a, b) => a - b);
+function slotHours(start, every) { const out = []; for (let k = 0; k * every < 24; k++) out.push((start + k * every) % 24); return [...new Set(out)].sort((a, b) => a - b); }
+// 最近一个已经到达的时间点（毫秒时间戳）
+function latestSlot(now, hours) {
+  if (!hours.length) return 0;
+  const day0 = Date.parse(dayOf(now) + 'T00:00:00+08:00');
+  const h = new Date(now + BJ).getUTCHours();
+  const past = hours.filter((x) => x <= h);
+  return past.length ? day0 + past[past.length - 1] * 3600000 : day0 - 86400000 + hours[hours.length - 1] * 3600000;
+}
+function nextSlotText(now, hours) { const h = new Date(now + BJ).getUTCHours(); const n = hours.find((x) => x > h); return n === undefined ? `明天 ${hours[0]}:00` : `${n}:00`; }
+
+// 触发地址 / 访问触发：有最小间隔，间隔内直接返回，防止被频繁访问拖垮
+let lastTrigger = 0;
+async function triggerTick(env, trigger) {
+  const s = await basic(env);
+  const gap = Math.max(5, Number(s.trigger_min_seconds) || 30) * 1000;
+  const now = Date.now();
+  if (now - lastTrigger < gap) return { ok: true, throttled: true, retry_after: Math.ceil((gap - (now - lastTrigger)) / 1000) };
+  const last = Number(await getMeta(env, 'trigger_last')) || 0;
+  if (now - last < gap) { lastTrigger = last; return { ok: true, throttled: true, retry_after: Math.ceil((gap - (now - last)) / 1000) }; }
+  lastTrigger = now;
+  await setMeta(env, 'trigger_last', now);
+  const r = await autoTick(env, trigger);
+  return { ok: true, action: r.action, message: r.message, current: r.current, done: r.done, left: r.left, total: r.total, run_id: r.run_id };
+}
+function maybeVisitTick(env, ctx) {
+  if (Date.now() - lastTrigger < 5000) return;
+  ctx.waitUntil((async () => {
+    const s = await basic(env);
+    if (s.visit_trigger !== 'true') return;
+    await triggerTick(env, 'visit');
+  })().catch((e) => console.error('visit tick failed', e)));
+}

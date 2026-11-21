@@ -464,7 +464,6 @@ export async function planRun(env, trigger = 'cron', opts = {}) {
     const group = Math.max(1, Math.min(2, Math.floor(40 / perBackend))); // 每步最多 2 家并行，控制单步 CPU
     for (let i = 0; i < ready.length; i += group) steps.push(['search', { engines: ready.slice(i, i + group) }]);
     steps.push(['judge', {}], ['cleanup', {}]);
-    if (trigger === 'cron') steps.push(['mail', {}]);
   }
   if (!aiReady) log.push('未配置 AI，使用关键词判定');
 
