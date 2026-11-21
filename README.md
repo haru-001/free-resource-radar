@@ -3,7 +3,7 @@
 
 每天自动帮你找**免费域名**和**免费虚拟主机**：只留半年内发布、注册简单（邮箱或 GitHub / Google 登录即可）的资源，AI 筛一遍，早上 9 点发到你的 QQ 邮箱。跑在 Cloudflare Workers 免费额度里，不用服务器。
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR_GITHUB/free-resource-radar)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/haru-001/free-resource-radar)
 
 ## 它能做什么
 
