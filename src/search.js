@@ -6,9 +6,16 @@ import { enabledCats, searchQueriesFor } from './categories.js';
 
 const CJK = /[\u4e00-\u9fff]/;
 
-export function searchQueries(s) {
+/** 某个搜索后端负责的分类：后台给它勾选的分类 ∩ 全局已勾选分类；没单独设置就是全部已勾选分类 */
+export function backendCats(s, id) {
+  const all = enabledCats(s);
+  const own = String(s[`${id}_cats`] || '').split(',').map((x) => x.trim()).filter(Boolean);
+  return own.length ? all.filter((k) => own.includes(k)) : all;
+}
+
+export function searchQueries(s, cats) {
   let qs = String(s.search_queries || '').split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
-  if (!qs.length) qs = searchQueriesFor(enabledCats(s)); // 留空：按勾选的分类自动生成
+  if (!qs.length) qs = searchQueriesFor(cats || enabledCats(s)); // 留空：按（该后端负责的）分类自动生成
   const lang = s.search_lang || 'zh_first';
   // 只要中文时去掉纯英文查询
   if (lang === 'zh_only') qs = qs.filter((q) => CJK.test(q));
@@ -159,7 +166,9 @@ export async function runBackend(s, id, maxAgeDays) {
   const b = BACKEND_MAP[id];
   if (!b) throw new Error(`未知搜索后端：${id}`);
   if (!b.keyless && !s[`${id}_api_key`]) throw new Error(`未填写 ${b.name} 的 API Key`);
-  const r = await runQueries(searchQueries(s), (q) => b.search(s, q, maxAgeDays), b.name);
+  const cats = backendCats(s, id);
+  if (!cats.length) return { items: [], errors: [], skipped: '负责的分类都没有勾选' };
+  const r = await runQueries(searchQueries(s, cats), (q) => b.search(s, q, maxAgeDays), b.name);
   for (const it of r.items) it.source = `${b.name} 搜索`;
   return r;
 }

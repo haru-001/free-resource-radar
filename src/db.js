@@ -23,7 +23,29 @@ export const DEFAULT_SOURCES = [
   { name: '如有乐享 · 免费资源', type: 'rss', url: 'https://51.ruyo.net/feed', enabled: true },
   { name: '小众软件 · 主站', type: 'rss', url: 'https://www.appinn.com/feed/', enabled: true },
   { name: '异次元软件世界', type: 'rss', url: 'https://feed.iplaysoft.com/', enabled: true },
-  { name: '蓝点网', type: 'rss', url: 'https://www.landiannews.com/feed', include: '免费|限免|白嫖|领取|赠送', enabled: true },
+  { name: '蓝点网', type: 'rss', url: 'https://www.landian.news/feed', include: '免费|限免|白嫖|领取|赠送', enabled: true },
+  // cats：这个源只收哪些分类（其它分类的内容直接丢弃）；hint：关键词归不了类时默认归到哪个分类
+  // 2026-11-21 实测可用的中文源
+  { name: '零度解说 · 免费软件与资源', type: 'rss', url: 'https://www.freedidi.com/feed', enabled: true },
+  { name: 'A姐分享 · 免费资源', type: 'rss', url: 'https://www.ahhhhfs.com/feed/', enabled: true },
+  { name: 'TG · A姐分享 @abskoop', type: 'telegram', channel: 'abskoop', enabled: true },
+  { name: 'TG · 在花科技圈 @zaihuapd', type: 'telegram', channel: 'zaihuapd', include: '免费|限免|白嫖|领取|赠送|0元|喜加一', enabled: true },
+  { name: '福利吧', type: 'rss', url: 'https://fuliba.net/feed', include: '免费|限免|白嫖|领取|赠送|羊毛|福利', enabled: true },
+  { name: '少数派 · 限免', type: 'rss', url: 'https://sspai.com/feed', include: '限免|免费|白嫖', enabled: true },
+  { name: '果核剥壳', type: 'rss', url: 'https://www.ghxi.com/feed', cats: ['software', 'dev', 'ai', 'pan'], hint: 'software', enabled: true },
+  { name: '异星软件空间', type: 'rss', url: 'https://www.yxssp.com/feed', cats: ['software', 'dev', 'ai'], hint: 'software', enabled: true },
+  { name: '克隆窝', type: 'rss', url: 'https://www.uy5.net/feed/', cats: ['software', 'dev', 'ai'], hint: 'software', enabled: true },
+  { name: '翻应用 · iOS 限免', type: 'rss', url: 'https://www.iapps.me/feed', cats: ['software', 'game'], hint: 'software', enabled: true },
+  { name: 'FreeGroup · 免费资源', type: 'rss', url: 'https://free.com.tw/feed/', enabled: true },
+  { name: '其乐 Keylol · 游戏', type: 'rss', url: 'https://keylol.com/forum.php?mod=rss', include: '免费|限免|喜加一|白嫖|领取|赠送|giveaway', cats: ['game'], hint: 'game', enabled: true },
+  { name: 'VPS精选网', type: 'rss', url: 'https://www.vpsjxw.com/feed/', cats: ['hosting', 'domain', 'cloud'], hint: 'hosting', enabled: true },
+  { name: '老左笔记', type: 'rss', url: 'https://www.laozuo.org/feed/', cats: ['hosting', 'domain', 'cloud'], hint: 'hosting', enabled: true },
+  { name: '主机百科', type: 'rss', url: 'https://zhujiwiki.com/feed/', cats: ['hosting', 'domain', 'cloud'], hint: 'hosting', enabled: true },
+  { name: 'VPS 侦探', type: 'rss', url: 'https://www.vpser.net/feed', cats: ['hosting', 'domain', 'cloud'], hint: 'hosting', enabled: true },
+  { name: 'VEIDC', type: 'rss', url: 'https://www.veidc.com/feed', cats: ['hosting', 'domain', 'cloud'], hint: 'hosting', enabled: true },
+  { name: 'VPSGO', type: 'rss', url: 'https://www.vpsgo.com/feed', cats: ['hosting', 'domain', 'cloud'], hint: 'hosting', enabled: true },
+  { name: 'xiaoz 博客', type: 'rss', url: 'https://blog.xiaoz.org/feed', cats: ['hosting', 'domain', 'cloud', 'dev', 'software'], enabled: true },
+  { name: 'TG · 网盘资源（迅雷云盘）@yunpanxunlei', type: 'telegram', channel: 'yunpanxunlei', category: 'pan', trusted: true, enabled: false },
   // 英文社区：默认过滤纯英文内容，这些源默认关闭；关掉「过滤纯英文」后可按需打开
   { name: 'LowEndTalk · Offers', type: 'rss', url: 'https://lowendtalk.com/categories/offers/feed.rss', enabled: false },
   { name: 'LowEndSpirit', type: 'rss', url: 'https://lowendspirit.com/discussions/feed.rss', enabled: false },
@@ -67,6 +89,10 @@ export const DEFAULT_SETTINGS = {
   qianfan_api_key: '',
   volc_enabled: 'true',
   volc_api_key: '',
+  // 每个搜索后端负责哪些分类（逗号分隔的分类 key，留空 = 全部已勾选分类）：只用这些分类生成搜索词，结果也只收这些分类
+  anysearch_cats: '', keenable_cats: '', tavily_cats: '', exa_cats: '', brave_cats: '', qianfan_cats: '', volc_cats: '',
+  // 后台「更新源」从这些地址拉取数据源（每行一个）：freebie-radar 的 SEEDS（.ts）或本项目格式的 JSON 数组
+  source_sync_urls: 'https://raw.githubusercontent.com/ZiChuanLan/freebie-radar/main/src/server/collectors/index.ts',
   search_max_results: '10', // 每个查询返回条数
   search_queries: '',     // 留空：按勾选的分类自动生成中文搜索词；填写则只用你写的
   search_max_queries: '6',  // 每次最多查几个词（省额度，也避免超出 Worker 外部请求上限）
@@ -146,7 +172,7 @@ export async function ensureSchema(env) {
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_seen_at ON seen(seen_at)'),
   ]);
   // 增量迁移：新列（已存在会报错，忽略）
-  for (const col of ['obtain TEXT', 'fp TEXT', 'day TEXT']) {
+  for (const col of ['obtain TEXT', 'fp TEXT', 'day TEXT', 'cats TEXT', 'hint TEXT']) {
     try { await env.DB.prepare(`ALTER TABLE items ADD COLUMN ${col}`).run(); } catch {}
   }
   try { await env.DB.prepare('ALTER TABLE jobs ADD COLUMN claimed_at INTEGER').run(); } catch {}

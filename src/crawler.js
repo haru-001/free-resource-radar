@@ -4,7 +4,7 @@ import { judgeBatch } from './ai.js';
 import { sendDigest } from './mailer.js';
 import { dayOf } from './db.js';
 import { CAT_MAP, enabledCats, guessCategory, topicWordsFor, kwHit, compileWords } from './categories.js';
-import { BACKENDS, BACKEND_MAP, backendReady, runBackend } from './search.js';
+import { BACKENDS, BACKEND_MAP, backendReady, runBackend, backendCats } from './search.js';
 import { isNoiseTitle, guessObtain, compileBlockRules, matchBlock, titleFingerprint } from './rules.js';
 
 const UA = 'Mozilla/5.0 (compatible; FreeResourceRadar/1.0; +https://workers.cloudflare.com)';
@@ -66,6 +66,31 @@ function tag(block, name) {
   if (gt < 0 || block[gt - 1] === '/') return '';
   const end = block.indexOf('</' + name + '>', gt);
   return end < 0 ? '' : block.slice(gt + 1, end);
+}
+export function parseTelegram(html, ch) {
+  const out = [];
+  const parts = html.split('class="tgme_widget_message_wrap');
+  for (let i = parts.length - 1; i >= 1 && out.length < 30; i--) {
+    const b = parts[i];
+    const post = /data-post="([^"]+)"/.exec(b);
+    const tm = b.indexOf('tgme_widget_message_text');
+    if (!post || tm < 0) continue;
+    const st = b.indexOf('>', tm) + 1;
+    const end = b.indexOf('</div>', st);
+    const textHtml = b.slice(st, end < 0 ? st + 4000 : end).replace(/<br\s*\/?>/gi, '\n');
+    const text = decodeEntities(textHtml.replace(/<[^>]+>/g, '')).replace(/[ \t]+/g, ' ').trim();
+    if (!text) continue;
+    const first = text.split('\n').map((x) => x.trim()).find((x) => x.length > 1) || text;
+    const dt = /datetime="([^"]+)"/.exec(b);
+    const link = /<a[^>]+href="(https?:\/\/(?!t\.me)[^"]+)"/.exec(b.slice(st, end));
+    out.push({
+      title: first.replace(/^[^\p{L}\p{N}【\[（(]+/u, '').slice(0, 120),
+      url: `https://t.me/${post[1]}`,
+      published_at: dt ? parseDate(dt[1]) : null,
+      raw_text: (text.slice(0, 1200) + (link ? `\n链接：${decodeEntities(link[1])}` : '')).slice(0, 1500),
+    });
+  }
+  return out;
 }
 export function parseDate(s) {
   if (!s) return null;
@@ -209,6 +234,12 @@ async function fetchSource(src, cutoff, env) {
         signup: '邮箱 / GitHub / Google',
       }));
     }
+    case 'telegram': {
+      // Telegram 公开频道网页版 t.me/s/<频道>，最新消息在页面末尾
+      const ch = String(src.channel || '').replace(/^@/, '').trim();
+      if (!/^\w{4,}$/.test(ch)) throw new Error('缺少 channel');
+      return parseTelegram(await getText(`https://t.me/s/${ch}`, { Accept: 'text/html' }, 300000), ch);
+    }
     case 'rss':
     default:
       if (!src.url) throw new Error('缺少 url');
@@ -226,12 +257,17 @@ function isBlocked(u, domains) {
 }
 const containsAny = (text, words) => words.some((w) => text.includes(w));
 
+const csv = (v) => (Array.isArray(v) ? v : String(v || '').split(',')).map((x) => String(x).trim()).filter(Boolean);
+/** 条目允许的分类：来源限定的分类 ∩ 已勾选分类 */
+function allowedOf(item, cats) { const own = csv(item.cats); return own.length ? cats.filter((k) => own.includes(k)) : cats; }
+
 function heuristicJudge(item, s) {
   const text = `${item.title} ${item.raw_text || ''}`.toLowerCase();
   const hard = s.simple_signup_only !== 'false' && lines(s.hard_signup_keywords).find((w) => text.includes(w));
   const obtain = guessObtain(item.title, item.raw_text || '');
   const allowed = lines(s.allowed_obtain);
-  const category = guessCategory(text, enabledCats(s)) || 'other';
+  const allow = allowedOf(item, enabledCats(s));
+  const category = guessCategory(text, allow) || (item.hint && allow.includes(item.hint) ? item.hint : null) || 'other';
   return {
     // 没有 AI 时更保守：标题里要有“免费 / 白嫖 / free”之类的字样
     status: hard || !allowed.includes(obtain) || category === 'other' || !lines(s.free_keywords).some((w) => kwHit(String(item.title).toLowerCase(), w)) ? 'rejected' : 'approved',
@@ -286,17 +322,22 @@ async function ingest(env, c, src, items, stats, log) {
   const cats = c.cats;
   const autoCat = src.category === 'auto';
   if (src.trusted && src.category && !autoCat && !cats.includes(src.category)) { log.push(`– ${src.name}: 分类「${CAT_MAP[src.category]?.label}」未勾选，跳过`); return; }
+  // 来源的分类管控：cats 限定这个源只收哪些分类
+  const own = csv(src.cats);
+  const allow = own.length ? cats.filter((k) => own.includes(k)) : cats;
+  if (own.length && !allow.length) { log.push(`– ${src.name}: 负责的分类都没有勾选，跳过`); return; }
+  if (src.trusted && src.category && !autoCat && own.length && !allow.includes(src.category)) { log.push(`– ${src.name}: 固定分类不在它负责的分类里，跳过`); return; }
   let include = null;
   if (src.include) { try { include = new RegExp(src.include, 'i'); } catch { log.push(`! ${src.name}: include 正则无效`); } }
   const candidates = new Map();
   const runFp = new Set();
   for (const raw of items) {
-    const it = { ...raw, source: raw.source || src.name || src.type, trusted: !!src.trusted, category: src.category || null };
+    const it = { ...raw, source: raw.source || src.name || src.type, trusted: !!src.trusted, category: src.category || null, cats: own.length ? allow.join(',') : null, hint: src.hint || src.fallback || null };
     if (src.note && !it.summary) it.summary = src.note;
     if (autoCat) {
       // 自动归类：按关键词归到已勾选的分类，归不进去就用 fallback，fallback 也没勾选则跳过
-      const g = guessCategory(`${it.title} ${it.raw_text || ''}`.toLowerCase(), cats) || src.fallback;
-      if (!g || !cats.includes(g)) { stats.off_topic++; continue; }
+      const g = guessCategory(`${it.title} ${it.raw_text || ''}`.toLowerCase(), allow) || src.fallback;
+      if (!g || !allow.includes(g)) { stats.off_topic++; continue; }
       it.category = g;
     }
     stats.fetched++;
@@ -320,6 +361,8 @@ async function ingest(env, c, src, items, stats, log) {
     if (src.filter !== false && !src.trusted) {
       const text = `${it.title} ${it.raw_text || ''}`.toLowerCase();
       if (!(c.topicRe && c.topicRe.test(text)) || !containsAny(text, c.freeWords)) { stats.off_topic++; continue; }
+      // 限定了分类的源：关键词明确归到别的分类就丢弃（归不了类的交给判定）
+      if (own.length) { const g = guessCategory(text, cats); if (g && !allow.includes(g)) { stats.off_topic++; continue; } }
     }
     const url = normalizeUrl(it.url);
     const id = await hashId(url);
@@ -356,8 +399,8 @@ async function ingest(env, c, src, items, stats, log) {
       direct
         ? env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
           .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, c.now, 'approved', it.fp || null, today, it.category, it.name || null, it.summary || (it.raw_text || '').slice(0, 120), it.signup || null, 'free', 80, 'trusted', c.now)
-        : env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, c.now, 'pending', it.fp || null, today),
+        : env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, cats, hint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, c.now, 'pending', it.fp || null, today, it.cats || null, it.hint || null),
       env.DB.prepare('INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)').bind(id, it.fp || null, c.now)
     );
   }
@@ -403,7 +446,10 @@ async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
           if (!v) { updates.push(env.DB.prepare('UPDATE items SET attempts = attempts + 1 WHERE id=?').bind(it.id)); return; }
           const score = Math.round(Number(v.score) || 0);
           const obtain = ['free', 'conditional', 'lottery', 'trial', 'promo', 'paid'].includes(v.obtain) ? v.obtain : guessObtain(it.title, it.raw_text || '');
-          const category = c.cats.includes(v.category) ? v.category : 'other';
+          const allow = allowedOf(it, c.cats);
+          let category = allow.includes(v.category) ? v.category : 'other';
+          // AI 没归类但来源有默认分类：用默认分类
+          if (category === 'other' && (!v.category || v.category === 'other') && it.hint && allow.includes(it.hint)) category = it.hint;
           const signupOk = s.simple_signup_only === 'false' || v.simple_signup === true;
           const ok = v.relevant === true && signupOk && category !== 'other' && score >= minScore && allowedObtain.includes(obtain);
           applyVerdict(it, {
@@ -495,8 +541,9 @@ async function runJob(env, job, c, stats, log, runStats) {
         const name = (BACKEND_MAP[id]?.name || id) + ' 搜索';
         if (e) { stats.errors++; log.push(`✗ ${name}: ${e.message}`); continue; }
         for (const x of r.errors) log.push(`! ${name} 部分查询失败：${x}`);
+        if (r.skipped) { log.push(`– ${name}: ${r.skipped}`); continue; }
         log.push(`✓ ${name}: ${r.items.length} 条`);
-        await ingest(env, c, { name, isSearch: true }, r.items, stats, log);
+        await ingest(env, c, { name, isSearch: true, cats: c.s[`${id}_cats`] ? backendCats(c.s, id) : null }, r.items, stats, log);
       }
       return false;
     }

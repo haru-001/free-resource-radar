@@ -69,6 +69,46 @@
   .changed input:not([type=checkbox]), .changed select, .changed textarea, input.changed, select.changed, textarea.changed { border-color:#f4c46a; background:var(--warn-bg); }
   .sw.changed::after, .chk.changed::after { content:"未保存"; font-size:11px; color:var(--warn); background:var(--warn-bg); border-radius:999px; padding:0 7px; }
   [data-csv].changed { outline:2px dashed #f4c46a; outline-offset:5px; border-radius:12px; }
+  .srcbar { display:flex; gap:8px; margin-bottom:10px; }
+  .srcbar input { flex:1; } .srcbar select { width:130px; }
+  .srclist { border:1px solid var(--line); border-radius:10px; overflow:hidden; max-height:560px; overflow-y:auto; }
+  .srow { display:grid; grid-template-columns:auto minmax(0,1fr) auto auto; gap:12px; align-items:center; padding:9px 12px; border-top:1px solid var(--line); background:var(--surface); }
+  .srow:first-child { border-top:none; }
+  .srow.off .snm { color:var(--ink-4); }
+  .snm { font-weight:600; font-size:13.5px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; min-width:0; }
+  .snm small { font-weight:400; color:var(--ink-4); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+  .scats { display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; cursor:pointer; border:1px dashed transparent; border-radius:8px; padding:3px 6px; transition:.12s; }
+  .scats:hover { border-color:var(--line-2); background:var(--hover); }
+  .scats .tag.c { background:color-mix(in srgb, var(--cc) 14%, #fff); color:color-mix(in srgb, var(--cc) 80%, #000); }
+  .sdel { border:none; background:transparent; color:var(--ink-4); cursor:pointer; width:26px; height:26px; border-radius:7px; font-size:16px; }
+  .sdel:hover { background:var(--alert-bg); color:var(--alert); }
+  .sedit { grid-column:1 / -1; background:var(--hover); border-radius:9px; padding:12px; display:grid; gap:10px; }
+  .sedit .row2 { display:grid; grid-template-columns:200px 1fr; gap:10px; }
+  .cpills { display:flex; gap:6px; flex-wrap:wrap; }
+  .cpills button { border:1px solid var(--line); background:var(--surface); border-radius:999px; padding:3px 10px; font:inherit; font-size:12.5px; color:var(--ink-3); cursor:pointer; display:inline-flex; gap:5px; align-items:center; transition:.12s; }
+  .cpills button i { width:8px; height:8px; border-radius:50%; background:var(--cc); opacity:.35; }
+  .cpills button.on { border-color:var(--cc); color:var(--ink); font-weight:600; background:color-mix(in srgb, var(--cc) 10%, #fff); }
+  .cpills button.on i { opacity:1; }
+  .cpills button.dis { opacity:.45; }
+  .cpills .all { font-weight:600; }
+  .be .ln .becats { color:var(--ink-3); cursor:pointer; }
+  .be .ln .becats b { color:var(--accent-2); font-weight:600; }
+  .be .bce { grid-column:1 / -1; margin-top:-2px; }
+  .modal { position:fixed; inset:0; background:rgba(20,21,28,.38); display:none; align-items:center; justify-content:center; z-index:80; padding:20px; }
+  .modal.on { display:flex; animation:fade .15s; }
+  .mbox { background:var(--surface); border-radius:14px; width:min(760px,100%); max-height:86vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+  .mbox header, .mbox footer { display:flex; gap:8px; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line); }
+  .mbox footer { border-top:1px solid var(--line); border-bottom:none; }
+  .mbox .x { border:none; background:transparent; font-size:20px; cursor:pointer; color:var(--ink-3); width:30px; height:30px; border-radius:8px; }
+  .mbody { overflow:auto; padding:6px 18px 14px; }
+  .mbody h4 { margin:14px 0 6px; font-size:12.5px; color:var(--ink-3); font-weight:600; }
+  .sitem { display:flex; gap:10px; align-items:center; padding:7px 4px; border-top:1px solid var(--line); cursor:pointer; }
+  .sitem input { width:16px; height:16px; accent-color:var(--accent); flex:none; }
+  .sitem .snm small { display:block; }
+  .sitem .tag.why { background:var(--warn-bg); color:var(--warn); }
+  .sp { flex:1; }
+  @keyframes fade { from { opacity:0 } }
+  @media (max-width: 760px) { .srow { grid-template-columns:auto minmax(0,1fr) auto; } .srow .scats { grid-column:2 / -1; justify-content:flex-start; } .sedit .row2 { grid-template-columns:1fr; } }
   .rcpt { display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-height:38px; padding:4px 6px; border:1px solid var(--line); border-radius:9px; background:var(--surface); cursor:text; transition:border-color .12s, box-shadow .12s; }
   .rcpt:focus-within { border-color:var(--accent-line); box-shadow:0 0 0 4px var(--accent-bg); }
   .rcpt.changed { border-color:#f4c46a; background:var(--warn-bg); }
@@ -346,6 +386,21 @@
             <div class="hint">间隔内的触发请求会直接返回、不执行，防止被频繁访问拖垮。缓存期内资源页不查数据库，打开更快；后台操作后缓存会立即刷新。</div>
           </div>
         </div>
+        <div class="section">
+          <header><h2>数据源</h2><span class="hint" id="srcCount"></span><span class="sp"></span><button class="btn sm" onclick="openSync(this)">↻ 更新源</button><button class="btn sm" onclick="addSource()">＋ 添加</button></header>
+          <div class="body" style="padding-top:12px">
+            <div class="srcbar"><input type="text" id="srcQ" placeholder="搜索源名称 / 地址" oninput="renderSources()" /><select id="srcF" onchange="renderSources()"><option value="">全部</option><option value="on">已启用</option><option value="off">已停用</option><option value="limited">限定了分类</option></select></div>
+            <div class="srclist" id="srcList"></div>
+            <div class="hint">点「分类」限定这个源只收哪些分类，其它分类的内容直接丢弃；没设置就跟随上面勾选的分类。「默认分类」用于关键词归不了类的时候（比如主机博客默认归到主机 / VPS）。抓到的内容照常经过时间、中文、噪音、屏蔽规则、关键词和 AI 过滤。</div>
+            <details class="adv"><summary>更新源的地址 / 以 JSON 编辑</summary>
+              <label class="f" style="margin-top:10px">「更新源」从这些地址拉取（每行一个；支持 freebie-radar 的 SEEDS 源文件，或本项目格式的 JSON 数组）</label>
+              <textarea data-key="source_sync_urls" style="min-height:64px"></textarea>
+              <label class="f" style="margin-top:12px">全部数据源（JSON）</label>
+              <textarea data-key="sources" id="srcJson" style="min-height:260px"></textarea>
+              <div class="hint">type：rss（url）/ telegram（channel）/ v2ex（node）/ hn（query）/ reddit（query, subreddit）/ github（query）/ epic / gamerpower / openrouter_free。cats：只收这些分类；hint：默认分类；include：标题必须匹配的正则；trusted:true + category：直接入库不送 AI；ai_only：只在配置了 AI 时抓。</div>
+            </details>
+          </div>
+        </div>
       </div>
 
       <!-- AI 与搜索 -->
@@ -490,13 +545,6 @@
             </div>
           </div>
         </div>
-        <div class="section">
-          <header><h2>数据源</h2><span class="hint" id="srcCount"></span></header>
-          <div class="body">
-            <textarea data-key="sources" style="min-height:320px"></textarea>
-            <div class="hint">type：rss（url）/ v2ex（node）/ hn（query）/ reddit（query, subreddit）/ github（query）/ epic / gamerpower / openrouter_free。enabled:false 停用；filter:false 跳过关键词预筛；trusted:true + category 直接入库不送 AI（category:"auto" 自动归类）；include 为标题必须匹配的正则。</div>
-          </div>
-        </div>
       </div>
 
       <!-- 账号与安全 -->
@@ -537,6 +585,13 @@
   </main>
 </div>
 <div class="savebar"><span class="txt" id="dirtyTxt">有未保存的修改</span><button class="btn" onclick="revert()">撤销</button><button class="btn acc" onclick="save(this)">保存</button></div>
+<div class="modal" id="syncModal" onclick="if(event.target===this)closeSync()">
+  <div class="mbox">
+    <header><b>更新源</b><span class="hint" id="syncSum"></span><span class="sp"></span><button class="btn sm" onclick="syncAll(true)">全选</button><button class="btn sm" onclick="syncAll(false)">只选推荐</button><button class="x" onclick="closeSync()" aria-label="关闭">×</button></header>
+    <div class="mbody" id="syncBody"></div>
+    <footer><span class="hint" id="syncErr"></span><span class="sp"></span><button class="btn" onclick="closeSync()">取消</button><button class="btn pri" id="syncAdd" onclick="applySync()">添加选中</button></footer>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script>
@@ -573,7 +628,8 @@ function renderBackends() {
     '<div class="q">' + esc(b.free) + (b.note ? ' · ' + esc(b.note) : '') + '</div></div>' +
     '<div><input type="password" data-key="' + b.id + '_api_key" autocomplete="off" placeholder="' + (b.keyless ? 'API Key（可选，留空走免费接口）' : '填 API Key 后自动参与') + '" /></div>' +
     '<div class="ops"><label class="sw"><input type="checkbox" data-key="' + b.id + '_enabled" /></label><button class="btn sm" onclick="testSearch(\'' + b.id + '\', this)">测试</button></div>' +
-    '<div class="ln"><a href="' + esc(b.signup) + '" target="_blank" rel="noopener">' + (b.keyless ? '注册拿 Key（提高额度）' : '去注册拿免费 API Key') + ' ↗</a></div>' +
+    '<div class="ln"><span class="becats" onclick="toggleBeCats(\'' + b.id + '\')" title="这个后端只搜这些分类">负责分类：<b></b> ▾</span><input type="hidden" data-key="' + b.id + '_cats" /><a href="' + esc(b.signup) + '" target="_blank" rel="noopener">' + (b.keyless ? '注册拿 Key（提高额度）' : '去注册拿免费 API Key') + ' ↗</a></div>' +
+    '<div class="bce" style="display:none"></div>' +
     '<pre class="out" style="display:none"></pre></div>').join('');
 }
 function backendStates() {
@@ -592,7 +648,8 @@ function backendStates() {
   const aiOn = field('ai_enabled').checked && field('ai_base_url').value && field('ai_api_key').value && field('ai_model').value;
   $('#aiState').textContent = aiOn ? '使用 AI' : '关键词判定';
   $('#aiState').className = 'tag ' + (aiOn ? 'on' : 'off');
-  try { const n = JSON.parse(field('sources').value).filter((x) => x.enabled !== false).length; $('#srcCount').textContent = '启用 ' + n + ' 个'; } catch { $('#srcCount').textContent = 'JSON 格式有误'; }
+  try { const l = JSON.parse(field('sources').value); $('#srcCount').textContent = '启用 ' + l.filter((x) => x.enabled !== false).length + ' / 共 ' + l.length + ' 个'; } catch { $('#srcCount').textContent = 'JSON 格式有误'; }
+  for (const b of BACKENDS) { const v = field(b.id + '_cats').value; $('#be-' + b.id + ' .becats b').textContent = catSummary(v ? v.split(',') : []); }
 }
 function renderCats() {
   const tile = (c, mini) => '<label class="cat" title="' + esc(c.kw.join(' · ')) + '"><input type="checkbox" value="' + c.key + '"><span class="ic" style="background:' + c.color + '"></span><span class="tx"><b>' + c.label + '</b>' + (mini ? '' : '<small>' + esc(c.kw.join(' · ') || '其它未归类的免费资源') + '</small>') + '</span><span class="ck">✓</span></label>';
@@ -687,6 +744,7 @@ function fill(s) {
   });
   applyShow();
   renderRcpt();
+  renderSources();
   SNAP = collect();
   onEdit();
 }
@@ -701,6 +759,128 @@ function collect() {
   return out;
 }
 function changedKeys() { const cur = collect(); return Object.keys(cur).filter((k) => cur[k] !== SNAP[k]); }
+// ---- 分类选择（数据源、搜索后端共用） ----
+const enabledNow = () => [...$$('#catBox input:checked')].map((i) => i.value);
+function catSummary(list) {
+  const en = enabledNow();
+  if (!list.length) return '全部已勾选分类';
+  const l = list.filter((k) => CAT[k]);
+  const off = l.filter((k) => !en.includes(k)).length;
+  return l.map((k) => CAT[k]).join('、') + (off ? '（' + off + ' 个未勾选）' : '');
+}
+function catPills(sel, onChange) {
+  const box = document.createElement('div');
+  box.className = 'cpills';
+  const en = enabledNow();
+  const draw = () => {
+    box.innerHTML = '<button type="button" class="all' + (sel.length ? '' : ' on') + '" style="--cc:var(--accent)"><i></i>全部（跟随勾选）</button>' +
+      CATS.filter((c) => c.key !== 'other').map((c) => '<button type="button" data-k="' + c.key + '" class="' + (sel.includes(c.key) ? 'on' : '') + (en.includes(c.key) ? '' : ' dis') + '" style="--cc:' + c.color + '" title="' + (en.includes(c.key) ? '' : '这个分类在「分类订阅」里没勾选，不会生效') + '"><i></i>' + esc(c.label) + '</button>').join('');
+  };
+  box.onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.classList.contains('all')) sel = [];
+    else { const k = b.dataset.k; sel = sel.includes(k) ? sel.filter((x) => x !== k) : [...sel, k]; }
+    draw(); onChange(sel);
+  };
+  draw();
+  return box;
+}
+
+// ---- 数据源管理（以 JSON 文本框为准，表格是它的可视化编辑） ----
+let SRC_OPEN = -1;
+function srcList() { try { const l = JSON.parse(field('sources').value); return Array.isArray(l) ? l : []; } catch { return null; } }
+function setSrc(list) { field('sources').value = JSON.stringify(list, null, 2); onEdit(); renderSources(); }
+const TYPE_ZH = { rss: 'RSS', telegram: 'TG', v2ex: 'V2EX', hn: 'HN', reddit: 'Reddit', github: 'GitHub', epic: 'Epic', gamerpower: 'GamerPower', openrouter_free: 'OpenRouter' };
+function srcWhere(x) { if (x.url) { try { const u = new URL(x.url); return u.hostname.replace(/^www\./, '') + (u.pathname.length > 1 ? u.pathname : ''); } catch { return x.url; } } return x.channel ? '@' + x.channel : x.node ? 'node/' + x.node : x.query || ''; }
+function renderSources() {
+  const list = srcList(), box = $('#srcList');
+  if (!list) { box.innerHTML = '<div class="empty" style="padding:18px">JSON 格式有误，展开下方「以 JSON 编辑」修正</div>'; return; }
+  const q = $('#srcQ').value.trim().toLowerCase(), f = $('#srcF').value;
+  const en = enabledNow();
+  box.innerHTML = '';
+  list.forEach((x, i) => {
+    const on = x.enabled !== false, cats = Array.isArray(x.cats) ? x.cats : x.cats ? String(x.cats).split(',') : [];
+    if (q && !(String(x.name) + ' ' + srcWhere(x)).toLowerCase().includes(q)) return;
+    if ((f === 'on' && !on) || (f === 'off' && on) || (f === 'limited' && !cats.length && !x.category)) return;
+    const row = document.createElement('div');
+    row.className = 'srow' + (on ? '' : ' off');
+    const fixed = x.category && x.category !== 'auto';
+    const chips = fixed ? '<span class="tag c" style="--cc:' + (CATS.find((c) => c.key === x.category)?.color || '#888') + '">固定：' + esc(CAT[x.category] || x.category) + '</span>'
+      : cats.length ? cats.map((k) => { const c = CATS.find((y) => y.key === k); return c ? '<span class="tag c" style="--cc:' + c.color + (en.includes(k) ? '' : ';opacity:.45') + '">' + esc(c.label) + '</span>' : ''; }).join('')
+      : '<span class="tag">全部分类</span>';
+    row.innerHTML = '<label class="sw"><input type="checkbox"' + (on ? ' checked' : '') + ' /></label>' +
+      '<div class="snm">' + esc(x.name || '未命名') + '<span class="tag">' + (TYPE_ZH[x.type || 'rss'] || x.type) + '</span>' + (x.trusted ? '<span class="tag free">免审</span>' : '') + (x.include ? '<span class="tag" title="标题需匹配：' + esc(x.include) + '">有标题筛选</span>' : '') + '<small>' + esc(srcWhere(x)) + '</small></div>' +
+      '<div class="scats" title="点击设置分类">' + chips + (x.hint && !fixed ? '<span class="tag" title="默认分类">默认 ' + esc(CAT[x.hint] || x.hint) + '</span>' : '') + '</div>' +
+      '<button class="sdel" title="删除">×</button>';
+    row.querySelector('input').onchange = (e) => { const l = srcList(); l[i].enabled = e.target.checked; setSrc(l); };
+    row.querySelector('.sdel').onclick = () => { if (confirm('删除「' + (x.name || '') + '」？')) { const l = srcList(); l.splice(i, 1); SRC_OPEN = -1; setSrc(l); } };
+    row.querySelector('.scats').onclick = () => { SRC_OPEN = SRC_OPEN === i ? -1 : i; renderSources(); };
+    if (SRC_OPEN === i) {
+      const ed = document.createElement('div');
+      ed.className = 'sedit';
+      ed.innerHTML = '<div><label class="f">' + (fixed ? '这个源固定归到「' + esc(CAT[x.category] || x.category) + '」，免 AI 审核；也可以改成限定分类后照常判定' : '只收这些分类') + '</label></div>' +
+        '<div class="row2"><div><label class="f">默认分类（归不了类时）</label><select class="hint-s"><option value="">不设置</option>' + CATS.filter((c) => c.key !== 'other').map((c) => '<option value="' + c.key + '"' + (x.hint === c.key ? ' selected' : '') + '>' + esc(c.label) + '</option>').join('') + '</select></div>' +
+        '<div><label class="f">标题必须包含（正则，留空不限）</label><input type="text" class="inc-s" value="' + esc(x.include || '') + '" placeholder="例如 免费|限免|白嫖" /></div></div>' +
+        (fixed ? '<div><button class="btn sm unfix">改为限定分类（送判定）</button></div>' : '');
+      ed.children[0].appendChild(catPills(fixed ? [x.category] : cats, (sel) => { const l = srcList(); if (sel.length) l[i].cats = sel; else delete l[i].cats; if (fixed) { delete l[i].category; delete l[i].trusted; } setSrc(l); }));
+      ed.querySelector('.hint-s').onchange = (e) => { const l = srcList(); if (e.target.value) l[i].hint = e.target.value; else delete l[i].hint; setSrc(l); };
+      ed.querySelector('.inc-s').onchange = (e) => { const v = e.target.value.trim(); try { if (v) new RegExp(v); } catch { toast('正则格式不对', 2500, 'err'); return; } const l = srcList(); if (v) l[i].include = v; else delete l[i].include; setSrc(l); };
+      ed.querySelector('.unfix')?.addEventListener('click', () => { const l = srcList(); l[i].cats = [x.category]; l[i].hint = x.category; delete l[i].category; delete l[i].trusted; setSrc(l); });
+      row.appendChild(ed);
+    }
+    box.appendChild(row);
+  });
+  if (!box.children.length) box.innerHTML = '<div class="empty" style="padding:18px">没有匹配的源</div>';
+}
+function addSource() {
+  const url = prompt('RSS 地址，或 Telegram 频道（@频道名）：');
+  if (!url) return;
+  const l = srcList() || [];
+  const tg = /^@?\w{4,}$/.test(url.trim()) || /t\.me\/(s\/)?(\w+)/.exec(url);
+  if (tg) { const ch = (typeof tg === 'object' && tg[2]) || url.trim().replace(/^@/, ''); l.unshift({ name: 'TG · @' + ch, type: 'telegram', channel: ch, enabled: true }); }
+  else if (/^https?:\/\//.test(url.trim())) { let h = url; try { h = new URL(url).hostname.replace(/^www\./, ''); } catch {} l.unshift({ name: h, type: 'rss', url: url.trim(), enabled: true }); }
+  else return toast('不是有效的地址', 2500, 'err');
+  SRC_OPEN = 0; $('#srcQ').value = ''; $('#srcF').value = '';
+  setSrc(l);
+  toast('已添加，可以改名称和分类，记得保存', 3000, 'ok');
+}
+let SYNC = null;
+async function openSync(btn) {
+  await busy(btn, async () => {
+    const r = await api('/api/admin/sources/check', { method: 'POST', body: JSON.stringify({ sources: field('sources').value, urls: field('source_sync_urls').value }) });
+    SYNC = r;
+    const n = r.groups.reduce((a, g) => a + g.items.length, 0);
+    $('#syncSum').textContent = n ? '找到 ' + n + ' 个新源' + (r.existing ? '，' + r.existing + ' 个已有' : '') + (r.unsupported ? '，' + r.unsupported + ' 个类型暂不支持' : '') : '';
+    $('#syncErr').textContent = r.errors.length ? '部分地址拉取失败：' + r.errors.join('；') : '';
+    $('#syncBody').innerHTML = n ? r.groups.map((g, gi) => '<h4>' + esc(g.label) + ' · ' + g.items.length + ' 个</h4>' + g.items.map((it, ii) =>
+      '<label class="sitem"><input type="checkbox" data-g="' + gi + '" data-i="' + ii + '"' + (it.suggest ? ' checked' : '') + ' /><div class="snm">' + esc(it.src.name) + '<span class="tag">' + (TYPE_ZH[it.src.type || 'rss'] || it.src.type) + '</span>' + (it.why ? '<span class="tag why">' + esc(it.why) + '</span>' : '<span class="tag on">推荐</span>') + (it.src.hint ? '<span class="tag">' + esc(CAT[it.src.hint] || it.src.hint) + '</span>' : '') + '<small>' + esc(srcWhere(it.src)) + '</small></div></label>').join('')).join('')
+      : '<div class="empty" style="padding:30px 0">已经是最新的了，没有新的源。</div>';
+    syncCount();
+    $('#syncModal').classList.add('on');
+  });
+}
+function syncCount() { const n = $$('#syncBody input:checked').length; $('#syncAdd').textContent = n ? '添加选中 ' + n + ' 个' : '添加选中'; $('#syncAdd').disabled = !n; }
+$('#syncBody').addEventListener('change', syncCount);
+function syncAll(all) { $$('#syncBody input').forEach((i) => (i.checked = all || SYNC.groups[i.dataset.g].items[i.dataset.i].suggest)); syncCount(); }
+function closeSync() { $('#syncModal').classList.remove('on'); }
+function applySync() {
+  const add = [...$$('#syncBody input:checked')].map((i) => SYNC.groups[i.dataset.g].items[i.dataset.i].src);
+  const l = srcList() || [];
+  setSrc([...l, ...add]);
+  closeSync();
+  toast('已添加 ' + add.length + ' 个源，保存后下次抓取生效', 3500, 'ok');
+}
+function toggleBeCats(id) {
+  const box = $('#be-' + id + ' .bce');
+  if (box.style.display !== 'none') { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const v = field(id + '_cats').value;
+  box.innerHTML = '';
+  box.appendChild(catPills(v ? v.split(',') : [], (sel) => { field(id + '_cats').value = sel.join(','); onEdit(); }));
+  box.style.display = '';
+}
+let srcT;
+document.addEventListener('input', (e) => { if (e.target.id === 'srcJson') { clearTimeout(srcT); srcT = setTimeout(renderSources, 300); } });
+
 // ---- 收件人 ----
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const rcptList = () => field('mail_to').value.split(/[,;，；\s]+/).map((x) => x.trim()).filter(Boolean);

@@ -3,6 +3,7 @@ import { listModels, chat } from './ai.js';
 import { planRun, tick } from './crawler.js';
 import { sendDigest, previewDigest } from './mailer.js';
 import { BACKENDS, BACKEND_MAP, runBackend } from './search.js';
+import { checkSources } from './sources-sync.js';
 import { CATEGORIES, CAT_MAP, enabledCats } from './categories.js';
 import adminHtml from './admin.html';
 import publicHtml from './public.html';
@@ -148,6 +149,14 @@ async function handleAdmin(req, env, url) {
     const t0 = Date.now();
     const r = await runBackend({ ...s, search_max_queries: '2' }, body.provider, Number(s.max_age_days) || 180);
     return json({ ok: true, ms: Date.now() - t0, count: r.items.length, errors: r.errors, sample: r.items.slice(0, 8).map((x) => ({ title: x.title, url: x.url, date: x.published_at ? new Date(x.published_at).toISOString().slice(0, 10) : null })) });
+  }
+  // 更新源：拉取内置推荐 + 远程源列表，返回当前还没有的（由后台勾选后合并、保存）
+  if (p === '/sources/check' && m === 'POST') {
+    const s = await getSettings(env);
+    let current = [];
+    try { current = JSON.parse(body.sources ?? s.sources); } catch {}
+    const urls = String(body.urls ?? s.source_sync_urls ?? '').split(/\r?\n/).map((x) => x.trim()).filter((x) => /^https?:\/\//.test(x)).slice(0, 5);
+    return json(await checkSources(Array.isArray(current) ? current : [], urls));
   }
   if (p === '/mail/test' && m === 'POST') return json(await sendDigest(env, { force: true, test: true, channel: body.channel === 'telegram' ? 'telegram' : 'mail' }));
   if (p === '/mail/send' && m === 'POST') return json(await sendDigest(env, { force: true }));

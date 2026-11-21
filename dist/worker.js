@@ -148,7 +148,29 @@ var DEFAULT_SOURCES = [
   { name: "\u5982\u6709\u4E50\u4EAB \xB7 \u514D\u8D39\u8D44\u6E90", type: "rss", url: "https://51.ruyo.net/feed", enabled: true },
   { name: "\u5C0F\u4F17\u8F6F\u4EF6 \xB7 \u4E3B\u7AD9", type: "rss", url: "https://www.appinn.com/feed/", enabled: true },
   { name: "\u5F02\u6B21\u5143\u8F6F\u4EF6\u4E16\u754C", type: "rss", url: "https://feed.iplaysoft.com/", enabled: true },
-  { name: "\u84DD\u70B9\u7F51", type: "rss", url: "https://www.landiannews.com/feed", include: "\u514D\u8D39|\u9650\u514D|\u767D\u5AD6|\u9886\u53D6|\u8D60\u9001", enabled: true },
+  { name: "\u84DD\u70B9\u7F51", type: "rss", url: "https://www.landian.news/feed", include: "\u514D\u8D39|\u9650\u514D|\u767D\u5AD6|\u9886\u53D6|\u8D60\u9001", enabled: true },
+  // cats：这个源只收哪些分类（其它分类的内容直接丢弃）；hint：关键词归不了类时默认归到哪个分类
+  // 2026-11-21 实测可用的中文源
+  { name: "\u96F6\u5EA6\u89E3\u8BF4 \xB7 \u514D\u8D39\u8F6F\u4EF6\u4E0E\u8D44\u6E90", type: "rss", url: "https://www.freedidi.com/feed", enabled: true },
+  { name: "A\u59D0\u5206\u4EAB \xB7 \u514D\u8D39\u8D44\u6E90", type: "rss", url: "https://www.ahhhhfs.com/feed/", enabled: true },
+  { name: "TG \xB7 A\u59D0\u5206\u4EAB @abskoop", type: "telegram", channel: "abskoop", enabled: true },
+  { name: "TG \xB7 \u5728\u82B1\u79D1\u6280\u5708 @zaihuapd", type: "telegram", channel: "zaihuapd", include: "\u514D\u8D39|\u9650\u514D|\u767D\u5AD6|\u9886\u53D6|\u8D60\u9001|0\u5143|\u559C\u52A0\u4E00", enabled: true },
+  { name: "\u798F\u5229\u5427", type: "rss", url: "https://fuliba.net/feed", include: "\u514D\u8D39|\u9650\u514D|\u767D\u5AD6|\u9886\u53D6|\u8D60\u9001|\u7F8A\u6BDB|\u798F\u5229", enabled: true },
+  { name: "\u5C11\u6570\u6D3E \xB7 \u9650\u514D", type: "rss", url: "https://sspai.com/feed", include: "\u9650\u514D|\u514D\u8D39|\u767D\u5AD6", enabled: true },
+  { name: "\u679C\u6838\u5265\u58F3", type: "rss", url: "https://www.ghxi.com/feed", cats: ["software", "dev", "ai", "pan"], hint: "software", enabled: true },
+  { name: "\u5F02\u661F\u8F6F\u4EF6\u7A7A\u95F4", type: "rss", url: "https://www.yxssp.com/feed", cats: ["software", "dev", "ai"], hint: "software", enabled: true },
+  { name: "\u514B\u9686\u7A9D", type: "rss", url: "https://www.uy5.net/feed/", cats: ["software", "dev", "ai"], hint: "software", enabled: true },
+  { name: "\u7FFB\u5E94\u7528 \xB7 iOS \u9650\u514D", type: "rss", url: "https://www.iapps.me/feed", cats: ["software", "game"], hint: "software", enabled: true },
+  { name: "FreeGroup \xB7 \u514D\u8D39\u8D44\u6E90", type: "rss", url: "https://free.com.tw/feed/", enabled: true },
+  { name: "\u5176\u4E50 Keylol \xB7 \u6E38\u620F", type: "rss", url: "https://keylol.com/forum.php?mod=rss", include: "\u514D\u8D39|\u9650\u514D|\u559C\u52A0\u4E00|\u767D\u5AD6|\u9886\u53D6|\u8D60\u9001|giveaway", cats: ["game"], hint: "game", enabled: true },
+  { name: "VPS\u7CBE\u9009\u7F51", type: "rss", url: "https://www.vpsjxw.com/feed/", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
+  { name: "\u8001\u5DE6\u7B14\u8BB0", type: "rss", url: "https://www.laozuo.org/feed/", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
+  { name: "\u4E3B\u673A\u767E\u79D1", type: "rss", url: "https://zhujiwiki.com/feed/", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
+  { name: "VPS \u4FA6\u63A2", type: "rss", url: "https://www.vpser.net/feed", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
+  { name: "VEIDC", type: "rss", url: "https://www.veidc.com/feed", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
+  { name: "VPSGO", type: "rss", url: "https://www.vpsgo.com/feed", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
+  { name: "xiaoz \u535A\u5BA2", type: "rss", url: "https://blog.xiaoz.org/feed", cats: ["hosting", "domain", "cloud", "dev", "software"], enabled: true },
+  { name: "TG \xB7 \u7F51\u76D8\u8D44\u6E90\uFF08\u8FC5\u96F7\u4E91\u76D8\uFF09@yunpanxunlei", type: "telegram", channel: "yunpanxunlei", category: "pan", trusted: true, enabled: false },
   // 英文社区：默认过滤纯英文内容，这些源默认关闭；关掉「过滤纯英文」后可按需打开
   { name: "LowEndTalk \xB7 Offers", type: "rss", url: "https://lowendtalk.com/categories/offers/feed.rss", enabled: false },
   { name: "LowEndSpirit", type: "rss", url: "https://lowendspirit.com/discussions/feed.rss", enabled: false },
@@ -199,6 +221,16 @@ var DEFAULT_SETTINGS = {
   qianfan_api_key: "",
   volc_enabled: "true",
   volc_api_key: "",
+  // 每个搜索后端负责哪些分类（逗号分隔的分类 key，留空 = 全部已勾选分类）：只用这些分类生成搜索词，结果也只收这些分类
+  anysearch_cats: "",
+  keenable_cats: "",
+  tavily_cats: "",
+  exa_cats: "",
+  brave_cats: "",
+  qianfan_cats: "",
+  volc_cats: "",
+  // 后台「更新源」从这些地址拉取数据源（每行一个）：freebie-radar 的 SEEDS（.ts）或本项目格式的 JSON 数组
+  source_sync_urls: "https://raw.githubusercontent.com/ZiChuanLan/freebie-radar/main/src/server/collectors/index.ts",
   search_max_results: "10",
   // 每个查询返回条数
   search_queries: "",
@@ -308,7 +340,7 @@ async function ensureSchema(env) {
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_seen_fp ON seen(fp)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_seen_at ON seen(seen_at)")
   ]);
-  for (const col of ["obtain TEXT", "fp TEXT", "day TEXT"]) {
+  for (const col of ["obtain TEXT", "fp TEXT", "day TEXT", "cats TEXT", "hint TEXT"]) {
     try {
       await env.DB.prepare(`ALTER TABLE items ADD COLUMN ${col}`).run();
     } catch {
@@ -800,9 +832,14 @@ async function sendDigest(env, { force = false, test = false, channel, label = "
 
 // src/search.js
 var CJK = /[\u4e00-\u9fff]/;
-function searchQueries(s) {
+function backendCats(s, id) {
+  const all = enabledCats(s);
+  const own = String(s[`${id}_cats`] || "").split(",").map((x) => x.trim()).filter(Boolean);
+  return own.length ? all.filter((k) => own.includes(k)) : all;
+}
+function searchQueries(s, cats) {
   let qs = String(s.search_queries || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
-  if (!qs.length) qs = searchQueriesFor(enabledCats(s));
+  if (!qs.length) qs = searchQueriesFor(cats || enabledCats(s));
   const lang = s.search_lang || "zh_first";
   if (lang === "zh_only") qs = qs.filter((q) => CJK.test(q));
   return qs.slice(0, Math.max(1, Number(s.search_max_queries) || 12));
@@ -975,7 +1012,9 @@ async function runBackend(s, id, maxAgeDays) {
   const b = BACKEND_MAP[id];
   if (!b) throw new Error(`\u672A\u77E5\u641C\u7D22\u540E\u7AEF\uFF1A${id}`);
   if (!b.keyless && !s[`${id}_api_key`]) throw new Error(`\u672A\u586B\u5199 ${b.name} \u7684 API Key`);
-  const r = await runQueries(searchQueries(s), (q) => b.search(s, q, maxAgeDays), b.name);
+  const cats = backendCats(s, id);
+  if (!cats.length) return { items: [], errors: [], skipped: "\u8D1F\u8D23\u7684\u5206\u7C7B\u90FD\u6CA1\u6709\u52FE\u9009" };
+  const r = await runQueries(searchQueries(s, cats), (q) => b.search(s, q, maxAgeDays), b.name);
   for (const it of r.items) it.source = `${b.name} \u641C\u7D22`;
   return r;
 }
@@ -1090,6 +1129,32 @@ function tag(block, name) {
   if (gt < 0 || block[gt - 1] === "/") return "";
   const end = block.indexOf("</" + name + ">", gt);
   return end < 0 ? "" : block.slice(gt + 1, end);
+}
+function parseTelegram(html2, ch) {
+  const out = [];
+  const parts = html2.split('class="tgme_widget_message_wrap');
+  for (let i = parts.length - 1; i >= 1 && out.length < 30; i--) {
+    const b = parts[i];
+    const post = /data-post="([^"]+)"/.exec(b);
+    const tm = b.indexOf("tgme_widget_message_text");
+    if (!post || tm < 0) continue;
+    const st = b.indexOf(">", tm) + 1;
+    const end = b.indexOf("</div>", st);
+    const textHtml = b.slice(st, end < 0 ? st + 4e3 : end).replace(/<br\s*\/?>/gi, "\n");
+    const text = decodeEntities(textHtml.replace(/<[^>]+>/g, "")).replace(/[ \t]+/g, " ").trim();
+    if (!text) continue;
+    const first = text.split("\n").map((x) => x.trim()).find((x) => x.length > 1) || text;
+    const dt = /datetime="([^"]+)"/.exec(b);
+    const link = /<a[^>]+href="(https?:\/\/(?!t\.me)[^"]+)"/.exec(b.slice(st, end));
+    out.push({
+      title: first.replace(/^[^\p{L}\p{N}【\[（(]+/u, "").slice(0, 120),
+      url: `https://t.me/${post[1]}`,
+      published_at: dt ? parseDate(dt[1]) : null,
+      raw_text: (text.slice(0, 1200) + (link ? `
+\u94FE\u63A5\uFF1A${decodeEntities(link[1])}` : "")).slice(0, 1500)
+    });
+  }
+  return out;
 }
 function parseDate(s) {
   if (!s) return null;
@@ -1232,6 +1297,11 @@ async function fetchSource(src, cutoff, env) {
         signup: "\u90AE\u7BB1 / GitHub / Google"
       }));
     }
+    case "telegram": {
+      const ch = String(src.channel || "").replace(/^@/, "").trim();
+      if (!/^\w{4,}$/.test(ch)) throw new Error("\u7F3A\u5C11 channel");
+      return parseTelegram(await getText(`https://t.me/s/${ch}`, { Accept: "text/html" }, 3e5), ch);
+    }
     case "rss":
     default:
       if (!src.url) throw new Error("\u7F3A\u5C11 url");
@@ -1250,12 +1320,18 @@ function isBlocked(u, domains) {
   return domains.some((d) => host === d || host.endsWith("." + d));
 }
 var containsAny = (text, words) => words.some((w) => text.includes(w));
+var csv = (v) => (Array.isArray(v) ? v : String(v || "").split(",")).map((x) => String(x).trim()).filter(Boolean);
+function allowedOf(item, cats) {
+  const own = csv(item.cats);
+  return own.length ? cats.filter((k) => own.includes(k)) : cats;
+}
 function heuristicJudge(item, s) {
   const text = `${item.title} ${item.raw_text || ""}`.toLowerCase();
   const hard = s.simple_signup_only !== "false" && lines(s.hard_signup_keywords).find((w) => text.includes(w));
   const obtain = guessObtain(item.title, item.raw_text || "");
   const allowed = lines(s.allowed_obtain);
-  const category = guessCategory(text, enabledCats(s)) || "other";
+  const allow = allowedOf(item, enabledCats(s));
+  const category = guessCategory(text, allow) || (item.hint && allow.includes(item.hint) ? item.hint : null) || "other";
   return {
     // 没有 AI 时更保守：标题里要有“免费 / 白嫖 / free”之类的字样
     status: hard || !allowed.includes(obtain) || category === "other" || !lines(s.free_keywords).some((w) => kwHit(String(item.title).toLowerCase(), w)) ? "rejected" : "approved",
@@ -1309,6 +1385,16 @@ async function ingest(env, c, src, items, stats, log) {
     log.push(`\u2013 ${src.name}: \u5206\u7C7B\u300C${CAT_MAP[src.category]?.label}\u300D\u672A\u52FE\u9009\uFF0C\u8DF3\u8FC7`);
     return;
   }
+  const own = csv(src.cats);
+  const allow = own.length ? cats.filter((k) => own.includes(k)) : cats;
+  if (own.length && !allow.length) {
+    log.push(`\u2013 ${src.name}: \u8D1F\u8D23\u7684\u5206\u7C7B\u90FD\u6CA1\u6709\u52FE\u9009\uFF0C\u8DF3\u8FC7`);
+    return;
+  }
+  if (src.trusted && src.category && !autoCat && own.length && !allow.includes(src.category)) {
+    log.push(`\u2013 ${src.name}: \u56FA\u5B9A\u5206\u7C7B\u4E0D\u5728\u5B83\u8D1F\u8D23\u7684\u5206\u7C7B\u91CC\uFF0C\u8DF3\u8FC7`);
+    return;
+  }
   let include = null;
   if (src.include) {
     try {
@@ -1320,11 +1406,11 @@ async function ingest(env, c, src, items, stats, log) {
   const candidates = /* @__PURE__ */ new Map();
   const runFp = /* @__PURE__ */ new Set();
   for (const raw of items) {
-    const it = { ...raw, source: raw.source || src.name || src.type, trusted: !!src.trusted, category: src.category || null };
+    const it = { ...raw, source: raw.source || src.name || src.type, trusted: !!src.trusted, category: src.category || null, cats: own.length ? allow.join(",") : null, hint: src.hint || src.fallback || null };
     if (src.note && !it.summary) it.summary = src.note;
     if (autoCat) {
-      const g = guessCategory(`${it.title} ${it.raw_text || ""}`.toLowerCase(), cats) || src.fallback;
-      if (!g || !cats.includes(g)) {
+      const g = guessCategory(`${it.title} ${it.raw_text || ""}`.toLowerCase(), allow) || src.fallback;
+      if (!g || !allow.includes(g)) {
         stats.off_topic++;
         continue;
       }
@@ -1380,6 +1466,13 @@ ${it.raw_text || ""}`)) {
         stats.off_topic++;
         continue;
       }
+      if (own.length) {
+        const g = guessCategory(text, cats);
+        if (g && !allow.includes(g)) {
+          stats.off_topic++;
+          continue;
+        }
+      }
     }
     const url = normalizeUrl(it.url);
     const id = await hashId(url);
@@ -1423,7 +1516,7 @@ ${it.raw_text || ""}`)) {
       stats.approved++;
     }
     stmts.push(
-      direct ? env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "approved", it.fp || null, today, it.category, it.name || null, it.summary || (it.raw_text || "").slice(0, 120), it.signup || null, "free", 80, "trusted", c.now) : env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "pending", it.fp || null, today),
+      direct ? env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "approved", it.fp || null, today, it.category, it.name || null, it.summary || (it.raw_text || "").slice(0, 120), it.signup || null, "free", 80, "trusted", c.now) : env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, cats, hint) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "pending", it.fp || null, today, it.cats || null, it.hint || null),
       env.DB.prepare("INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)").bind(id, it.fp || null, c.now)
     );
   }
@@ -1471,7 +1564,9 @@ async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
           }
           const score = Math.round(Number(v.score) || 0);
           const obtain = ["free", "conditional", "lottery", "trial", "promo", "paid"].includes(v.obtain) ? v.obtain : guessObtain(it.title, it.raw_text || "");
-          const category = c.cats.includes(v.category) ? v.category : "other";
+          const allow = allowedOf(it, c.cats);
+          let category = allow.includes(v.category) ? v.category : "other";
+          if (category === "other" && (!v.category || v.category === "other") && it.hint && allow.includes(it.hint)) category = it.hint;
           const signupOk = s.simple_signup_only === "false" || v.simple_signup === true;
           const ok = v.relevant === true && signupOk && category !== "other" && score >= minScore && allowedObtain.includes(obtain);
           applyVerdict(it, {
@@ -1560,8 +1655,12 @@ async function runJob(env, job, c, stats, log, runStats) {
           continue;
         }
         for (const x of r.errors) log.push(`! ${name} \u90E8\u5206\u67E5\u8BE2\u5931\u8D25\uFF1A${x}`);
+        if (r.skipped) {
+          log.push(`\u2013 ${name}: ${r.skipped}`);
+          continue;
+        }
         log.push(`\u2713 ${name}: ${r.items.length} \u6761`);
-        await ingest(env, c, { name, isSearch: true }, r.items, stats, log);
+        await ingest(env, c, { name, isSearch: true, cats: c.s[`${id}_cats`] ? backendCats(c.s, id) : null }, r.items, stats, log);
       }
       return false;
     }
@@ -1632,6 +1731,199 @@ async function tick(env, maxSteps = 1) {
   const add = log.join("\n");
   if (add) await env.DB.prepare("UPDATE runs SET log = CASE WHEN log = '' THEN ? ELSE log || char(10) || ? END WHERE id = ?").bind(add, add, run.id).run();
   return { run_id: run.id, done, busy, current, left: left?.n || 0, total: left?.total || 0, stats: runStats, log };
+}
+
+// src/sources-sync.js
+var FREEBIE_SEEDS_URL = "https://raw.githubusercontent.com/ZiChuanLan/freebie-radar/main/src/server/collectors/index.ts";
+var CJK3 = /[\u4e00-\u9fff]/;
+var EN_HOSTS = ["reddit.com", "itch.io", "isthereanydeal.com", "indiegamebundles.com", "freesteamkeys.com", "gg.deals", "giveawayoftheday.com", "tickcoupon.com", "sharewareonsale.com", "lowendtalk.com", "lowendspirit.com", "lowendbox.com", "news.ycombinator.com"];
+var BLOCKED_HOSTS = ["linux.do", "reddit.com", "deepflood.com", "52pojie.cn", "hostloc.com", "423down.com"];
+var NEWS_HOSTS = ["chinanews.com.cn", "wallstreetcn.com", "qbitai.com", "leiphone.com", "tmtpost.com", "ifanr.com", "36kr.com", "huxiu.com", "cctv.com", "thepaper.cn", "sspai.com", "ithome.com", "cnbeta.com.tw"];
+var ZH_HOSTS = ["linux.do", "nodeseek.com", "nodeloc.com", "deepflood.com", "vpsgo.com", "vpsxb.net", "keylol.com", "free.com.tw", "v2ex.com", "appinn.com", "appinn.net", "ghxi.com", "yxssp.com", "iplaysoft.com", "vpsjxw.com", "laozuo.org", "veidc.com", "vpser.net", "banwagong.net"];
+var CAT_HINT = { vps: "hosting", hosting: "hosting", software: "software", pan: "pan", game: "game", ai: "ai", domain: "domain", cloud: "cloud", dev: "dev", edu: "edu", course: "course", media: "media", design: "design" };
+var hostOf = (u) => {
+  try {
+    return new URL(u).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+};
+var hostIn = (h, list) => list.some((d) => h === d || h.endsWith("." + d));
+var reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function sourceKey(x) {
+  const t = x.type || "rss";
+  if (t === "rss") {
+    try {
+      const u = new URL(x.url);
+      return "rss:" + u.hostname.replace(/^www\./, "").toLowerCase() + u.pathname.replace(/\/+$/, "") + u.search;
+    } catch {
+      return "rss:" + x.url;
+    }
+  }
+  if (t === "v2ex") return "v2ex:" + (x.node || "free");
+  if (t === "telegram") return "tg:" + String(x.channel || "").toLowerCase();
+  if (t === "gamerpower") return "gamerpower:" + (x.kind || "game");
+  return t + ":" + String(x.query || "").toLowerCase();
+}
+function parseFreebieSeeds(ts) {
+  const start = ts.indexOf("export const SEEDS");
+  if (start < 0) throw new Error("\u6CA1\u627E\u5230 SEEDS");
+  const open = ts.indexOf("[", ts.indexOf("=", start));
+  let depth = 0, end = -1, q = null;
+  for (let i = open; i < ts.length; i++) {
+    const ch = ts[i];
+    if (q) {
+      if (ch === "\\") i++;
+      else if (ch === q) q = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      q = ch;
+      continue;
+    }
+    if (ch === "/" && ts[i + 1] === "/") {
+      const nl = ts.indexOf("\n", i);
+      i = nl < 0 ? ts.length : nl;
+      continue;
+    }
+    if (ch === "[" || ch === "{") depth++;
+    else if ((ch === "]" || ch === "}") && --depth === 0) {
+      end = i;
+      break;
+    }
+  }
+  if (end < 0) throw new Error("SEEDS \u6570\u7EC4\u4E0D\u5B8C\u6574");
+  const src = ts.slice(open, end + 1);
+  const parts = [];
+  let last = "{";
+  const ID0 = /[A-Za-z_$]/, IDC = /[\w$]/;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === '"' || ch === "'") {
+      let j = i + 1;
+      while (j < src.length && src[j] !== ch) j += src[j] === "\\" ? 2 : 1;
+      const body = src.slice(i + 1, j);
+      parts.push(ch === '"' ? '"' + body + '"' : JSON.stringify(body.replace(/\\'/g, "'")));
+      last = '"';
+      i = j;
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "/") {
+      const nl = src.indexOf("\n", i);
+      i = (nl < 0 ? src.length : nl) - 1;
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "*") {
+      const e = src.indexOf("*/", i + 2);
+      i = (e < 0 ? src.length : e + 2) - 1;
+      continue;
+    }
+    if (ID0.test(ch)) {
+      let j = i + 1;
+      while (j < src.length && IDC.test(src[j])) j++;
+      const word = src.slice(i, j);
+      let k = j;
+      while (src[k] === " " || src[k] === "	") k++;
+      parts.push((last === "{" || last === ",") && src[k] === ":" ? '"' + word + '"' : word);
+      last = "a";
+      i = j - 1;
+      continue;
+    }
+    parts.push(ch);
+    if (ch !== " " && ch !== "\n" && ch !== "\r" && ch !== "	") last = ch;
+  }
+  let out = parts.join("");
+  out = out.replace(/,(\s*[}\]])/g, "$1");
+  const seeds = JSON.parse(out);
+  return seeds.flatMap(seedToSources).filter(Boolean);
+}
+function seedToSources(seed) {
+  const c = seed.config || {};
+  const cat = CAT_HINT[c.fixedCategory] || CAT_HINT[c.categoryHint] || void 0;
+  const info = c.kindHint === "info" || [c.categoryHint, c.fixedCategory, ...(c.feeds || []).map((f) => f.categoryHint)].some((h) => h && !CAT_HINT[h]);
+  const base = { from: "freebie-radar", upstream_enabled: seed.enabled !== false, ...info ? { info: true } : {} };
+  switch (seed.kind) {
+    case "rss":
+      return (c.feeds || []).filter((f) => f.url).map((f, i, all) => {
+        const o = { name: all.length > 1 ? `${seed.name} \xB7 ${f.id}` : seed.name, type: "rss", url: f.url, ...base };
+        if (f.titleKeywords?.length) o.include = f.titleKeywords.map(reEscape).join("|");
+        if (f.only100Off) o.include = "100%";
+        const hint = CAT_HINT[f.categoryHint] || cat;
+        if (hint) o.hint = hint;
+        return o;
+      });
+    case "v2ex":
+      return [{ name: seed.name, type: "v2ex", node: c.node || "free", ...base }];
+    case "telegram":
+      return (c.channels || []).map((ch) => ({ name: `${seed.name.replace(/（.*?）/, "")} \xB7 @${ch}`, type: "telegram", channel: ch, ...cat ? { hint: cat } : {}, ...base }));
+    case "linuxdo":
+      return c.categoryId ? [{ name: seed.name, type: "rss", url: `https://linux.do/c/${c.rssSlug || c.categoryId}/${c.categoryId}.rss`, ...base }] : [];
+    case "epic":
+      return [{ name: seed.name, type: "epic", category: "game", trusted: true, ...base }];
+    case "gamerpower": {
+      const kind = /loot/.test(c.query || "") ? "loot" : "game";
+      return [{ name: seed.name, type: "gamerpower", kind, category: "game", trusted: true, ...base }];
+    }
+    case "openrouter":
+      return [{ name: seed.name, type: "openrouter_free", category: "ai", trusted: true, ...base }];
+    default:
+      return [{ unsupported: true, name: seed.name, kind: seed.kind }];
+  }
+}
+function zhOf(x) {
+  const h = hostOf(x.url || "");
+  if (h && hostIn(h, EN_HOSTS)) return false;
+  if (h && hostIn(h, ZH_HOSTS)) return true;
+  if (["v2ex", "telegram", "epic", "gamerpower", "openrouter_free"].includes(x.type)) return true;
+  return CJK3.test(String(x.name || "").trim().split(/[\s·]/)[0]) || /\.(cn|tw|hk)$/.test(h);
+}
+async function checkSources(current, urls) {
+  const have = new Set(current.map(sourceKey));
+  const groups = [{ id: "builtin", label: "\u5185\u7F6E\u63A8\u8350\uFF08\u672C\u7248\u672C\u65B0\u589E\uFF09", list: DEFAULT_SOURCES.map((x) => ({ ...x, from: "builtin", upstream_enabled: x.enabled !== false })) }];
+  const errors = [];
+  let unsupported = 0;
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, { headers: { "User-Agent": "free-resource-radar", Accept: "*/*" }, signal: AbortSignal.timeout(15e3) });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const text = await r.text();
+      let list;
+      if (/^\s*[[{]/.test(text)) {
+        const j = JSON.parse(text);
+        list = (Array.isArray(j) ? j : j.sources || []).filter((x) => x && (x.url || x.type)).map((x) => ({ ...x, from: url, upstream_enabled: x.enabled !== false }));
+      } else {
+        list = parseFreebieSeeds(text);
+      }
+      unsupported += list.filter((x) => x.unsupported).length;
+      const label = url === FREEBIE_SEEDS_URL || /freebie-radar/.test(url) ? "freebie-radar" : url.replace(/^https?:\/\//, "").slice(0, 60);
+      groups.push({ id: url, label, list: list.filter((x) => !x.unsupported) });
+    } catch (e) {
+      errors.push(`${url}\uFF1A${e.message}`);
+    }
+  }
+  const seen = new Set(have);
+  const out = [];
+  let existing = 0;
+  for (const g of groups) {
+    const fresh = [];
+    for (const x of g.list) {
+      const k = sourceKey(x);
+      if (seen.has(k)) {
+        if (have.has(k)) existing++;
+        continue;
+      }
+      seen.add(k);
+      const zh = zhOf(x);
+      const blocked = hostIn(hostOf(x.url || ""), BLOCKED_HOSTS);
+      const info = x.info || hostIn(hostOf(x.url || ""), NEWS_HOSTS) && !x.include;
+      const { upstream_enabled, from, info: _i, ...src } = x;
+      src.enabled = true;
+      const why = !zh ? "\u82F1\u6587" : blocked ? "\u673A\u623F\u5E38\u88AB\u62E6" : info ? "\u8D44\u8BAF\u7C7B" : !upstream_enabled ? "\u4E0A\u6E38\u672A\u542F\u7528" : "";
+      fresh.push({ key: k, suggest: !why, why, src });
+    }
+    if (fresh.length) out.push({ id: g.id, label: g.label, items: fresh });
+  }
+  return { groups: out, existing, unsupported, errors };
 }
 
 // src/admin.html
@@ -1706,6 +1998,46 @@ var admin_default = `<!doctype html>
   .changed input:not([type=checkbox]), .changed select, .changed textarea, input.changed, select.changed, textarea.changed { border-color:#f4c46a; background:var(--warn-bg); }
   .sw.changed::after, .chk.changed::after { content:"\u672A\u4FDD\u5B58"; font-size:11px; color:var(--warn); background:var(--warn-bg); border-radius:999px; padding:0 7px; }
   [data-csv].changed { outline:2px dashed #f4c46a; outline-offset:5px; border-radius:12px; }
+  .srcbar { display:flex; gap:8px; margin-bottom:10px; }
+  .srcbar input { flex:1; } .srcbar select { width:130px; }
+  .srclist { border:1px solid var(--line); border-radius:10px; overflow:hidden; max-height:560px; overflow-y:auto; }
+  .srow { display:grid; grid-template-columns:auto minmax(0,1fr) auto auto; gap:12px; align-items:center; padding:9px 12px; border-top:1px solid var(--line); background:var(--surface); }
+  .srow:first-child { border-top:none; }
+  .srow.off .snm { color:var(--ink-4); }
+  .snm { font-weight:600; font-size:13.5px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; min-width:0; }
+  .snm small { font-weight:400; color:var(--ink-4); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+  .scats { display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; cursor:pointer; border:1px dashed transparent; border-radius:8px; padding:3px 6px; transition:.12s; }
+  .scats:hover { border-color:var(--line-2); background:var(--hover); }
+  .scats .tag.c { background:color-mix(in srgb, var(--cc) 14%, #fff); color:color-mix(in srgb, var(--cc) 80%, #000); }
+  .sdel { border:none; background:transparent; color:var(--ink-4); cursor:pointer; width:26px; height:26px; border-radius:7px; font-size:16px; }
+  .sdel:hover { background:var(--alert-bg); color:var(--alert); }
+  .sedit { grid-column:1 / -1; background:var(--hover); border-radius:9px; padding:12px; display:grid; gap:10px; }
+  .sedit .row2 { display:grid; grid-template-columns:200px 1fr; gap:10px; }
+  .cpills { display:flex; gap:6px; flex-wrap:wrap; }
+  .cpills button { border:1px solid var(--line); background:var(--surface); border-radius:999px; padding:3px 10px; font:inherit; font-size:12.5px; color:var(--ink-3); cursor:pointer; display:inline-flex; gap:5px; align-items:center; transition:.12s; }
+  .cpills button i { width:8px; height:8px; border-radius:50%; background:var(--cc); opacity:.35; }
+  .cpills button.on { border-color:var(--cc); color:var(--ink); font-weight:600; background:color-mix(in srgb, var(--cc) 10%, #fff); }
+  .cpills button.on i { opacity:1; }
+  .cpills button.dis { opacity:.45; }
+  .cpills .all { font-weight:600; }
+  .be .ln .becats { color:var(--ink-3); cursor:pointer; }
+  .be .ln .becats b { color:var(--accent-2); font-weight:600; }
+  .be .bce { grid-column:1 / -1; margin-top:-2px; }
+  .modal { position:fixed; inset:0; background:rgba(20,21,28,.38); display:none; align-items:center; justify-content:center; z-index:80; padding:20px; }
+  .modal.on { display:flex; animation:fade .15s; }
+  .mbox { background:var(--surface); border-radius:14px; width:min(760px,100%); max-height:86vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+  .mbox header, .mbox footer { display:flex; gap:8px; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line); }
+  .mbox footer { border-top:1px solid var(--line); border-bottom:none; }
+  .mbox .x { border:none; background:transparent; font-size:20px; cursor:pointer; color:var(--ink-3); width:30px; height:30px; border-radius:8px; }
+  .mbody { overflow:auto; padding:6px 18px 14px; }
+  .mbody h4 { margin:14px 0 6px; font-size:12.5px; color:var(--ink-3); font-weight:600; }
+  .sitem { display:flex; gap:10px; align-items:center; padding:7px 4px; border-top:1px solid var(--line); cursor:pointer; }
+  .sitem input { width:16px; height:16px; accent-color:var(--accent); flex:none; }
+  .sitem .snm small { display:block; }
+  .sitem .tag.why { background:var(--warn-bg); color:var(--warn); }
+  .sp { flex:1; }
+  @keyframes fade { from { opacity:0 } }
+  @media (max-width: 760px) { .srow { grid-template-columns:auto minmax(0,1fr) auto; } .srow .scats { grid-column:2 / -1; justify-content:flex-start; } .sedit .row2 { grid-template-columns:1fr; } }
   .rcpt { display:flex; flex-wrap:wrap; gap:6px; align-items:center; min-height:38px; padding:4px 6px; border:1px solid var(--line); border-radius:9px; background:var(--surface); cursor:text; transition:border-color .12s, box-shadow .12s; }
   .rcpt:focus-within { border-color:var(--accent-line); box-shadow:0 0 0 4px var(--accent-bg); }
   .rcpt.changed { border-color:#f4c46a; background:var(--warn-bg); }
@@ -1983,6 +2315,21 @@ var admin_default = `<!doctype html>
             <div class="hint">\u95F4\u9694\u5185\u7684\u89E6\u53D1\u8BF7\u6C42\u4F1A\u76F4\u63A5\u8FD4\u56DE\u3001\u4E0D\u6267\u884C\uFF0C\u9632\u6B62\u88AB\u9891\u7E41\u8BBF\u95EE\u62D6\u57AE\u3002\u7F13\u5B58\u671F\u5185\u8D44\u6E90\u9875\u4E0D\u67E5\u6570\u636E\u5E93\uFF0C\u6253\u5F00\u66F4\u5FEB\uFF1B\u540E\u53F0\u64CD\u4F5C\u540E\u7F13\u5B58\u4F1A\u7ACB\u5373\u5237\u65B0\u3002</div>
           </div>
         </div>
+        <div class="section">
+          <header><h2>\u6570\u636E\u6E90</h2><span class="hint" id="srcCount"></span><span class="sp"></span><button class="btn sm" onclick="openSync(this)">\u21BB \u66F4\u65B0\u6E90</button><button class="btn sm" onclick="addSource()">\uFF0B \u6DFB\u52A0</button></header>
+          <div class="body" style="padding-top:12px">
+            <div class="srcbar"><input type="text" id="srcQ" placeholder="\u641C\u7D22\u6E90\u540D\u79F0 / \u5730\u5740" oninput="renderSources()" /><select id="srcF" onchange="renderSources()"><option value="">\u5168\u90E8</option><option value="on">\u5DF2\u542F\u7528</option><option value="off">\u5DF2\u505C\u7528</option><option value="limited">\u9650\u5B9A\u4E86\u5206\u7C7B</option></select></div>
+            <div class="srclist" id="srcList"></div>
+            <div class="hint">\u70B9\u300C\u5206\u7C7B\u300D\u9650\u5B9A\u8FD9\u4E2A\u6E90\u53EA\u6536\u54EA\u4E9B\u5206\u7C7B\uFF0C\u5176\u5B83\u5206\u7C7B\u7684\u5185\u5BB9\u76F4\u63A5\u4E22\u5F03\uFF1B\u6CA1\u8BBE\u7F6E\u5C31\u8DDF\u968F\u4E0A\u9762\u52FE\u9009\u7684\u5206\u7C7B\u3002\u300C\u9ED8\u8BA4\u5206\u7C7B\u300D\u7528\u4E8E\u5173\u952E\u8BCD\u5F52\u4E0D\u4E86\u7C7B\u7684\u65F6\u5019\uFF08\u6BD4\u5982\u4E3B\u673A\u535A\u5BA2\u9ED8\u8BA4\u5F52\u5230\u4E3B\u673A / VPS\uFF09\u3002\u6293\u5230\u7684\u5185\u5BB9\u7167\u5E38\u7ECF\u8FC7\u65F6\u95F4\u3001\u4E2D\u6587\u3001\u566A\u97F3\u3001\u5C4F\u853D\u89C4\u5219\u3001\u5173\u952E\u8BCD\u548C AI \u8FC7\u6EE4\u3002</div>
+            <details class="adv"><summary>\u66F4\u65B0\u6E90\u7684\u5730\u5740 / \u4EE5 JSON \u7F16\u8F91</summary>
+              <label class="f" style="margin-top:10px">\u300C\u66F4\u65B0\u6E90\u300D\u4ECE\u8FD9\u4E9B\u5730\u5740\u62C9\u53D6\uFF08\u6BCF\u884C\u4E00\u4E2A\uFF1B\u652F\u6301 freebie-radar \u7684 SEEDS \u6E90\u6587\u4EF6\uFF0C\u6216\u672C\u9879\u76EE\u683C\u5F0F\u7684 JSON \u6570\u7EC4\uFF09</label>
+              <textarea data-key="source_sync_urls" style="min-height:64px"></textarea>
+              <label class="f" style="margin-top:12px">\u5168\u90E8\u6570\u636E\u6E90\uFF08JSON\uFF09</label>
+              <textarea data-key="sources" id="srcJson" style="min-height:260px"></textarea>
+              <div class="hint">type\uFF1Arss\uFF08url\uFF09/ telegram\uFF08channel\uFF09/ v2ex\uFF08node\uFF09/ hn\uFF08query\uFF09/ reddit\uFF08query, subreddit\uFF09/ github\uFF08query\uFF09/ epic / gamerpower / openrouter_free\u3002cats\uFF1A\u53EA\u6536\u8FD9\u4E9B\u5206\u7C7B\uFF1Bhint\uFF1A\u9ED8\u8BA4\u5206\u7C7B\uFF1Binclude\uFF1A\u6807\u9898\u5FC5\u987B\u5339\u914D\u7684\u6B63\u5219\uFF1Btrusted:true + category\uFF1A\u76F4\u63A5\u5165\u5E93\u4E0D\u9001 AI\uFF1Bai_only\uFF1A\u53EA\u5728\u914D\u7F6E\u4E86 AI \u65F6\u6293\u3002</div>
+            </details>
+          </div>
+        </div>
       </div>
 
       <!-- AI \u4E0E\u641C\u7D22 -->
@@ -2127,13 +2474,6 @@ var admin_default = `<!doctype html>
             </div>
           </div>
         </div>
-        <div class="section">
-          <header><h2>\u6570\u636E\u6E90</h2><span class="hint" id="srcCount"></span></header>
-          <div class="body">
-            <textarea data-key="sources" style="min-height:320px"></textarea>
-            <div class="hint">type\uFF1Arss\uFF08url\uFF09/ v2ex\uFF08node\uFF09/ hn\uFF08query\uFF09/ reddit\uFF08query, subreddit\uFF09/ github\uFF08query\uFF09/ epic / gamerpower / openrouter_free\u3002enabled:false \u505C\u7528\uFF1Bfilter:false \u8DF3\u8FC7\u5173\u952E\u8BCD\u9884\u7B5B\uFF1Btrusted:true + category \u76F4\u63A5\u5165\u5E93\u4E0D\u9001 AI\uFF08category:"auto" \u81EA\u52A8\u5F52\u7C7B\uFF09\uFF1Binclude \u4E3A\u6807\u9898\u5FC5\u987B\u5339\u914D\u7684\u6B63\u5219\u3002</div>
-          </div>
-        </div>
       </div>
 
       <!-- \u8D26\u53F7\u4E0E\u5B89\u5168 -->
@@ -2174,6 +2514,13 @@ var admin_default = `<!doctype html>
   </main>
 </div>
 <div class="savebar"><span class="txt" id="dirtyTxt">\u6709\u672A\u4FDD\u5B58\u7684\u4FEE\u6539</span><button class="btn" onclick="revert()">\u64A4\u9500</button><button class="btn acc" onclick="save(this)">\u4FDD\u5B58</button></div>
+<div class="modal" id="syncModal" onclick="if(event.target===this)closeSync()">
+  <div class="mbox">
+    <header><b>\u66F4\u65B0\u6E90</b><span class="hint" id="syncSum"></span><span class="sp"></span><button class="btn sm" onclick="syncAll(true)">\u5168\u9009</button><button class="btn sm" onclick="syncAll(false)">\u53EA\u9009\u63A8\u8350</button><button class="x" onclick="closeSync()" aria-label="\u5173\u95ED">\xD7</button></header>
+    <div class="mbody" id="syncBody"></div>
+    <footer><span class="hint" id="syncErr"></span><span class="sp"></span><button class="btn" onclick="closeSync()">\u53D6\u6D88</button><button class="btn pri" id="syncAdd" onclick="applySync()">\u6DFB\u52A0\u9009\u4E2D</button></footer>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script>
@@ -2210,7 +2557,8 @@ function renderBackends() {
     '<div class="q">' + esc(b.free) + (b.note ? ' \xB7 ' + esc(b.note) : '') + '</div></div>' +
     '<div><input type="password" data-key="' + b.id + '_api_key" autocomplete="off" placeholder="' + (b.keyless ? 'API Key\uFF08\u53EF\u9009\uFF0C\u7559\u7A7A\u8D70\u514D\u8D39\u63A5\u53E3\uFF09' : '\u586B API Key \u540E\u81EA\u52A8\u53C2\u4E0E') + '" /></div>' +
     '<div class="ops"><label class="sw"><input type="checkbox" data-key="' + b.id + '_enabled" /></label><button class="btn sm" onclick="testSearch(\\'' + b.id + '\\', this)">\u6D4B\u8BD5</button></div>' +
-    '<div class="ln"><a href="' + esc(b.signup) + '" target="_blank" rel="noopener">' + (b.keyless ? '\u6CE8\u518C\u62FF Key\uFF08\u63D0\u9AD8\u989D\u5EA6\uFF09' : '\u53BB\u6CE8\u518C\u62FF\u514D\u8D39 API Key') + ' \u2197</a></div>' +
+    '<div class="ln"><span class="becats" onclick="toggleBeCats(\\'' + b.id + '\\')" title="\u8FD9\u4E2A\u540E\u7AEF\u53EA\u641C\u8FD9\u4E9B\u5206\u7C7B">\u8D1F\u8D23\u5206\u7C7B\uFF1A<b></b> \u25BE</span><input type="hidden" data-key="' + b.id + '_cats" /><a href="' + esc(b.signup) + '" target="_blank" rel="noopener">' + (b.keyless ? '\u6CE8\u518C\u62FF Key\uFF08\u63D0\u9AD8\u989D\u5EA6\uFF09' : '\u53BB\u6CE8\u518C\u62FF\u514D\u8D39 API Key') + ' \u2197</a></div>' +
+    '<div class="bce" style="display:none"></div>' +
     '<pre class="out" style="display:none"></pre></div>').join('');
 }
 function backendStates() {
@@ -2229,7 +2577,8 @@ function backendStates() {
   const aiOn = field('ai_enabled').checked && field('ai_base_url').value && field('ai_api_key').value && field('ai_model').value;
   $('#aiState').textContent = aiOn ? '\u4F7F\u7528 AI' : '\u5173\u952E\u8BCD\u5224\u5B9A';
   $('#aiState').className = 'tag ' + (aiOn ? 'on' : 'off');
-  try { const n = JSON.parse(field('sources').value).filter((x) => x.enabled !== false).length; $('#srcCount').textContent = '\u542F\u7528 ' + n + ' \u4E2A'; } catch { $('#srcCount').textContent = 'JSON \u683C\u5F0F\u6709\u8BEF'; }
+  try { const l = JSON.parse(field('sources').value); $('#srcCount').textContent = '\u542F\u7528 ' + l.filter((x) => x.enabled !== false).length + ' / \u5171 ' + l.length + ' \u4E2A'; } catch { $('#srcCount').textContent = 'JSON \u683C\u5F0F\u6709\u8BEF'; }
+  for (const b of BACKENDS) { const v = field(b.id + '_cats').value; $('#be-' + b.id + ' .becats b').textContent = catSummary(v ? v.split(',') : []); }
 }
 function renderCats() {
   const tile = (c, mini) => '<label class="cat" title="' + esc(c.kw.join(' \xB7 ')) + '"><input type="checkbox" value="' + c.key + '"><span class="ic" style="background:' + c.color + '"></span><span class="tx"><b>' + c.label + '</b>' + (mini ? '' : '<small>' + esc(c.kw.join(' \xB7 ') || '\u5176\u5B83\u672A\u5F52\u7C7B\u7684\u514D\u8D39\u8D44\u6E90') + '</small>') + '</span><span class="ck">\u2713</span></label>';
@@ -2324,6 +2673,7 @@ function fill(s) {
   });
   applyShow();
   renderRcpt();
+  renderSources();
   SNAP = collect();
   onEdit();
 }
@@ -2338,6 +2688,128 @@ function collect() {
   return out;
 }
 function changedKeys() { const cur = collect(); return Object.keys(cur).filter((k) => cur[k] !== SNAP[k]); }
+// ---- \u5206\u7C7B\u9009\u62E9\uFF08\u6570\u636E\u6E90\u3001\u641C\u7D22\u540E\u7AEF\u5171\u7528\uFF09 ----
+const enabledNow = () => [...$$('#catBox input:checked')].map((i) => i.value);
+function catSummary(list) {
+  const en = enabledNow();
+  if (!list.length) return '\u5168\u90E8\u5DF2\u52FE\u9009\u5206\u7C7B';
+  const l = list.filter((k) => CAT[k]);
+  const off = l.filter((k) => !en.includes(k)).length;
+  return l.map((k) => CAT[k]).join('\u3001') + (off ? '\uFF08' + off + ' \u4E2A\u672A\u52FE\u9009\uFF09' : '');
+}
+function catPills(sel, onChange) {
+  const box = document.createElement('div');
+  box.className = 'cpills';
+  const en = enabledNow();
+  const draw = () => {
+    box.innerHTML = '<button type="button" class="all' + (sel.length ? '' : ' on') + '" style="--cc:var(--accent)"><i></i>\u5168\u90E8\uFF08\u8DDF\u968F\u52FE\u9009\uFF09</button>' +
+      CATS.filter((c) => c.key !== 'other').map((c) => '<button type="button" data-k="' + c.key + '" class="' + (sel.includes(c.key) ? 'on' : '') + (en.includes(c.key) ? '' : ' dis') + '" style="--cc:' + c.color + '" title="' + (en.includes(c.key) ? '' : '\u8FD9\u4E2A\u5206\u7C7B\u5728\u300C\u5206\u7C7B\u8BA2\u9605\u300D\u91CC\u6CA1\u52FE\u9009\uFF0C\u4E0D\u4F1A\u751F\u6548') + '"><i></i>' + esc(c.label) + '</button>').join('');
+  };
+  box.onclick = (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.classList.contains('all')) sel = [];
+    else { const k = b.dataset.k; sel = sel.includes(k) ? sel.filter((x) => x !== k) : [...sel, k]; }
+    draw(); onChange(sel);
+  };
+  draw();
+  return box;
+}
+
+// ---- \u6570\u636E\u6E90\u7BA1\u7406\uFF08\u4EE5 JSON \u6587\u672C\u6846\u4E3A\u51C6\uFF0C\u8868\u683C\u662F\u5B83\u7684\u53EF\u89C6\u5316\u7F16\u8F91\uFF09 ----
+let SRC_OPEN = -1;
+function srcList() { try { const l = JSON.parse(field('sources').value); return Array.isArray(l) ? l : []; } catch { return null; } }
+function setSrc(list) { field('sources').value = JSON.stringify(list, null, 2); onEdit(); renderSources(); }
+const TYPE_ZH = { rss: 'RSS', telegram: 'TG', v2ex: 'V2EX', hn: 'HN', reddit: 'Reddit', github: 'GitHub', epic: 'Epic', gamerpower: 'GamerPower', openrouter_free: 'OpenRouter' };
+function srcWhere(x) { if (x.url) { try { const u = new URL(x.url); return u.hostname.replace(/^www\\./, '') + (u.pathname.length > 1 ? u.pathname : ''); } catch { return x.url; } } return x.channel ? '@' + x.channel : x.node ? 'node/' + x.node : x.query || ''; }
+function renderSources() {
+  const list = srcList(), box = $('#srcList');
+  if (!list) { box.innerHTML = '<div class="empty" style="padding:18px">JSON \u683C\u5F0F\u6709\u8BEF\uFF0C\u5C55\u5F00\u4E0B\u65B9\u300C\u4EE5 JSON \u7F16\u8F91\u300D\u4FEE\u6B63</div>'; return; }
+  const q = $('#srcQ').value.trim().toLowerCase(), f = $('#srcF').value;
+  const en = enabledNow();
+  box.innerHTML = '';
+  list.forEach((x, i) => {
+    const on = x.enabled !== false, cats = Array.isArray(x.cats) ? x.cats : x.cats ? String(x.cats).split(',') : [];
+    if (q && !(String(x.name) + ' ' + srcWhere(x)).toLowerCase().includes(q)) return;
+    if ((f === 'on' && !on) || (f === 'off' && on) || (f === 'limited' && !cats.length && !x.category)) return;
+    const row = document.createElement('div');
+    row.className = 'srow' + (on ? '' : ' off');
+    const fixed = x.category && x.category !== 'auto';
+    const chips = fixed ? '<span class="tag c" style="--cc:' + (CATS.find((c) => c.key === x.category)?.color || '#888') + '">\u56FA\u5B9A\uFF1A' + esc(CAT[x.category] || x.category) + '</span>'
+      : cats.length ? cats.map((k) => { const c = CATS.find((y) => y.key === k); return c ? '<span class="tag c" style="--cc:' + c.color + (en.includes(k) ? '' : ';opacity:.45') + '">' + esc(c.label) + '</span>' : ''; }).join('')
+      : '<span class="tag">\u5168\u90E8\u5206\u7C7B</span>';
+    row.innerHTML = '<label class="sw"><input type="checkbox"' + (on ? ' checked' : '') + ' /></label>' +
+      '<div class="snm">' + esc(x.name || '\u672A\u547D\u540D') + '<span class="tag">' + (TYPE_ZH[x.type || 'rss'] || x.type) + '</span>' + (x.trusted ? '<span class="tag free">\u514D\u5BA1</span>' : '') + (x.include ? '<span class="tag" title="\u6807\u9898\u9700\u5339\u914D\uFF1A' + esc(x.include) + '">\u6709\u6807\u9898\u7B5B\u9009</span>' : '') + '<small>' + esc(srcWhere(x)) + '</small></div>' +
+      '<div class="scats" title="\u70B9\u51FB\u8BBE\u7F6E\u5206\u7C7B">' + chips + (x.hint && !fixed ? '<span class="tag" title="\u9ED8\u8BA4\u5206\u7C7B">\u9ED8\u8BA4 ' + esc(CAT[x.hint] || x.hint) + '</span>' : '') + '</div>' +
+      '<button class="sdel" title="\u5220\u9664">\xD7</button>';
+    row.querySelector('input').onchange = (e) => { const l = srcList(); l[i].enabled = e.target.checked; setSrc(l); };
+    row.querySelector('.sdel').onclick = () => { if (confirm('\u5220\u9664\u300C' + (x.name || '') + '\u300D\uFF1F')) { const l = srcList(); l.splice(i, 1); SRC_OPEN = -1; setSrc(l); } };
+    row.querySelector('.scats').onclick = () => { SRC_OPEN = SRC_OPEN === i ? -1 : i; renderSources(); };
+    if (SRC_OPEN === i) {
+      const ed = document.createElement('div');
+      ed.className = 'sedit';
+      ed.innerHTML = '<div><label class="f">' + (fixed ? '\u8FD9\u4E2A\u6E90\u56FA\u5B9A\u5F52\u5230\u300C' + esc(CAT[x.category] || x.category) + '\u300D\uFF0C\u514D AI \u5BA1\u6838\uFF1B\u4E5F\u53EF\u4EE5\u6539\u6210\u9650\u5B9A\u5206\u7C7B\u540E\u7167\u5E38\u5224\u5B9A' : '\u53EA\u6536\u8FD9\u4E9B\u5206\u7C7B') + '</label></div>' +
+        '<div class="row2"><div><label class="f">\u9ED8\u8BA4\u5206\u7C7B\uFF08\u5F52\u4E0D\u4E86\u7C7B\u65F6\uFF09</label><select class="hint-s"><option value="">\u4E0D\u8BBE\u7F6E</option>' + CATS.filter((c) => c.key !== 'other').map((c) => '<option value="' + c.key + '"' + (x.hint === c.key ? ' selected' : '') + '>' + esc(c.label) + '</option>').join('') + '</select></div>' +
+        '<div><label class="f">\u6807\u9898\u5FC5\u987B\u5305\u542B\uFF08\u6B63\u5219\uFF0C\u7559\u7A7A\u4E0D\u9650\uFF09</label><input type="text" class="inc-s" value="' + esc(x.include || '') + '" placeholder="\u4F8B\u5982 \u514D\u8D39|\u9650\u514D|\u767D\u5AD6" /></div></div>' +
+        (fixed ? '<div><button class="btn sm unfix">\u6539\u4E3A\u9650\u5B9A\u5206\u7C7B\uFF08\u9001\u5224\u5B9A\uFF09</button></div>' : '');
+      ed.children[0].appendChild(catPills(fixed ? [x.category] : cats, (sel) => { const l = srcList(); if (sel.length) l[i].cats = sel; else delete l[i].cats; if (fixed) { delete l[i].category; delete l[i].trusted; } setSrc(l); }));
+      ed.querySelector('.hint-s').onchange = (e) => { const l = srcList(); if (e.target.value) l[i].hint = e.target.value; else delete l[i].hint; setSrc(l); };
+      ed.querySelector('.inc-s').onchange = (e) => { const v = e.target.value.trim(); try { if (v) new RegExp(v); } catch { toast('\u6B63\u5219\u683C\u5F0F\u4E0D\u5BF9', 2500, 'err'); return; } const l = srcList(); if (v) l[i].include = v; else delete l[i].include; setSrc(l); };
+      ed.querySelector('.unfix')?.addEventListener('click', () => { const l = srcList(); l[i].cats = [x.category]; l[i].hint = x.category; delete l[i].category; delete l[i].trusted; setSrc(l); });
+      row.appendChild(ed);
+    }
+    box.appendChild(row);
+  });
+  if (!box.children.length) box.innerHTML = '<div class="empty" style="padding:18px">\u6CA1\u6709\u5339\u914D\u7684\u6E90</div>';
+}
+function addSource() {
+  const url = prompt('RSS \u5730\u5740\uFF0C\u6216 Telegram \u9891\u9053\uFF08@\u9891\u9053\u540D\uFF09\uFF1A');
+  if (!url) return;
+  const l = srcList() || [];
+  const tg = /^@?\\w{4,}$/.test(url.trim()) || /t\\.me\\/(s\\/)?(\\w+)/.exec(url);
+  if (tg) { const ch = (typeof tg === 'object' && tg[2]) || url.trim().replace(/^@/, ''); l.unshift({ name: 'TG \xB7 @' + ch, type: 'telegram', channel: ch, enabled: true }); }
+  else if (/^https?:\\/\\//.test(url.trim())) { let h = url; try { h = new URL(url).hostname.replace(/^www\\./, ''); } catch {} l.unshift({ name: h, type: 'rss', url: url.trim(), enabled: true }); }
+  else return toast('\u4E0D\u662F\u6709\u6548\u7684\u5730\u5740', 2500, 'err');
+  SRC_OPEN = 0; $('#srcQ').value = ''; $('#srcF').value = '';
+  setSrc(l);
+  toast('\u5DF2\u6DFB\u52A0\uFF0C\u53EF\u4EE5\u6539\u540D\u79F0\u548C\u5206\u7C7B\uFF0C\u8BB0\u5F97\u4FDD\u5B58', 3000, 'ok');
+}
+let SYNC = null;
+async function openSync(btn) {
+  await busy(btn, async () => {
+    const r = await api('/api/admin/sources/check', { method: 'POST', body: JSON.stringify({ sources: field('sources').value, urls: field('source_sync_urls').value }) });
+    SYNC = r;
+    const n = r.groups.reduce((a, g) => a + g.items.length, 0);
+    $('#syncSum').textContent = n ? '\u627E\u5230 ' + n + ' \u4E2A\u65B0\u6E90' + (r.existing ? '\uFF0C' + r.existing + ' \u4E2A\u5DF2\u6709' : '') + (r.unsupported ? '\uFF0C' + r.unsupported + ' \u4E2A\u7C7B\u578B\u6682\u4E0D\u652F\u6301' : '') : '';
+    $('#syncErr').textContent = r.errors.length ? '\u90E8\u5206\u5730\u5740\u62C9\u53D6\u5931\u8D25\uFF1A' + r.errors.join('\uFF1B') : '';
+    $('#syncBody').innerHTML = n ? r.groups.map((g, gi) => '<h4>' + esc(g.label) + ' \xB7 ' + g.items.length + ' \u4E2A</h4>' + g.items.map((it, ii) =>
+      '<label class="sitem"><input type="checkbox" data-g="' + gi + '" data-i="' + ii + '"' + (it.suggest ? ' checked' : '') + ' /><div class="snm">' + esc(it.src.name) + '<span class="tag">' + (TYPE_ZH[it.src.type || 'rss'] || it.src.type) + '</span>' + (it.why ? '<span class="tag why">' + esc(it.why) + '</span>' : '<span class="tag on">\u63A8\u8350</span>') + (it.src.hint ? '<span class="tag">' + esc(CAT[it.src.hint] || it.src.hint) + '</span>' : '') + '<small>' + esc(srcWhere(it.src)) + '</small></div></label>').join('')).join('')
+      : '<div class="empty" style="padding:30px 0">\u5DF2\u7ECF\u662F\u6700\u65B0\u7684\u4E86\uFF0C\u6CA1\u6709\u65B0\u7684\u6E90\u3002</div>';
+    syncCount();
+    $('#syncModal').classList.add('on');
+  });
+}
+function syncCount() { const n = $$('#syncBody input:checked').length; $('#syncAdd').textContent = n ? '\u6DFB\u52A0\u9009\u4E2D ' + n + ' \u4E2A' : '\u6DFB\u52A0\u9009\u4E2D'; $('#syncAdd').disabled = !n; }
+$('#syncBody').addEventListener('change', syncCount);
+function syncAll(all) { $$('#syncBody input').forEach((i) => (i.checked = all || SYNC.groups[i.dataset.g].items[i.dataset.i].suggest)); syncCount(); }
+function closeSync() { $('#syncModal').classList.remove('on'); }
+function applySync() {
+  const add = [...$$('#syncBody input:checked')].map((i) => SYNC.groups[i.dataset.g].items[i.dataset.i].src);
+  const l = srcList() || [];
+  setSrc([...l, ...add]);
+  closeSync();
+  toast('\u5DF2\u6DFB\u52A0 ' + add.length + ' \u4E2A\u6E90\uFF0C\u4FDD\u5B58\u540E\u4E0B\u6B21\u6293\u53D6\u751F\u6548', 3500, 'ok');
+}
+function toggleBeCats(id) {
+  const box = $('#be-' + id + ' .bce');
+  if (box.style.display !== 'none') { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const v = field(id + '_cats').value;
+  box.innerHTML = '';
+  box.appendChild(catPills(v ? v.split(',') : [], (sel) => { field(id + '_cats').value = sel.join(','); onEdit(); }));
+  box.style.display = '';
+}
+let srcT;
+document.addEventListener('input', (e) => { if (e.target.id === 'srcJson') { clearTimeout(srcT); srcT = setTimeout(renderSources, 300); } });
+
 // ---- \u6536\u4EF6\u4EBA ----
 const EMAIL_RE = /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/;
 const rcptList = () => field('mail_to').value.split(/[,;\uFF0C\uFF1B\\s]+/).map((x) => x.trim()).filter(Boolean);
@@ -3158,6 +3630,16 @@ async function handleAdmin(req, env, url) {
     const t0 = Date.now();
     const r = await runBackend({ ...s, search_max_queries: "2" }, body.provider, Number(s.max_age_days) || 180);
     return json({ ok: true, ms: Date.now() - t0, count: r.items.length, errors: r.errors, sample: r.items.slice(0, 8).map((x) => ({ title: x.title, url: x.url, date: x.published_at ? new Date(x.published_at).toISOString().slice(0, 10) : null })) });
+  }
+  if (p === "/sources/check" && m === "POST") {
+    const s = await getSettings(env);
+    let current = [];
+    try {
+      current = JSON.parse(body.sources ?? s.sources);
+    } catch {
+    }
+    const urls = String(body.urls ?? s.source_sync_urls ?? "").split(/\r?\n/).map((x) => x.trim()).filter((x) => /^https?:\/\//.test(x)).slice(0, 5);
+    return json(await checkSources(Array.isArray(current) ? current : [], urls));
   }
   if (p === "/mail/test" && m === "POST") return json(await sendDigest(env, { force: true, test: true, channel: body.channel === "telegram" ? "telegram" : "mail" }));
   if (p === "/mail/send" && m === "POST") return json(await sendDigest(env, { force: true }));
