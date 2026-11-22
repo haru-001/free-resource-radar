@@ -5579,130 +5579,185 @@ input{width:100%;box-sizing:border-box;height:38px;border:1px solid #e6e8ec;bord
 <script>async function go(e){e.preventDefault();const r=await fetch('/api/site-login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:document.getElementById('p').value})});if(r.ok)location.reload();else document.getElementById('e').textContent='\u5BC6\u7801\u4E0D\u5BF9';}</script></body></html>`;
 var index_default = {
   async fetch(req, env, ctx) {
-    const url = new URL(req.url);
-    const missing = setupMissing(env);
-    if (missing.length) return setupPage(missing, url.pathname.startsWith("/api/"));
     try {
-      await ensureSchema(env);
-      const ip = ipOf(req);
-      if (url.pathname === "/api/site-login" && req.method === "POST") {
-        const h = await getSitePassHash(env);
-        const { password } = await req.json().catch(() => ({}));
-        if (!h) return json({ ok: true });
-        if (await failsOf(env, ip) >= (Number((await basic(env)).login_max_fails) || 10)) return tooMany();
-        if (!password || !safeEqual(await sha256("frr-site:" + password), h)) {
-          await addFail(env, ip);
-          return json({ error: "\u5BC6\u7801\u9519\u8BEF" }, 401);
-        }
-        const token = await sha256("cookie:" + h);
-        return new Response('{"ok":true}', { headers: { "content-type": "application/json", "set-cookie": `${SITE_COOKIE}=${token}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax` } });
-      }
-      if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/admin/") && url.pathname !== "/api/cron") {
-        const lim = Number((await basic(env)).api_rate_per_min);
-        if (!rateOk("api:" + ip, Number.isFinite(lim) ? lim : 120) || url.pathname === "/api/vote" && !rateOk("vote:" + ip, 30)) return json({ error: "\u8BF7\u6C42\u592A\u9891\u7E41\uFF0C\u7A0D\u540E\u518D\u8BD5" }, 429);
-      }
-      if (["/", "/index.html", "/api/items", "/api/stats", "/feed.xml", "/api/data", "/api/vote"].includes(url.pathname)) {
-        const g = await siteGate(req, env, url);
-        if (!g.ok) return url.pathname.startsWith("/api/") || url.pathname === "/feed.xml" ? json({ error: "\u9700\u8981\u8BBF\u95EE\u5BC6\u7801" }, 401) : html(lockPage(), 401);
-      }
-      if (url.pathname === "/api/vote" && req.method === "POST") {
-        const r = await vote(req, env);
-        ctx.waitUntil(markDirty(env));
-        return r;
-      }
-      if (url.pathname === "/api/data") {
-        const JS = "application/json; charset=utf-8";
-        if (url.searchParams.get("old") === "1") return sendSnap(req, await pageData(env, "old"), JS);
-        const part = Number(url.searchParams.get("part")) || 0;
-        if (part > 0) return sendSnap(req, await pageData(env, "part:" + Math.min(part, 50)), JS);
-        return sendSnap(req, await pageData(env, "head"), JS);
-      }
-      if (url.pathname === "/" || url.pathname === "/index.html") {
-        maybeVisitTick(env, ctx);
-        const d = await pageData(env, "head");
-        return sendSnap(req, d, "text/html; charset=utf-8", PAGE_A + d.v + PAGE_B);
-      }
-      if (url.pathname === "/api/cron") {
-        const key = url.searchParams.get("key") || req.headers.get("x-cron-key") || "";
-        if (!key || !safeEqual(key, await memo("cronkey", 6e4, () => getCronKey(env)))) return json({ error: "\u89E6\u53D1\u5BC6\u94A5\u4E0D\u5BF9" }, 403);
-        return json(await triggerTick(env, "url"));
-      }
-      if (url.pathname === "/admin" || url.pathname === "/admin/") return html(admin_default.replace("/*__CATS__*/[]", JSON.stringify(CATEGORIES.map(({ key, label, color, kw, group, info }) => ({ key, label, color, group, info: !!info, kw: kw.slice(0, 6) })))).replace("/*__GROUPS__*/[]", JSON.stringify(GROUPS)).replace("/*__PUSH__*/[]", JSON.stringify(PUSH_CHANNELS.map(({ id, name, key, secret, hint }) => ({ id, name, key, secret, hint })))).replace("/*__BACKENDS__*/[]", JSON.stringify(BACKENDS.map(({ id, name, keyless, free, signup, note, zh }) => ({ id, name, keyless, free, signup, note, zh })))));
-      if (url.pathname === "/api/items") return json(await publicItems(env, url));
-      if (url.pathname === "/api/stats") {
-        const st = await basic(env);
-        const cutoff = Date.now() - (Number(st.max_age_days) || 180) * 864e5;
-        const base = "FROM items WHERE status = 'approved' AND (published_at IS NULL OR published_at >= ?)";
-        const [cats, obs, last, days] = await Promise.all([
-          env.DB.prepare(`SELECT category AS k, COUNT(*) AS n ${base} GROUP BY category`).bind(cutoff).all(),
-          env.DB.prepare(`SELECT obtain AS k, COUNT(*) AS n ${base} GROUP BY obtain`).bind(cutoff).all(),
-          env.DB.prepare("SELECT MAX(finished_at) AS t FROM runs WHERE trigger != 'mail'").first(),
-          env.DB.prepare(`SELECT day AS d, COUNT(*) AS n ${base} AND day IS NOT NULL GROUP BY day ORDER BY day DESC LIMIT 31`).bind(cutoff).all()
-        ]);
-        const out = { all: 0, last_run: last?.t || null, categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color })), today: dayOf(Date.now()), retention_days: Number(st.retention_days) || 15, days: (days.results || []).map((r) => ({ day: r.d, n: r.n })) };
-        for (const r of cats.results || []) {
-          out[r.k || "other"] = r.n;
-          out.all += r.n;
-        }
-        for (const r of obs.results || []) if (r.k) out[r.k] = r.n;
-        return json(out);
-      }
-      if (url.pathname === "/feed.xml") {
-        const st = await basic(env);
-        const items = await memo("feed", Math.max(0, Number(st.public_cache_seconds) || 0) * 1e3, () => publicItems(env, new URL(url.origin + "/?limit=50")));
-        const body = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</title><link>${xmlEsc(url.origin)}</link><description>\u6BCF\u65E5\u81EA\u52A8\u6293\u53D6\u5E76\u7ECF AI \u7B5B\u9009</description>${items.map((it) => `<item><title>${xmlEsc(it.name || it.title)}</title><link>${xmlEsc(it.url)}</link><guid isPermaLink="false">${it.id}</guid>${it.published_at ? `<pubDate>${new Date(it.published_at).toUTCString()}</pubDate>` : ""}<description>${xmlEsc([it.summary, it.signup && "\u6CE8\u518C\uFF1A" + it.signup].filter(Boolean).join(" | "))}</description></item>`).join("")}</channel></rss>`;
-        return cached(req, body, "application/rss+xml; charset=utf-8");
-      }
-      if (url.pathname.startsWith("/api/admin/")) {
-        if (url.pathname === "/api/admin/status") {
-          return json({ initialized: !!envToken(env) || !!await getAdminHash(env), env_token: !!envToken(env), storage: storageMode(env), site_locked: !!await getSitePassHash(env) });
-        }
-        if (url.pathname === "/api/admin/setup" && req.method === "POST") {
-          if (envToken(env) || await getAdminHash(env)) return json({ error: "\u5DF2\u7ECF\u8BBE\u7F6E\u8FC7\u7BA1\u7406\u5458\u5BC6\u7801" }, 409);
-          const { password } = await req.json().catch(() => ({}));
-          if (!password || String(password).length < 8) return json({ error: "\u5BC6\u7801\u81F3\u5C11 8 \u4F4D" }, 400);
-          await setAdminHash(env, String(password));
-          return json({ ok: true });
-        }
-        const maxFails = Number((await basic(env)).login_max_fails) || 10;
-        if (await failsOf(env, ip) >= maxFails) return tooMany();
-        if (!await isAdmin(req, env)) {
-          if (req.headers.get("authorization")) await addFail(env, ip);
-          return json({ error: "\u672A\u6388\u6743" }, 401);
-        }
-        if (req.method !== "GET" && url.pathname !== "/api/admin/snap") {
-          clearMemo();
-          ctx.waitUntil(markDirty(env));
-        }
-        if (url.pathname === "/api/admin/password" && req.method === "POST") {
-          if (envToken(env)) return json({ error: "\u5F53\u524D\u4F7F\u7528\u73AF\u5883\u53D8\u91CF ADMIN_TOKEN\uFF0C\u8BF7\u5728 Cloudflare \u63A7\u5236\u53F0\u4FEE\u6539" }, 400);
-          const { password } = await req.json().catch(() => ({}));
-          if (!password || String(password).length < 8) return json({ error: "\u5BC6\u7801\u81F3\u5C11 8 \u4F4D" }, 400);
-          await setAdminHash(env, String(password));
-          return json({ ok: true });
-        }
-        if (url.pathname === "/api/admin/settings" && req.method === "GET" && !/^(localhost|127\.|\[::1\])/.test(url.hostname)) {
-          const cur = await getSettings(env);
-          if (!cur.mail_site_url) await saveSettings(env, { mail_site_url: url.origin });
-        }
-        return await handleAdmin(req, env, url);
-      }
-      return json({ error: "Not found" }, 404);
+      return await handleFetch(req, env, ctx);
     } catch (e) {
-      return json({ error: e.message || String(e) }, 500);
+      return errorPage(e, new URL(req.url).pathname);
     }
   },
-  // 定时任务每分钟触发一次：有进行中的抓取就执行下一步；到了每天的抓取时间就新建一次抓取（最后一步自动推送）
   async scheduled(event, env, ctx) {
-    const missing = setupMissing(env);
-    if (missing.length) {
-      console.error("\u90E8\u7F72\u672A\u5B8C\u6210\uFF0C\u7F3A\u5C11\u7ED1\u5B9A\uFF1A" + missing.map((x) => x[0]).join(", "));
-      return;
+    try {
+      await handleScheduled(event, env, ctx);
+    } catch (e) {
+      console.error("scheduled failed", e && (e.stack || e.message || e));
     }
-    await ensureSchema(env);
-    ctx.waitUntil(autoTick(env, "cron").catch((e) => console.error("scheduled failed", e)));
   }
 };
+function errorPage(e, path) {
+  const msg = String(e && (e.stack || e.message) || e).slice(0, 1500);
+  console.error("request failed", path, msg);
+  if (path.startsWith("/api/")) return json({ error: msg }, 500);
+  const quota = /limit|exceed|quota|too many/i.test(msg);
+  return html(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>\u6682\u65F6\u6253\u4E0D\u5F00 \xB7 \u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</title>
+<style>body{margin:0;background:#f6f7f9;font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#111318}.b{max-width:640px;margin:10vh auto;background:#fff;border:1px solid #e6e8ec;border-radius:8px;padding:24px 28px}h1{font-size:17px;margin:0 0 6px}p{color:#525c6b}pre{background:#f1f3f6;padding:10px;border-radius:6px;white-space:pre-wrap;word-break:break-all;font-size:12px}</style>
+<div class="b"><h1>\u9875\u9762\u6682\u65F6\u6253\u4E0D\u5F00</h1><p>${quota ? "\u770B\u8D77\u6765\u662F Cloudflare \u514D\u8D39\u989D\u5EA6\uFF08D1 \u8BFB\u5199\u6B21\u6570\u6216\u8BF7\u6C42\u6570\uFF09\u4ECA\u5929\u7528\u5B8C\u4E86\uFF0C\u5317\u4EAC\u65F6\u95F4 08:00 \u91CD\u7F6E\u3002" : "\u7A0B\u5E8F\u51FA\u9519\u4E86\uFF0C\u628A\u4E0B\u9762\u8FD9\u6BB5\u53D1\u7ED9\u7EF4\u62A4\u8005\u5373\u53EF\u5B9A\u4F4D\u3002"}</p><pre>${msg.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c])}</pre><p>\u8BCA\u65AD\uFF1A\u6253\u5F00 <a href="/api/health">/api/health</a> \u67E5\u770B\u5404\u9879\u68C0\u67E5\u3002</p></div></html>`, 500);
+}
+async function health(env) {
+  const out = {};
+  const step = async (k, fn) => {
+    const t = Date.now();
+    try {
+      out[k] = { ok: true, ms: Date.now() - t, ...await fn() };
+      out[k].ms = Date.now() - t;
+    } catch (e) {
+      out[k] = { ok: false, error: String(e && e.message || e).slice(0, 300) };
+    }
+  };
+  await step("d1", async () => ({ v: (await env.DB.prepare("SELECT 1 AS x").first())?.x }));
+  await step("schema", async () => {
+    await ensureSchema(env);
+    return {};
+  });
+  await step("items", async () => ({ n: (await env.DB.prepare("SELECT COUNT(*) AS n FROM items WHERE status = 'approved'").first())?.n }));
+  await step("snapshot", async () => {
+    const r = await readSnap(env, "head");
+    return { ver: r?.ver || null, bytes: r?.v ? r.v.length : 0 };
+  });
+  await step("settings", async () => {
+    const s = await getBasicSettings(env);
+    return { keys: Object.keys(s).length };
+  });
+  await step("kv", async () => ({ bound: !!env.SECRETS }));
+  await step("run", async () => {
+    const r = await env.DB.prepare("SELECT id, started_at, finished_at FROM runs ORDER BY id DESC LIMIT 1").first();
+    return { last: r || null };
+  });
+  return { ok: Object.values(out).every((x) => x.ok), version: "1.8.1", checks: out };
+}
+async function handleFetch(req, env, ctx) {
+  const url = new URL(req.url);
+  const missing = setupMissing(env);
+  if (missing.length) return setupPage(missing, url.pathname.startsWith("/api/"));
+  if (url.pathname === "/api/health") return json(await health(env));
+  try {
+    await ensureSchema(env);
+    const ip = ipOf(req);
+    if (url.pathname === "/api/site-login" && req.method === "POST") {
+      const h = await getSitePassHash(env);
+      const { password } = await req.json().catch(() => ({}));
+      if (!h) return json({ ok: true });
+      if (await failsOf(env, ip) >= (Number((await basic(env)).login_max_fails) || 10)) return tooMany();
+      if (!password || !safeEqual(await sha256("frr-site:" + password), h)) {
+        await addFail(env, ip);
+        return json({ error: "\u5BC6\u7801\u9519\u8BEF" }, 401);
+      }
+      const token = await sha256("cookie:" + h);
+      return new Response('{"ok":true}', { headers: { "content-type": "application/json", "set-cookie": `${SITE_COOKIE}=${token}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax` } });
+    }
+    if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/admin/") && url.pathname !== "/api/cron") {
+      const lim = Number((await basic(env)).api_rate_per_min);
+      if (!rateOk("api:" + ip, Number.isFinite(lim) ? lim : 120) || url.pathname === "/api/vote" && !rateOk("vote:" + ip, 30)) return json({ error: "\u8BF7\u6C42\u592A\u9891\u7E41\uFF0C\u7A0D\u540E\u518D\u8BD5" }, 429);
+    }
+    if (["/", "/index.html", "/api/items", "/api/stats", "/feed.xml", "/api/data", "/api/vote"].includes(url.pathname)) {
+      const g = await siteGate(req, env, url);
+      if (!g.ok) return url.pathname.startsWith("/api/") || url.pathname === "/feed.xml" ? json({ error: "\u9700\u8981\u8BBF\u95EE\u5BC6\u7801" }, 401) : html(lockPage(), 401);
+    }
+    if (url.pathname === "/api/vote" && req.method === "POST") {
+      const r = await vote(req, env);
+      ctx.waitUntil(markDirty(env));
+      return r;
+    }
+    if (url.pathname === "/api/data") {
+      const JS = "application/json; charset=utf-8";
+      if (url.searchParams.get("old") === "1") return sendSnap(req, await pageData(env, "old"), JS);
+      const part = Number(url.searchParams.get("part")) || 0;
+      if (part > 0) return sendSnap(req, await pageData(env, "part:" + Math.min(part, 50)), JS);
+      return sendSnap(req, await pageData(env, "head"), JS);
+    }
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      maybeVisitTick(env, ctx);
+      const d = await pageData(env, "head");
+      return sendSnap(req, d, "text/html; charset=utf-8", PAGE_A + d.v + PAGE_B);
+    }
+    if (url.pathname === "/api/cron") {
+      const key = url.searchParams.get("key") || req.headers.get("x-cron-key") || "";
+      if (!key || !safeEqual(key, await memo("cronkey", 6e4, () => getCronKey(env)))) return json({ error: "\u89E6\u53D1\u5BC6\u94A5\u4E0D\u5BF9" }, 403);
+      return json(await triggerTick(env, "url"));
+    }
+    if (url.pathname === "/admin" || url.pathname === "/admin/") return html(admin_default.replace("/*__CATS__*/[]", JSON.stringify(CATEGORIES.map(({ key, label, color, kw, group, info }) => ({ key, label, color, group, info: !!info, kw: kw.slice(0, 6) })))).replace("/*__GROUPS__*/[]", JSON.stringify(GROUPS)).replace("/*__PUSH__*/[]", JSON.stringify(PUSH_CHANNELS.map(({ id, name, key, secret, hint }) => ({ id, name, key, secret, hint })))).replace("/*__BACKENDS__*/[]", JSON.stringify(BACKENDS.map(({ id, name, keyless, free, signup, note, zh }) => ({ id, name, keyless, free, signup, note, zh })))));
+    if (url.pathname === "/api/items") return json(await publicItems(env, url));
+    if (url.pathname === "/api/stats") {
+      const st = await basic(env);
+      const cutoff = Date.now() - (Number(st.max_age_days) || 180) * 864e5;
+      const base = "FROM items WHERE status = 'approved' AND (published_at IS NULL OR published_at >= ?)";
+      const [cats, obs, last, days] = await Promise.all([
+        env.DB.prepare(`SELECT category AS k, COUNT(*) AS n ${base} GROUP BY category`).bind(cutoff).all(),
+        env.DB.prepare(`SELECT obtain AS k, COUNT(*) AS n ${base} GROUP BY obtain`).bind(cutoff).all(),
+        env.DB.prepare("SELECT MAX(finished_at) AS t FROM runs WHERE trigger != 'mail'").first(),
+        env.DB.prepare(`SELECT day AS d, COUNT(*) AS n ${base} AND day IS NOT NULL GROUP BY day ORDER BY day DESC LIMIT 31`).bind(cutoff).all()
+      ]);
+      const out = { all: 0, last_run: last?.t || null, categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color })), today: dayOf(Date.now()), retention_days: Number(st.retention_days) || 15, days: (days.results || []).map((r) => ({ day: r.d, n: r.n })) };
+      for (const r of cats.results || []) {
+        out[r.k || "other"] = r.n;
+        out.all += r.n;
+      }
+      for (const r of obs.results || []) if (r.k) out[r.k] = r.n;
+      return json(out);
+    }
+    if (url.pathname === "/feed.xml") {
+      const st = await basic(env);
+      const items = await memo("feed", Math.max(0, Number(st.public_cache_seconds) || 0) * 1e3, () => publicItems(env, new URL(url.origin + "/?limit=50")));
+      const body = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</title><link>${xmlEsc(url.origin)}</link><description>\u6BCF\u65E5\u81EA\u52A8\u6293\u53D6\u5E76\u7ECF AI \u7B5B\u9009</description>${items.map((it) => `<item><title>${xmlEsc(it.name || it.title)}</title><link>${xmlEsc(it.url)}</link><guid isPermaLink="false">${it.id}</guid>${it.published_at ? `<pubDate>${new Date(it.published_at).toUTCString()}</pubDate>` : ""}<description>${xmlEsc([it.summary, it.signup && "\u6CE8\u518C\uFF1A" + it.signup].filter(Boolean).join(" | "))}</description></item>`).join("")}</channel></rss>`;
+      return cached(req, body, "application/rss+xml; charset=utf-8");
+    }
+    if (url.pathname.startsWith("/api/admin/")) {
+      if (url.pathname === "/api/admin/status") {
+        return json({ initialized: !!envToken(env) || !!await getAdminHash(env), env_token: !!envToken(env), storage: storageMode(env), site_locked: !!await getSitePassHash(env) });
+      }
+      if (url.pathname === "/api/admin/setup" && req.method === "POST") {
+        if (envToken(env) || await getAdminHash(env)) return json({ error: "\u5DF2\u7ECF\u8BBE\u7F6E\u8FC7\u7BA1\u7406\u5458\u5BC6\u7801" }, 409);
+        const { password } = await req.json().catch(() => ({}));
+        if (!password || String(password).length < 8) return json({ error: "\u5BC6\u7801\u81F3\u5C11 8 \u4F4D" }, 400);
+        await setAdminHash(env, String(password));
+        return json({ ok: true });
+      }
+      const maxFails = Number((await basic(env)).login_max_fails) || 10;
+      if (await failsOf(env, ip) >= maxFails) return tooMany();
+      if (!await isAdmin(req, env)) {
+        if (req.headers.get("authorization")) await addFail(env, ip);
+        return json({ error: "\u672A\u6388\u6743" }, 401);
+      }
+      if (req.method !== "GET" && url.pathname !== "/api/admin/snap") {
+        clearMemo();
+        ctx.waitUntil(markDirty(env));
+      }
+      if (url.pathname === "/api/admin/password" && req.method === "POST") {
+        if (envToken(env)) return json({ error: "\u5F53\u524D\u4F7F\u7528\u73AF\u5883\u53D8\u91CF ADMIN_TOKEN\uFF0C\u8BF7\u5728 Cloudflare \u63A7\u5236\u53F0\u4FEE\u6539" }, 400);
+        const { password } = await req.json().catch(() => ({}));
+        if (!password || String(password).length < 8) return json({ error: "\u5BC6\u7801\u81F3\u5C11 8 \u4F4D" }, 400);
+        await setAdminHash(env, String(password));
+        return json({ ok: true });
+      }
+      if (url.pathname === "/api/admin/settings" && req.method === "GET" && !/^(localhost|127\.|\[::1\])/.test(url.hostname)) {
+        const cur = await getSettings(env);
+        if (!cur.mail_site_url) await saveSettings(env, { mail_site_url: url.origin });
+      }
+      return await handleAdmin(req, env, url);
+    }
+    return json({ error: "Not found" }, 404);
+  } catch (e) {
+    return errorPage(e, url.pathname);
+  }
+}
+async function handleScheduled(event, env, ctx) {
+  const missing = setupMissing(env);
+  if (missing.length) {
+    console.error("\u90E8\u7F72\u672A\u5B8C\u6210\uFF0C\u7F3A\u5C11\u7ED1\u5B9A\uFF1A" + missing.map((x) => x[0]).join(", "));
+    return;
+  }
+  await ensureSchema(env);
+  ctx.waitUntil(autoTick(env, "cron").catch((e) => console.error("scheduled failed", e)));
+}
 async function snapDue(env, idle) {
   const [b, dirty, at, ver] = await Promise.all(["snap_build", "snap_dirty", "snap_at", "snap_ver"].map((k) => getMeta(env, k)));
   if (b || !ver) return true;
