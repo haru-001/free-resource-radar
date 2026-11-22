@@ -1,12 +1,12 @@
 {
   "name": "free-resource-radar",
-  "version": "1.8.2",
+  "version": "1.8.4",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --test-scheduled",
     "deploy": "wrangler deploy",
-    "build:single": "esbuild src/index.js --bundle --format=esm --platform=neutral --loader:.html=text --external:cloudflare:* --outfile=dist/worker.js --legal-comments=inline"
+    "build:single": "esbuild src/entry.js --bundle --format=esm --platform=neutral --loader:.html=text --external:cloudflare:* --outfile=dist/worker.js --legal-comments=inline"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",

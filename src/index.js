@@ -353,7 +353,7 @@ async function health(env) {
   await step('settings', async () => { const s = await getBasicSettings(env); return { keys: Object.keys(s).length }; });
   await step('kv', async () => ({ bound: !!env.SECRETS }));
   await step('run', async () => { const r = await env.DB.prepare('SELECT id, started_at, finished_at FROM runs ORDER BY id DESC LIMIT 1').first(); return { last: r || null }; });
-  return { ok: Object.values(out).every((x) => x.ok), version: '1.8.2', checks: out };
+  return { ok: Object.values(out).every((x) => x.ok), version: '1.8.4', checks: out };
 }
 
 async function handleFetch(req, env, ctx) {

@@ -18,10 +18,9 @@ export const CATEGORIES = [
   { key: 'pan', label: '网盘资源', color: '#0d9488', kw: ['网盘', '云盘', '阿里云盘', '百度网盘', '夸克', '分享链接', '资源合集'], q: [] },
   { key: 'goods', label: '实物福利', color: '#dc2626', kw: ['包邮', '实物', '周边', '0元购', '免费送', '赠送', '贴纸', 'swag'], q: [] },
   { key: 'invite', label: '邀请码', color: '#9333ea', kw: ['邀请码', '邀请链接', 'invite', '内测资格', 'beta'], q: [] },
-  // 资讯与梯子：不是“白嫖资源”，不要求出现“免费”字样，一般由专源直接收录
+  // 资讯类：不是“白嫖资源”，不要求出现“免费”字样，一般由专源直接收录
   { key: 'ainews', label: 'AI 资讯', group: 'ai', info: true, color: '#6d28d9', kw: ['发布', '上线', '开源', '大模型', '模型', 'openai', 'anthropic', 'gemini', 'deepseek', '智能体'], q: [] },
   { key: 'news', label: '科技资讯', group: 'news', info: true, color: '#2563eb', kw: ['发布', '宣布', '消息', '报道', '财报', '新品', '更新'], q: [] },
-  { key: 'proxy', label: '梯子订阅', group: 'proxy', info: true, color: '#0f766e', kw: ['节点', '订阅', 'v2ray', 'clash', 'vless', 'trojan', 'shadowsocks', '机场', '科学上网', '梯子'], q: [] },
   { key: 'other', label: '其它', color: '#9ca3af', kw: [], q: [] },
 ];
 for (const c of CATEGORIES) c.group ||= 'fuli';
@@ -32,11 +31,10 @@ export const GROUPS = [
   { key: 'aifree', label: 'AI 福利', icon: '惠' },
   { key: 'ai', label: 'AI 工具与资讯', icon: 'AI' },
   { key: 'news', label: '新闻资讯', icon: '讯' },
-  { key: 'proxy', label: '免费梯子', icon: '梯' },
 ];
 export const isInfoCat = (k) => !!CAT_MAP[k]?.info;
 export const catLabel = (k) => CAT_MAP[k]?.label || '其它';
-export const DEFAULT_ENABLED = ['domain', 'hosting', 'cloud', 'ai', 'aideal', 'aitool', 'software', 'dev', 'game', 'edu', 'ainews', 'news', 'proxy'];
+export const DEFAULT_ENABLED = ['domain', 'hosting', 'cloud', 'ai', 'aideal', 'aitool', 'software', 'dev', 'game', 'edu', 'ainews', 'news'];
 
 export function enabledCats(s) {
   const list = String(s.enabled_categories || '').split(/[,\s]+/).filter((k) => CAT_MAP[k]);

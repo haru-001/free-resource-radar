@@ -489,15 +489,6 @@ function render() {
       : '<div class="empty"><b>还没有数据</b>' + sched(d) + '（北京时间）。刚部署好？去 <a href="/admin">管理后台</a> 点「立即抓取」。</div>';
     return;
   }
-  // 梯子栏目：订阅卡片（最近有更新的在前）
-  if (state.grp === 'proxy' || (state.cat && catOf({ category: state.cat }).group === 'proxy')) {
-    const subs = all.filter(isSub).sort((a, b) => pubOf(b) - pubOf(a)), rest = all.filter((it) => !isSub(it));
-    state.list = rest;
-    el.innerHTML = '<div class="warn">以下是 GitHub 上自动更新的公共节点订阅，仓库一有新提交这里就刷新；灰点表示 3 天以上没更新。公共节点来路不明、随时失效，请勿用来登录重要账号或传输隐私数据。</div>' +
-      (subs.length ? '<div class="subs">' + subs.map(subHtml).join('') + '</div>' : '') +
-      (rest.length ? '<div class="dayh"><b>相关帖子</b></div><div class="feed">' + rest.map((it) => itemHtml(it, 0)).join('') + '</div>' : '');
-    return;
-  }
   // 节点订阅卡片只在「免费梯子」栏目里显示；疑似失效的沉到最后
   const feed = all.filter((it) => !isSub(it));
   const now = Date.now();

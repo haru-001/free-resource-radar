@@ -74,15 +74,6 @@ export const DEFAULT_SOURCES = [
   { name: 'cnBeta', type: 'rss', url: 'https://www.cnbeta.com.tw/backend.php', category: 'news', trusted: true, limit: 10, every: 6, enabled: true },
   { name: '极客公园', type: 'rss', url: 'https://www.geekpark.net/rss', category: 'news', trusted: true, limit: 8, every: 6, enabled: true },
   { name: '阮一峰 · 科技爱好者周刊', type: 'rss', url: 'https://www.ruanyifeng.com/blog/atom.xml', category: 'news', trusted: true, limit: 3, every: 6, enabled: true },
-  // ---------- 免费梯子：GitHub 上自动更新的公共节点订阅，每个仓库只占一条，有新提交就刷新时间 ----------
-  { name: 'Pawdroid / Free-servers', type: 'repo', repo: 'Pawdroid/Free-servers', mode: 'sub', category: 'proxy', trusted: true, subs: [['通用订阅', 'https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub']], every: 12, enabled: true },
-  { name: 'ermaozi / get_subscribe', type: 'repo', repo: 'ermaozi/get_subscribe', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt'], ['Clash', 'https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/clash.yml']], every: 12, enabled: true },
-  { name: 'chengaopan / AutoMergePublicNodes', type: 'repo', repo: 'chengaopan/AutoMergePublicNodes', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/chengaopan/AutoMergePublicNodes/master/list.txt'], ['Clash', 'https://raw.githubusercontent.com/chengaopan/AutoMergePublicNodes/master/list.yml']], every: 12, enabled: true },
-  { name: 'peasoft / NoMoreWalls', type: 'repo', repo: 'peasoft/NoMoreWalls', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.txt'], ['Clash', 'https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.yml']], every: 12, enabled: true },
-  { name: 'mahdibland / V2RayAggregator', type: 'repo', repo: 'mahdibland/V2RayAggregator', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt'], ['Clash', 'https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/Eternity.yml']], every: 12, enabled: true },
-  { name: 'snakem982 / proxypool', type: 'repo', repo: 'snakem982/proxypool', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/snakem982/proxypool/main/source/v2ray-2.txt'], ['Clash Meta', 'https://raw.githubusercontent.com/snakem982/proxypool/main/source/clash-meta-2.yaml']], every: 12, enabled: true },
-  { name: 'Barabama / FreeNodes', type: 'repo', repo: 'Barabama/FreeNodes', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/clashmeta.txt'], ['Clash Meta', 'https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/clashmeta.yaml']], every: 12, enabled: true },
-  { name: 'free18 / v2ray', type: 'repo', repo: 'free18/v2ray', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/free18/v2ray/main/v.txt'], ['Clash', 'https://raw.githubusercontent.com/free18/v2ray/main/c.yaml']], every: 12, enabled: true },
   // 英文社区：默认过滤纯英文内容，这些源默认关闭；关掉「过滤纯英文」后可按需打开
   { name: 'LowEndTalk · Offers', type: 'rss', url: 'https://lowendtalk.com/categories/offers/feed.rss', enabled: false },
   { name: 'LowEndSpirit', type: 'rss', url: 'https://lowendspirit.com/discussions/feed.rss', enabled: false },
@@ -199,7 +190,7 @@ export const DEFAULT_SETTINGS = {
   login_max_fails: '10',   // 同一 IP 15 分钟内登录失败这么多次就暂时锁定
   api_rate_per_min: '120', // 公开接口每个 IP 每分钟最多请求数（0 = 不限）
   // 分类：勾选要收集的；推送分类留空 = 与收集相同
-  enabled_categories: 'domain,hosting,cloud,ai,aideal,aitool,software,dev,game,edu,ainews,news,proxy',
+  enabled_categories: 'domain,hosting,cloud,ai,aideal,aitool,software,dev,game,edu,ainews,news',
   mail_categories: '',
   simple_signup_only: 'true', // 只要注册简单的（邮箱 / GitHub / Google 登录）
   topic_keywords: '',      // 额外主题词（每个分类已内置关键词，这里只需补充）
@@ -215,7 +206,7 @@ export const KV_KEYS = ['ai_base_url', 'ai_api_key', 'mail_api_key', 'smtp_user'
 const kvName = (k) => `cfg:${k}`;
 
 let schemaReady = false;
-const SCHEMA_VER = '1.8.1';
+const SCHEMA_VER = '1.8.4';
 export async function ensureSchema(env) {
   if (schemaReady) return;
   // 已经是当前版本就跳过建表（冷启动只查一次）
@@ -260,6 +251,18 @@ export async function ensureSchema(env) {
       'CREATE INDEX IF NOT EXISTS idx_health_name ON src_health(name, last_at)',
     ].map((q) => env.DB.prepare(q))).catch(() => {});
   }
+  // v1.8.4：不再收录代理节点 / 梯子订阅，清掉旧数据和旧数据源
+  await env.DB.prepare("DELETE FROM items WHERE category = 'proxy' OR extra LIKE '%\"subs\"%'").run().catch(() => {});
+  try {
+    const r = await env.DB.prepare("SELECT value FROM settings WHERE key = 'sources'").first();
+    if (r?.value) {
+      const arr = JSON.parse(r.value);
+      if (Array.isArray(arr)) {
+        const kept = arr.filter((x) => !(x && (x.category === 'proxy' || x.mode === 'sub')));
+        if (kept.length !== arr.length) await env.DB.prepare("UPDATE settings SET value = ? WHERE key = 'sources'").bind(JSON.stringify(kept)).run();
+      }
+    }
+  } catch {}
   await env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('meta:schema', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(SCHEMA_VER).run();
   schemaReady = true;
 }

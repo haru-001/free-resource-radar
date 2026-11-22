@@ -5,7 +5,7 @@ import { sendDigest } from './mailer.js';
 import { dayOf } from './db.js';
 import { CAT_MAP, enabledCats, guessCategory, topicWordsFor, kwHit, compileWords, isInfoCat } from './categories.js';
 import { BACKENDS, BACKEND_MAP, backendReady, runBackend, backendCats } from './search.js';
-import { isNoiseTitle, guessObtain, compileBlockRules, matchBlock, titleFingerprint, cleanTitle, extractDeadline, extractCodes, firstSentence, stripNegated } from './rules.js';
+import { isProxyTopic, isNoiseTitle, guessObtain, compileBlockRules, matchBlock, titleFingerprint, cleanTitle, extractDeadline, extractCodes, firstSentence, stripNegated } from './rules.js';
 import { guessVendor, guessPerk, radarQueries } from './extras.js';
 import { deliver } from './mailer.js';
 
@@ -256,7 +256,8 @@ async function fetchRepo(src, env) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error('repo 应写成 owner/name');
   const commits = await ghCommits(repo);
   if (!commits.length) return [];
-  if (src.mode === 'sub') {
+  if (src.mode === 'sub') return []; // v1.8.4 起不再收录节点订阅
+  if (false) {
     // 节点订阅仓库：一个仓库只占一条，每次有新提交就刷新这条的时间和说明
     const c0 = commits[0];
     const subs = (src.subs || []).slice(0, 6);
@@ -524,6 +525,7 @@ async function ingest(env, c, src, items, stats, log) {
     if (!it.published_at) { if (!c.keepUndated && !src.isSearch) { stats.undated++; continue; } }
     else if (it.published_at < c.cutoff) { stats.too_old++; continue; }
     if (isBlocked(it.url, c.blockDomains)) { stats.blocked++; continue; }
+    if (isProxyTopic(it.title + ' ' + (it.raw_text || '').slice(0, 300))) { stats.noise++; continue; }
     if (c.noiseOn && isNoiseTitle(it.title)) { stats.noise++; continue; }
     // 默认过滤纯英文内容：标题、简介、正文前 500 字都没有中文就丢弃
     if (c.noEnglish && !CJK.test(it.title) && !CJK.test(it.summary || '') && !CJK.test(String(it.raw_text || '').slice(0, 500))) { stats.non_zh++; continue; }

@@ -5,6 +5,10 @@
 const NOISE_TITLE =
   /^(怎样|怎么|如何|哪里|哪个|为什么|为何)|请问|有没有|求推荐|求一个|哪里(有|能)|值得买吗|怎么样[?？]|不够用|用完了|失效了|吐槽|踩坑|后悔|失望|谁有|求个|求购|哪有|多少钱|求助|求带|有人吗|有人知道|被封|封号|跑路|[?？]\s*$/;
 
+/** 代理节点 / 翻墙类内容：一律不收录（Cloudflare 条款不允许） */
+const PROXY_TOPIC = /梯子|翻墙|科学上网|机场|节点订阅|免费节点|v2ray|vless|vmess|trojan|shadowsocks|ssr?订阅|clash\s*(订阅|节点|meta)|代理节点|proxy\s*(pool|list|node)/i;
+export function isProxyTopic(text) { return PROXY_TOPIC.test(String(text || '')); }
+
 export function isNoiseTitle(title) {
   const t = String(title || '');
   // 明确的教程 / 指南不算求助

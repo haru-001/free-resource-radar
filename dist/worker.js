@@ -1,4 +1,4 @@
-// 免费资源雷达 · 单文件版（v1.8.2）：可直接粘贴到 Cloudflare 控制台的在线编辑器。需要绑定 D1（DB），KV（SECRETS）可选，并添加 Cron 触发器 * * * * *
+// 免费资源雷达 · 单文件版（v1.8.4）
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __esm = (fn, res) => function __init() {
@@ -8,6 +8,963 @@ var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
+
+// src/categories.js
+function enabledCats(s) {
+  const list = String(s.enabled_categories || "").split(/[,\s]+/).filter((k) => CAT_MAP[k]);
+  return list.length ? list : DEFAULT_ENABLED;
+}
+function mailCats(s) {
+  const list = String(s.mail_categories || "").split(/[,\s]+/).filter((k) => CAT_MAP[k]);
+  return list.length ? list : enabledCats(s);
+}
+function kwHit(text, w) {
+  if (/^[a-z0-9.\- ]{1,4}$/.test(w)) {
+    let re = reCache.get(w);
+    if (!re) {
+      re = new RegExp(`(^|[^a-z0-9])${w.replace(/[.\-]/g, "\\$&")}($|[^a-z0-9])`);
+      reCache.set(w, re);
+    }
+    return re.test(text);
+  }
+  return text.includes(w);
+}
+function compileWords(words) {
+  const esc2 = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = [...new Set(words.filter(Boolean))].map((w) => /^[a-z0-9.\- ]{1,4}$/.test(w) ? `(?:^|[^a-z0-9])${esc2(w)}(?:$|[^a-z0-9])` : esc2(w));
+  return parts.length ? new RegExp(parts.join("|")) : null;
+}
+function guessCategory(text, enabled) {
+  const t = String(text || "").toLowerCase();
+  let best = null, bestN = 0;
+  for (const k of enabled) {
+    if (CAT_MAP[k]?.need && !CAT_MAP[k].need.test(t)) continue;
+    const n = (CAT_MAP[k]?.kw || []).reduce((a, w) => a + (kwHit(t, w) ? 1 : 0), 0);
+    if (n > bestN) {
+      best = k;
+      bestN = n;
+    }
+  }
+  return best;
+}
+function topicWordsFor(enabled) {
+  return [...new Set(enabled.flatMap((k) => CAT_MAP[k]?.kw || []))];
+}
+function searchQueriesFor(enabled) {
+  return enabled.flatMap((k) => CAT_MAP[k]?.q || []);
+}
+var CATEGORIES, CAT_MAP, GROUPS, isInfoCat, DEFAULT_ENABLED, reCache;
+var init_categories = __esm({
+  "src/categories.js"() {
+    CATEGORIES = [
+      { key: "domain", label: "\u514D\u8D39\u57DF\u540D", color: "#4f46e5", kw: ["\u57DF\u540D", "\u4E8C\u7EA7\u57DF\u540D", "\u5B50\u57DF\u540D", "domain", "subdomain", "dns", ".eu.org", ".us.kg"], q: ["\u514D\u8D39\u57DF\u540D \u6CE8\u518C", "\u514D\u8D39\u4E8C\u7EA7\u57DF\u540D"] },
+      { key: "hosting", label: "\u4E3B\u673A / VPS", color: "#0891b2", kw: ["\u4E3B\u673A", "\u865A\u62DF\u4E3B\u673A", "\u7A7A\u95F4", "vps", "\u670D\u52A1\u5668", "\u5EFA\u7AD9", "hosting", "webhost", "web host", "cpanel", "server", "\u5C0F\u9E21"], q: ["\u514D\u8D39\u865A\u62DF\u4E3B\u673A", "\u514D\u8D39 VPS \u670D\u52A1\u5668"] },
+      { key: "cloud", label: "\u4E91\u670D\u52A1 / CDN", color: "#0284c7", kw: ["\u4E91\u670D\u52A1", "\u4E91\u51FD\u6570", "serverless", "cdn", "\u5BF9\u8C61\u5B58\u50A8", "s3", "\u6570\u636E\u5E93", "database", "cloud", "pages", "workers", "\u6258\u7BA1", "deploy", "paas"], q: ["\u514D\u8D39\u4E91\u670D\u52A1 \u989D\u5EA6", "\u514D\u8D39 CDN \u5BF9\u8C61\u5B58\u50A8"] },
+      { key: "ai", label: "AI \u514D\u8D39\u989D\u5EA6", group: "aifree", color: "#7c3aed", kw: ["ai", "gpt", "claude", "gemini", "llm", "\u5927\u6A21\u578B", "api key", "token", "\u989D\u5EA6", "\u6A21\u578B", "openrouter", "deepseek", "copilot", "cursor", "\u514D\u8D39\u6A21\u578B", "\u514D\u8D39\u5C42", "free tier"], q: ["\u514D\u8D39 AI API \u989D\u5EA6", "\u5927\u6A21\u578B \u514D\u8D39 token"] },
+      // AI 限时福利：限时免费开放、注册送额度、优惠码 / 免费月、公益站签到，时效强，单独成类
+      { key: "aideal", label: "AI \u9650\u65F6\u798F\u5229", group: "aifree", color: "#c026d3", need: /(^|[^a-z])(ai|api|gpt|llm|agent|token)([^a-z]|$)|claude|gemini|deepseek|qwen|kimi|glm|grok|openai|anthropic|cursor|copilot|大模型|模型|智能体|算力|生图|编程助手/i, kw: ["\u9650\u65F6\u514D\u8D39", "\u514D\u8D39\u5F00\u653E", "\u9001\u989D\u5EA6", "\u6CE8\u518C\u9001", "\u8D60\u91D1", "\u8D60\u9001", "\u514D\u8D39\u9886", "\u514D\u8D39\u4E00\u4E2A\u6708", "\u514D\u8D39\u8BD5\u7528", "\u4F18\u60E0\u7801", "\u5151\u6362\u7801", "\u516C\u76CA\u7AD9", "\u4E2D\u8F6C\u7AD9", "new api", "\u7B7E\u5230", "\u798F\u5229", "free credits", "free month"], q: ["AI \u9650\u65F6\u514D\u8D39 \u9001\u989D\u5EA6", "AI \u516C\u76CA\u7AD9 \u6CE8\u518C\u9001\u989D\u5EA6"] },
+      { key: "aitool", label: "AI \u5DE5\u5177", group: "ai", color: "#a21caf", kw: ["ai \u5DE5\u5177", "ai\u5DE5\u5177", "agent", "\u667A\u80FD\u4F53", "ai \u7ED8\u753B", "ai\u7ED8\u56FE", "\u751F\u56FE", "ai \u5199\u4F5C", "chatgpt \u955C\u50CF", "\u955C\u50CF\u7AD9", "mcp", "ai \u52A9\u624B", "ai\u52A9\u624B", "\u63D2\u4EF6"], q: ["\u514D\u8D39 AI \u5DE5\u5177 \u63A8\u8350"] },
+      { key: "software", label: "\u8F6F\u4EF6\u6388\u6743", color: "#db2777", kw: ["\u6FC0\u6D3B\u7801", "\u6388\u6743", "\u6CE8\u518C\u7801", "\u8BB8\u53EF\u8BC1", "license", "giveaway", "\u9650\u514D", "\u6B63\u7248", "pro \u7248", "\u4F1A\u5458\u7248", "lifetime"], q: ["\u6B63\u7248\u8F6F\u4EF6 \u9650\u514D", "\u8F6F\u4EF6 \u6FC0\u6D3B\u7801 \u514D\u8D39\u9886\u53D6"] },
+      { key: "dev", label: "\u5F00\u53D1\u5DE5\u5177", color: "#475569", kw: ["\u5F00\u53D1\u8005", "developer", "ide", "github", "api", "sdk", "ci", "\u76D1\u63A7", "\u90AE\u7BB1\u670D\u52A1", "smtp", "free tier", "free plan"], q: ["\u5F00\u53D1\u8005 \u514D\u8D39\u5957\u9910", "free tier for developers"] },
+      { key: "game", label: "\u6E38\u620F", color: "#16a34a", kw: ["\u6E38\u620F", "steam", "epic", "gog", "game", "\u559C\u52A0\u4E00", "dlc"], q: ["\u559C\u52A0\u4E00 \u514D\u8D39\u9886\u53D6"] },
+      { key: "media", label: "\u5F71\u97F3\u4F1A\u5458", color: "#e11d48", kw: ["\u4F1A\u5458", "\u89C6\u9891", "\u97F3\u4E50", "\u5F71\u89C6", "vip", "spotify", "youtube", "netflix", "\u7535\u5B50\u4E66", "kindle"], q: ["\u514D\u8D39\u4F1A\u5458 \u9886\u53D6"] },
+      { key: "design", label: "\u8BBE\u8BA1\u7D20\u6750", color: "#ea580c", kw: ["\u5B57\u4F53", "\u7D20\u6750", "\u56FE\u6807", "\u6A21\u677F", "font", "icon", "template", "figma", "psd"], q: ["\u514D\u8D39\u5546\u7528 \u5B57\u4F53 \u7D20\u6750"] },
+      { key: "edu", label: "\u5B66\u751F / \u6559\u80B2", color: "#ca8a04", kw: ["\u5B66\u751F", "\u6559\u80B2", "edu", "student", "\u5B66\u672F", "\u6821\u56ED"], q: ["\u5B66\u751F \u514D\u8D39 \u6743\u76CA"] },
+      { key: "course", label: "\u7F51\u8BFE\u6559\u7A0B", color: "#65a30d", kw: ["\u8BFE\u7A0B", "\u7F51\u8BFE", "\u6559\u7A0B", "course", "udemy", "coursera", "\u8BAD\u7EC3\u8425"], q: ["\u9650\u65F6\u514D\u8D39 \u8BFE\u7A0B"] },
+      { key: "pan", label: "\u7F51\u76D8\u8D44\u6E90", color: "#0d9488", kw: ["\u7F51\u76D8", "\u4E91\u76D8", "\u963F\u91CC\u4E91\u76D8", "\u767E\u5EA6\u7F51\u76D8", "\u5938\u514B", "\u5206\u4EAB\u94FE\u63A5", "\u8D44\u6E90\u5408\u96C6"], q: [] },
+      { key: "goods", label: "\u5B9E\u7269\u798F\u5229", color: "#dc2626", kw: ["\u5305\u90AE", "\u5B9E\u7269", "\u5468\u8FB9", "0\u5143\u8D2D", "\u514D\u8D39\u9001", "\u8D60\u9001", "\u8D34\u7EB8", "swag"], q: [] },
+      { key: "invite", label: "\u9080\u8BF7\u7801", color: "#9333ea", kw: ["\u9080\u8BF7\u7801", "\u9080\u8BF7\u94FE\u63A5", "invite", "\u5185\u6D4B\u8D44\u683C", "beta"], q: [] },
+      // 资讯类：不是“白嫖资源”，不要求出现“免费”字样，一般由专源直接收录
+      { key: "ainews", label: "AI \u8D44\u8BAF", group: "ai", info: true, color: "#6d28d9", kw: ["\u53D1\u5E03", "\u4E0A\u7EBF", "\u5F00\u6E90", "\u5927\u6A21\u578B", "\u6A21\u578B", "openai", "anthropic", "gemini", "deepseek", "\u667A\u80FD\u4F53"], q: [] },
+      { key: "news", label: "\u79D1\u6280\u8D44\u8BAF", group: "news", info: true, color: "#2563eb", kw: ["\u53D1\u5E03", "\u5BA3\u5E03", "\u6D88\u606F", "\u62A5\u9053", "\u8D22\u62A5", "\u65B0\u54C1", "\u66F4\u65B0"], q: [] },
+      { key: "other", label: "\u5176\u5B83", color: "#9ca3af", kw: [], q: [] }
+    ];
+    for (const c of CATEGORIES) c.group ||= "fuli";
+    CAT_MAP = Object.fromEntries(CATEGORIES.map((c) => [c.key, c]));
+    GROUPS = [
+      { key: "fuli", label: "\u798F\u5229\u7F8A\u6BDB", icon: "\u7F8A" },
+      { key: "aifree", label: "AI \u798F\u5229", icon: "\u60E0" },
+      { key: "ai", label: "AI \u5DE5\u5177\u4E0E\u8D44\u8BAF", icon: "AI" },
+      { key: "news", label: "\u65B0\u95FB\u8D44\u8BAF", icon: "\u8BAF" }
+    ];
+    isInfoCat = (k) => !!CAT_MAP[k]?.info;
+    DEFAULT_ENABLED = ["domain", "hosting", "cloud", "ai", "aideal", "aitool", "software", "dev", "game", "edu", "ainews", "news"];
+    reCache = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/push.js
+function markdown(title, items, max, siteUrl) {
+  let out = `### ${title}
+`;
+  let n = 0;
+  for (const it of items) {
+    const l = line(it);
+    const block = `
+- [${l.name.replace(/[[\]]/g, "")}](${l.url})${l.summary ? `
+  ${l.summary}` : ""}${l.tags ? `
+  <font color="comment">${l.tags}</font>` : ""}`;
+    if (new TextEncoder().encode(out + block).length > max - 200) break;
+    out += block;
+    n++;
+  }
+  if (n < items.length) out += `
+
+\u2026\u2026\u8FD8\u6709 ${items.length - n} \u6761${siteUrl ? `\uFF0C[\u67E5\u770B\u5168\u90E8](${siteUrl})` : ""}`;
+  else if (siteUrl) out += `
+
+[\u67E5\u770B\u5168\u90E8](${siteUrl})`;
+  if (!items.length) out += "\n\u4ECA\u5929\u6CA1\u6709\u65B0\u7684\u8D44\u6E90\u3002";
+  return out;
+}
+async function hmacB64(key, msg) {
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(msg)));
+  return btoa(String.fromCharCode(...sig));
+}
+async function post(url, body, type = "json") {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": type === "json" ? "application/json" : "application/x-www-form-urlencoded" },
+    body: type === "json" ? JSON.stringify(body) : new URLSearchParams(body).toString(),
+    signal: AbortSignal.timeout(15e3)
+  });
+  const t = await r.text();
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${t.slice(0, 160)}`);
+  let j = {};
+  try {
+    j = JSON.parse(t);
+  } catch {
+  }
+  const code = j.errcode ?? j.code ?? j.StatusCode ?? 0;
+  if (code !== 0 && code !== 200 && code !== "0") throw new Error(j.errmsg || j.msg || j.message || `\u8FD4\u56DE\u7801 ${code}`);
+  return j;
+}
+async function pushTo(id, s, title, items) {
+  const c = PUSH_CHANNELS.find((x) => x.id === id);
+  if (!c) throw new Error("\u672A\u77E5\u6E20\u9053");
+  const v = String(s[c.key] || "").trim();
+  if (!v) throw new Error(`\u672A\u586B\u5199${c.name}`);
+  const site = (s.mail_site_url || "").replace(/\/+$/, "");
+  switch (id) {
+    case "wecom":
+      return post(v, { msgtype: "markdown", markdown: { content: markdown(title, items, 4e3, site) } });
+    case "dingtalk": {
+      let url = v;
+      if (s.dingtalk_secret) {
+        const ts = Date.now();
+        url += `${url.includes("?") ? "&" : "?"}timestamp=${ts}&sign=${encodeURIComponent(await hmacB64(s.dingtalk_secret, `${ts}
+${s.dingtalk_secret}`))}`;
+      }
+      return post(url, { msgtype: "markdown", markdown: { title: `\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 ${title}`.slice(0, 60), text: markdown(`\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 ${title}`, items, 18e3, site) } });
+    }
+    case "feishu": {
+      const body = { msg_type: "text", content: { text: `\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 ${plain(title, items, site)}`.slice(0, 18e3) } };
+      if (s.feishu_secret) {
+        const ts = Math.floor(Date.now() / 1e3);
+        body.timestamp = String(ts);
+        body.sign = await hmacB64(`${ts}
+${s.feishu_secret}`, "");
+      }
+      return post(v, body);
+    }
+    case "serverchan": {
+      const m = /^sctp(\d+)t/i.exec(v);
+      const url = m ? `https://${m[1]}.push.ft07.com/send/${v}.send` : `https://sctapi.ftqq.com/${v}.send`;
+      return post(url, { title: title.slice(0, 32), desp: markdown(title, items, 3e4, site) }, "form");
+    }
+    case "pushplus":
+      return post("https://www.pushplus.plus/send", { token: v, title: title.slice(0, 100), content: markdown(title, items, 18e3, site), template: "markdown" });
+    case "bark": {
+      const first = items[0];
+      return post(v.replace(/\/+$/, ""), { title: title.slice(0, 60), body: items.length ? items.slice(0, 5).map((it) => "\xB7 " + (it.name || it.title)).join("\n") + (items.length > 5 ? `
+\u2026\u5171 ${items.length} \u6761` : "") : "\u4ECA\u5929\u6CA1\u6709\u65B0\u7684\u8D44\u6E90", group: "\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE", url: items.length === 1 ? first.url : site || void 0 });
+    }
+    case "webhook":
+      return post(v, { title, text: plain(title, items, site), items: items.map((it) => ({ title: it.name || it.title, url: it.url, summary: it.summary || "", category: it.category, obtain: it.obtain || null, expires_at: it.expires_at || null })) });
+  }
+}
+async function pushAll(s, title, items, only) {
+  const ok = [], errors = [];
+  for (const c of PUSH_CHANNELS) {
+    if (only ? c.id !== only : !pushReady(s, c)) continue;
+    try {
+      await pushTo(c.id, s, title, items);
+      ok.push(c.name);
+    } catch (e) {
+      errors.push(`${c.name}\uFF1A${e.message}`);
+    }
+  }
+  return { ok, errors };
+}
+var CAT, OBTAIN_ZH, PUSH_CHANNELS, PUSH_KEYS, pushReady, line, plain;
+var init_push = __esm({
+  "src/push.js"() {
+    init_categories();
+    CAT = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
+    OBTAIN_ZH = { free: "\u76F4\u63A5\u767D\u5AD6", conditional: "\u6709\u6761\u4EF6", lottery: "\u62BD\u5956", trial: "\u8BD5\u7528", promo: "\u63A8\u5E7F", paid: "\u9700\u4ED8\u8D39" };
+    PUSH_CHANNELS = [
+      { id: "wecom", name: "\u4F01\u4E1A\u5FAE\u4FE1\u673A\u5668\u4EBA", key: "wecom_webhook", hint: "\u7FA4\u673A\u5668\u4EBA\u7684 Webhook \u5730\u5740\uFF08https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=\u2026\uFF09" },
+      { id: "dingtalk", name: "\u9489\u9489\u673A\u5668\u4EBA", key: "dingtalk_webhook", secret: "dingtalk_secret", hint: "\u81EA\u5B9A\u4E49\u673A\u5668\u4EBA\u7684 Webhook \u5730\u5740\uFF1B\u5B89\u5168\u8BBE\u7F6E\u9009\u300C\u52A0\u7B7E\u300D\u65F6\u628A\u5BC6\u94A5\u586B\u5230\u4E0B\u9762\uFF0C\u9009\u300C\u81EA\u5B9A\u4E49\u5173\u952E\u8BCD\u300D\u65F6\u5173\u952E\u8BCD\u586B\uFF1A\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE" },
+      { id: "feishu", name: "\u98DE\u4E66\u673A\u5668\u4EBA", key: "feishu_webhook", secret: "feishu_secret", hint: "\u81EA\u5B9A\u4E49\u673A\u5668\u4EBA\u7684 Webhook \u5730\u5740\uFF1B\u5F00\u4E86\u7B7E\u540D\u6821\u9A8C\u5C31\u628A\u5BC6\u94A5\u586B\u5230\u4E0B\u9762" },
+      { id: "serverchan", name: "Server \u9171\uFF08\u5FAE\u4FE1\uFF09", key: "serverchan_key", hint: "SendKey\uFF08sct.ftqq.com \u6216 Server \u9171\xB3 \u7684 sctp \u5F00\u5934\u7684 Key\uFF09" },
+      { id: "pushplus", name: "PushPlus\uFF08\u5FAE\u4FE1\uFF09", key: "pushplus_token", hint: "pushplus.plus \u7684 token" },
+      { id: "bark", name: "Bark\uFF08iPhone\uFF09", key: "bark_url", hint: "Bark App \u91CC\u590D\u5236\u7684\u5730\u5740\uFF0C\u5982 https://api.day.app/\u4F60\u7684Key" },
+      { id: "webhook", name: "\u901A\u7528 Webhook", key: "webhook_url", hint: "POST JSON\uFF1A{title, text, items:[{title,url,summary,category}]}\uFF0C\u53EF\u63A5 n8n / \u81EA\u5EFA\u670D\u52A1" }
+    ];
+    PUSH_KEYS = PUSH_CHANNELS.flatMap((c) => [c.key, c.secret].filter(Boolean));
+    pushReady = (s, c) => !!String(s[c.key] || "").trim() && s[`${c.id}_enabled`] !== "false";
+    line = (it) => {
+      const tags = [CAT[it.category] || "", it.obtain && OBTAIN_ZH[it.obtain] && it.obtain !== "free" ? OBTAIN_ZH[it.obtain] : "", it.expires_at ? "\u622A\u6B62 " + new Date(it.expires_at + 8 * 36e5).toISOString().slice(5, 10) : ""].filter(Boolean).join(" \xB7 ");
+      return { name: String(it.name || it.title).slice(0, 80), url: it.url, summary: String(it.summary || "").slice(0, 90), tags };
+    };
+    plain = (title, items, siteUrl) => [title, "", ...items.slice(0, 30).map((it, i) => {
+      const l = line(it);
+      return `${i + 1}. ${l.name}
+${l.url}${l.summary ? "\n" + l.summary : ""}`;
+    }), items.length > 30 ? `\u2026\u2026\u8FD8\u6709 ${items.length - 30} \u6761` : "", siteUrl ? `\u67E5\u770B\u5168\u90E8\uFF1A${siteUrl}` : ""].filter((x) => x !== "").join("\n");
+  }
+});
+
+// src/extras.js
+function rankOf(it) {
+  const srcN = Array.isArray(it.srcs) ? it.srcs.length : 0;
+  return (it.score ?? 70) + (it.up || 0) * 6 - (it.down || 0) * 8 + srcN * 4 + (it.obtain === "free" ? 5 : 0) + (it.expires_at ? 3 : 0) - (it.dead ? 60 : 0);
+}
+function weeklyPicks(items, now = Date.now(), n = 10) {
+  const list = items.filter((it) => !isInfoCat(it.category) && !it.dead && !(it.extra && it.extra.subs) && now - (it.published_at || it.fetched_at || 0) <= 7 * DAY && !(it.expires_at && it.expires_at < now));
+  list.sort((a, b) => rankOf(b) - rankOf(a));
+  const per = {}, out = [], seen = /* @__PURE__ */ new Set();
+  for (const it of list) {
+    const k = String(it.name || it.title).toLowerCase().replace(/[（(【[][^)）】\]]*[)）】\]]/g, "").replace(/giveaway|免费领取|限免|epic|steam|[^\p{L}\p{N}]+/gu, "").slice(0, 24);
+    if (k && seen.has(k)) continue;
+    if (k) seen.add(k);
+    if ((per[it.category] = (per[it.category] || 0) + 1) > 3) continue;
+    out.push(it);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+function parseRows(text, keys) {
+  const out = [];
+  for (const raw of String(text || "").split(/\r?\n/)) {
+    const l = raw.trim();
+    if (!l || l.startsWith("#")) continue;
+    const parts = l.split(/\s*[|｜]\s*/);
+    const url = parts.find((x) => /^https?:\/\//.test(x));
+    if (!url) continue;
+    const rest = parts.filter((x) => x !== url);
+    const o = { url };
+    keys.forEach((k, i) => {
+      if (rest[i]) o[k] = rest[i];
+    });
+    if (!o.name) {
+      try {
+        o.name = new URL(url).hostname.replace(/^www\./, "");
+      } catch {
+        o.name = url;
+      }
+    }
+    out.push(o);
+    if (out.length >= 60) break;
+  }
+  return out;
+}
+function guessVendor(text) {
+  const t = String(text || "").replace(/^(【[^】]*】|\[[^\]]*\]|额度变化\s*·\s*)+/, "").trim().slice(0, 400);
+  let best = null, at = Infinity;
+  for (const [n, re] of VENDORS) {
+    const m = re.exec(t);
+    if (m && m.index < at) {
+      best = n;
+      at = m.index;
+    }
+  }
+  const head = /^([A-Za-z][\w.+-]{1,24})(?=\s|：|:|，|的|上线|推出|限时|免费|送|宣布)/.exec(t);
+  if (head && (best === null || at > head[1].length + 2) && !/^(AI|API|LLM|GPT|Free|The|New|Pro)$/i.test(head[1])) return head[1];
+  return best;
+}
+function guessPerk(text) {
+  const t = String(text || "").slice(0, 600);
+  for (const [n, re] of PERKS_TYPE) if (re.test(t)) return n;
+  return null;
+}
+function radarQueries(s, round) {
+  const base = String(s.aifree_queries || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  const vendors = String(s.aifree_vendors || "").split(/\r?\n|,|，/).map((x) => x.trim()).filter(Boolean);
+  const n = Math.min(8, Math.max(0, Number(s.aifree_vendors_per_run) || 4));
+  const pick2 = [];
+  for (let i = 0; i < Math.min(n, vendors.length); i++) pick2.push(vendors[(round * n + i) % vendors.length]);
+  const qBase = Math.max(1, Math.min(8, Number(s.search_max_queries) || 6) - pick2.length);
+  const b = [];
+  for (let i = 0; i < Math.min(qBase, base.length); i++) b.push(base[(round * qBase + i) % base.length]);
+  return [...b, ...pick2.map((v) => `${v} \u514D\u8D39 \u989D\u5EA6 \u798F\u5229`)];
+}
+var DAY, PERKS, perksOf, checkinOf, VENDORS, PERKS_TYPE, PERK_TYPES, DEFAULT_RADAR_QUERIES, DEFAULT_RADAR_VENDORS;
+var init_extras = __esm({
+  "src/extras.js"() {
+    init_categories();
+    DAY = 864e5;
+    PERKS = [
+      { name: "GitHub \u5B66\u751F\u5F00\u53D1\u8005\u5305", url: "https://education.github.com/pack", note: "\u5B66\u751F\u8BA4\u8BC1\u540E\u9001 Copilot Pro\u3001\u57DF\u540D\u3001\u4E91\u670D\u52A1\u989D\u5EA6\u7B49\u51E0\u5341\u9879\u6743\u76CA", who: "\u5B66\u751F" },
+      { name: "JetBrains \u6559\u80B2\u8BB8\u53EF", url: "https://www.jetbrains.com/academy/student-pack/", note: "\u5B66\u751F\u548C\u8001\u5E08\u514D\u8D39\u7528 IntelliJ IDEA\u3001PyCharm \u7B49\u5168\u5BB6\u6876", who: "\u5B66\u751F" },
+      { name: "Azure \u5B66\u751F\u7248", url: "https://azure.microsoft.com/free/students/", note: "\u5B66\u6821\u90AE\u7BB1\u8BA4\u8BC1\uFF0C\u9001 100 \u7F8E\u5143\u989D\u5EA6\uFF0C\u4E0D\u7528\u4FE1\u7528\u5361", who: "\u5B66\u751F" },
+      { name: "Figma \u6559\u80B2\u7248", url: "https://www.figma.com/education/", note: "\u5B66\u751F\u548C\u8001\u5E08\u514D\u8D39\u7528\u4E13\u4E1A\u7248", who: "\u5B66\u751F" },
+      { name: "Notion \u6559\u80B2\u7248", url: "https://www.notion.com/product/notion-for-education", note: "\u5B66\u6821\u90AE\u7BB1\u6CE8\u518C\uFF0C\u4E2A\u4EBA Plus \u514D\u8D39", who: "\u5B66\u751F" },
+      { name: "Autodesk \u6559\u80B2\u7248", url: "https://www.autodesk.com/education/home", note: "AutoCAD\u3001Maya\u3001Fusion \u7B49\u6559\u80B2\u8BB8\u53EF", who: "\u5B66\u751F" },
+      { name: "Canva \u6559\u80B2\u7248", url: "https://www.canva.com/education/", note: "\u8001\u5E08\u548C\u5B66\u751F\u514D\u8D39\u7528\u9AD8\u7EA7\u529F\u80FD", who: "\u5B66\u751F" },
+      { name: "Cloudflare \u514D\u8D39\u8BA1\u5212", url: "https://www.cloudflare.com/plans/free/", note: "CDN\u3001DNS\u3001Workers\u3001Pages\u3001R2 \u90FD\u6709\u957F\u671F\u514D\u8D39\u989D\u5EA6", who: "\u5F00\u53D1\u8005" },
+      { name: "Oracle Cloud \u6C38\u4E45\u514D\u8D39", url: "https://www.oracle.com/cloud/free/", note: "\u6C38\u4E45\u514D\u8D39\u7684 ARM \u4E91\u4E3B\u673A\u548C\u6570\u636E\u5E93\uFF08\u6CE8\u518C\u8981\u7ED1\u5361\u9A8C\u8BC1\uFF09", who: "\u5F00\u53D1\u8005" },
+      { name: "Google Cloud \u514D\u8D39\u5C42", url: "https://cloud.google.com/free", note: "\u65B0\u7528\u6237 300 \u7F8E\u5143\u989D\u5EA6 + \u957F\u671F\u514D\u8D39\u7684\u5C0F\u89C4\u683C\u8D44\u6E90", who: "\u5F00\u53D1\u8005" },
+      { name: "AWS \u514D\u8D39\u5957\u9910", url: "https://aws.amazon.com/free/", note: "\u65B0\u7528\u6237\u989D\u5EA6 + \u4E00\u6279\u957F\u671F\u514D\u8D39\u7684\u670D\u52A1", who: "\u5F00\u53D1\u8005" },
+      { name: "Vercel Hobby", url: "https://vercel.com/pricing", note: "\u4E2A\u4EBA\u9879\u76EE\u514D\u8D39\u6258\u7BA1\u524D\u7AEF\u548C Serverless \u51FD\u6570", who: "\u5F00\u53D1\u8005" },
+      { name: "Netlify \u514D\u8D39\u7248", url: "https://www.netlify.com/pricing/", note: "\u9759\u6001\u7AD9\u70B9\u548C\u51FD\u6570\u514D\u8D39\u6258\u7BA1", who: "\u5F00\u53D1\u8005" },
+      { name: "Supabase \u514D\u8D39\u7248", url: "https://supabase.com/pricing", note: "\u514D\u8D39\u7684 Postgres \u6570\u636E\u5E93\u3001\u8BA4\u8BC1\u548C\u5B58\u50A8", who: "\u5F00\u53D1\u8005" },
+      { name: "EU.org \u514D\u8D39\u57DF\u540D", url: "https://nic.eu.org/", note: "\u8001\u724C\u514D\u8D39\u4E8C\u7EA7\u57DF\u540D\uFF0C\u4EBA\u5DE5\u5BA1\u6838\uFF0C\u53EF\u63A5 Cloudflare", who: "\u5F00\u53D1\u8005" },
+      { name: "free-for-dev \u6E05\u5355", url: "https://free-for.dev/", note: "\u5F00\u53D1\u8005\u514D\u8D39\u670D\u52A1\u5927\u5168\uFF08\u82F1\u6587\uFF09\uFF0C\u6301\u7EED\u66F4\u65B0", who: "\u5F00\u53D1\u8005" }
+    ];
+    perksOf = (s) => s.perks_enabled === "false" ? [] : [...PERKS, ...parseRows(s.perks_extra, ["name", "note", "who"]).map((x) => ({ ...x, who: /学生|edu|student/i.test(x.who || "") ? "\u5B66\u751F" : "\u5F00\u53D1\u8005" }))];
+    checkinOf = (s) => parseRows(s.checkin_sites, ["name", "note"]);
+    VENDORS = [
+      ["OpenAI", /openai|chatgpt|gpt-?\d|codex|sora/i],
+      ["Anthropic", /anthropic|claude/i],
+      ["Google", /google|gemini|antigravity|vertex|ai studio|jules/i],
+      ["DeepSeek", /deepseek|深度求索/i],
+      ["\u963F\u91CC", /qwen|通义|阿里云百炼|百炼|modelscope|魔搭/i],
+      ["\u6708\u4E4B\u6697\u9762", /kimi|moonshot|月之暗面/i],
+      ["\u667A\u8C31", /智谱|glm-?\d|chatglm|bigmodel/i],
+      ["MiniMax", /minimax|海螺/i],
+      ["\u5B57\u8282", /豆包|doubao|火山方舟|火山引擎|trae|coze|扣子/i],
+      ["\u817E\u8BAF", /混元|hunyuan|腾讯云|codebuddy|元宝/i],
+      ["\u767E\u5EA6", /文心|ernie|千帆/i],
+      ["xAI", /xai|grok/i],
+      ["Mistral", /mistral/i],
+      ["Meta", /llama|meta ai/i],
+      ["Microsoft", /microsoft|azure|copilot|bing/i],
+      ["Amazon", /aws|amazon|bedrock|kiro/i],
+      ["OpenRouter", /openrouter/i],
+      ["Groq", /groq(?!k)/i],
+      ["Cerebras", /cerebras/i],
+      ["\u7845\u57FA\u6D41\u52A8", /siliconflow|硅基流动/i],
+      ["NVIDIA", /nvidia|nim/i],
+      ["Cursor", /cursor/i],
+      ["Windsurf", /windsurf|codeium/i],
+      ["GitHub", /github copilot|github models/i],
+      ["Perplexity", /perplexity/i],
+      ["Hugging Face", /hugging ?face/i],
+      ["Cloudflare", /cloudflare workers ai|workers ai/i],
+      ["Fireworks", /fireworks/i],
+      ["Together", /together\.ai|together ai/i],
+      ["\u516C\u76CA\u7AD9", /公益站|中转站|new ?api/i]
+    ];
+    PERKS_TYPE = [
+      ["\u4F18\u60E0\u7801", /优惠码|兑换码|折扣码|promo code|coupon|redeem/i],
+      ["\u516C\u76CA\u7AD9", /公益站|中转站|new ?api|签到/i],
+      ["\u514D\u8D39\u4F1A\u5458", /免费(领|送|获得)?.{0,6}(会员|pro|plus|max|studio|一个月|1 ?个月|月卡)|free (month|pro|plus)/i],
+      ["\u8D60\u91D1", /送\s*[$¥￥]?\s*\d+\s*(刀|美元|美金|元|积分|credits?)|赠金|赠送.{0,6}(额度|积分|credits?)|\$\d+\s*(free )?credits?|免费.{0,4}\d+\s*(刀|美元|积分)/i],
+      ["\u9650\u65F6\u514D\u8D39", /限时免费|限免|免费开放|限时.{0,6}免费|free for a limited time|limited[- ]time free/i],
+      ["\u514D\u8D39\u989D\u5EA6", /免费额度|免费层|免费档|free tier|free plan|每日.{0,6}(次|额度)|免费调用|免费模型|:free/i]
+    ];
+    PERK_TYPES = PERKS_TYPE.map((x) => x[0]).concat("\u5176\u5B83");
+    DEFAULT_RADAR_QUERIES = ["AI \u9650\u65F6\u514D\u8D39 \u9001\u989D\u5EA6", "\u5927\u6A21\u578B API \u514D\u8D39\u989D\u5EA6 \u6D3B\u52A8", "\u6CE8\u518C\u9001 \u7F8E\u5143 \u989D\u5EA6 API", "AI \u7F16\u7A0B\u52A9\u624B \u514D\u8D39 Pro", "AI \u516C\u76CA\u7AD9 \u6CE8\u518C\u9001\u989D\u5EA6", "\u514D\u8D39 Token \u6D3B\u52A8 \u5927\u6A21\u578B"];
+    DEFAULT_RADAR_VENDORS = ["Claude", "Gemini", "ChatGPT", "DeepSeek", "\u901A\u4E49\u5343\u95EE Qwen", "Kimi", "\u667A\u8C31 GLM", "\u8C46\u5305 \u706B\u5C71\u65B9\u821F", "MiniMax", "Grok", "Cursor", "GitHub Copilot", "OpenRouter", "\u7845\u57FA\u6D41\u52A8", "Trae", "Perplexity"];
+  }
+});
+
+// src/db.js
+async function ensureSchema(env) {
+  if (schemaReady) return;
+  const cur = await env.DB.prepare("SELECT value FROM secrets WHERE key = 'meta:schema'").first().catch(() => null);
+  if (cur?.value === SCHEMA_VER) {
+    schemaReady = true;
+    return;
+  }
+  await env.DB.batch([
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, title TEXT NOT NULL, url TEXT NOT NULL, source TEXT, raw_text TEXT, published_at INTEGER, fetched_at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', category TEXT, name TEXT, summary TEXT, signup TEXT, score INTEGER, judged_by TEXT, judged_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0)`),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_items_status ON items(status, published_at)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_items_published ON items(published_at)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS runs (id INTEGER PRIMARY KEY AUTOINCREMENT, trigger TEXT, started_at INTEGER, finished_at INTEGER, stats TEXT, log TEXT)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS secrets (key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
+    // 一次抓取拆成的步骤（每个数据源 / 判定批次 / 推送各一步），定时任务每分钟执行一步
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL, seq INTEGER NOT NULL, kind TEXT NOT NULL, payload TEXT, status TEXT NOT NULL DEFAULT 'pending', claimed_at INTEGER, tries INTEGER NOT NULL DEFAULT 0)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_jobs_run ON jobs(run_id, status, seq)"),
+    // 去重记忆：条目 15 天后会清理，但“见过”的记录保留更久，避免旧帖被重新抓取、重复推送
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, fp TEXT, seen_at INTEGER NOT NULL)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_seen_fp ON seen(fp)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_seen_at ON seen(seen_at)"),
+    // v1.8：投票、来源健康、AI 结论缓存、登录失败计数
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS votes (id TEXT NOT NULL, voter TEXT NOT NULL, v INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (id, voter))"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS src_health (name TEXT NOT NULL, day TEXT NOT NULL, fetched INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0, last_at INTEGER, last_err TEXT, PRIMARY KEY (name, day))"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS verdicts (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS rate (k TEXT PRIMARY KEY, n INTEGER NOT NULL, reset INTEGER NOT NULL)"),
+    // v1.8.1：资源页快照（分块预先生成，访问时直接读）
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS snap (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)")
+  ]);
+  const cols = new Set(((await env.DB.prepare("PRAGMA table_info(items)").all()).results || []).map((r) => r.name));
+  const add = [["obtain", "TEXT"], ["fp", "TEXT"], ["day", "TEXT"], ["cats", "TEXT"], ["hint", "TEXT"], ["target", "TEXT"], ["sources", "TEXT"], ["extra", "TEXT"], ["expires_at", "INTEGER"], ["up", "INTEGER NOT NULL DEFAULT 0"], ["down", "INTEGER NOT NULL DEFAULT 0"], ["dead", "INTEGER NOT NULL DEFAULT 0"], ["checked_at", "INTEGER"]].filter(([c]) => !cols.has(c));
+  for (const [c, t] of add) {
+    try {
+      await env.DB.prepare(`ALTER TABLE items ADD COLUMN ${c} ${t}`).run();
+    } catch {
+    }
+  }
+  const jcols = new Set(((await env.DB.prepare("PRAGMA table_info(jobs)").all()).results || []).map((r) => r.name));
+  if (!jcols.has("claimed_at")) {
+    try {
+      await env.DB.prepare("ALTER TABLE jobs ADD COLUMN claimed_at INTEGER").run();
+    } catch {
+    }
+  }
+  if (!jcols.has("tries")) {
+    try {
+      await env.DB.prepare("ALTER TABLE jobs ADD COLUMN tries INTEGER NOT NULL DEFAULT 0").run();
+    } catch {
+    }
+  }
+  if (add.length) {
+    await env.DB.batch([
+      "CREATE INDEX IF NOT EXISTS idx_items_target ON items(target)",
+      "CREATE INDEX IF NOT EXISTS idx_items_fp ON items(fp)",
+      "CREATE INDEX IF NOT EXISTS idx_items_day ON items(day, status)",
+      "CREATE INDEX IF NOT EXISTS idx_items_fetched ON items(fetched_at)",
+      "CREATE INDEX IF NOT EXISTS idx_items_expires ON items(expires_at)",
+      "CREATE INDEX IF NOT EXISTS idx_health_name ON src_health(name, last_at)"
+    ].map((q) => env.DB.prepare(q))).catch(() => {
+    });
+  }
+  await env.DB.prepare(`DELETE FROM items WHERE category = 'proxy' OR extra LIKE '%"subs"%'`).run().catch(() => {
+  });
+  try {
+    const r = await env.DB.prepare("SELECT value FROM settings WHERE key = 'sources'").first();
+    if (r?.value) {
+      const arr = JSON.parse(r.value);
+      if (Array.isArray(arr)) {
+        const kept = arr.filter((x) => !(x && (x.category === "proxy" || x.mode === "sub")));
+        if (kept.length !== arr.length) await env.DB.prepare("UPDATE settings SET value = ? WHERE key = 'sources'").bind(JSON.stringify(kept)).run();
+      }
+    }
+  } catch {
+  }
+  await env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('meta:schema', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(SCHEMA_VER).run();
+  schemaReady = true;
+}
+async function getSettings(env) {
+  const { results } = await env.DB.prepare("SELECT key, value FROM settings").all();
+  const s = { ...DEFAULT_SETTINGS };
+  for (const r of results || []) if (r.key in DEFAULT_SETTINGS) s[r.key] = r.value;
+  const sec = await env.DB.prepare("SELECT key, value FROM secrets").all();
+  for (const r of sec.results || []) if (KV_KEYS.includes(r.key)) s[r.key] = r.value;
+  if (env.SECRETS) Object.assign(s, await kvAll(env));
+  return s;
+}
+function maskSecret(v) {
+  if (!v) return "";
+  if (v.length <= 8) return "****";
+  return v.slice(0, 3) + "****" + v.slice(-4);
+}
+function settingsForAdmin(s) {
+  const out = { ...s };
+  for (const k of SECRET_KEYS) out[k] = maskSecret(s[k]);
+  return out;
+}
+async function kvAll(env) {
+  if (kvMemo && kvMemo.exp > Date.now()) return kvMemo.v;
+  let v = null;
+  try {
+    v = JSON.parse(await env.SECRETS.get(KV_ALL) || "null");
+  } catch {
+  }
+  if (!v) {
+    const vals = await Promise.all(KV_KEYS.map((k) => env.SECRETS.get(kvName(k))));
+    v = {};
+    KV_KEYS.forEach((k, i) => {
+      if (vals[i] !== null) v[k] = vals[i];
+    });
+    await env.SECRETS.put(KV_ALL, JSON.stringify(v)).catch(() => {
+    });
+  }
+  kvMemo = { v, exp: Date.now() + 6e4 };
+  return v;
+}
+async function saveSettings(env, patch) {
+  const stmts = [];
+  const kvWrites = [];
+  const kvPatch = {};
+  for (const [k, v] of Object.entries(patch || {})) {
+    if (!(k in DEFAULT_SETTINGS)) continue;
+    let val = typeof v === "boolean" ? String(v) : String(v ?? "");
+    if (SECRET_KEYS.includes(k) && val.includes("****")) continue;
+    if (k === "sources") JSON.parse(val);
+    if (KV_KEYS.includes(k)) {
+      stmts.push(env.DB.prepare("DELETE FROM settings WHERE key = ?").bind(k));
+      if (env.SECRETS) {
+        kvPatch[k] = val;
+        kvWrites.push(env.SECRETS.put(kvName(k), val));
+        stmts.push(env.DB.prepare("DELETE FROM secrets WHERE key = ?").bind(k));
+      } else {
+        stmts.push(env.DB.prepare("INSERT INTO secrets (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(k, val));
+      }
+      continue;
+    }
+    stmts.push(
+      env.DB.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(k, val)
+    );
+  }
+  if (Object.keys(kvPatch).length) {
+    kvMemo = null;
+    const all = { ...await kvAll(env), ...kvPatch };
+    kvWrites.push(env.SECRETS.put(KV_ALL, JSON.stringify(all)));
+    kvMemo = { v: all, exp: Date.now() + 6e4 };
+  }
+  await Promise.all(kvWrites);
+  if (stmts.length) await env.DB.batch(stmts);
+}
+async function getBasicSettings(env) {
+  const { results } = await env.DB.prepare("SELECT key, value FROM settings").all();
+  const s = { ...DEFAULT_SETTINGS };
+  for (const r of results || []) if (r.key in DEFAULT_SETTINGS && !KV_KEYS.includes(r.key)) s[r.key] = r.value;
+  return s;
+}
+async function getMeta(env, k) {
+  const r = await env.DB.prepare("SELECT value FROM secrets WHERE key = ?").bind("meta:" + k).first();
+  return r?.value ?? null;
+}
+function setMeta(env, k, v) {
+  return env.DB.prepare("INSERT INTO secrets (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind("meta:" + k, String(v)).run();
+}
+async function getCronKey(env, regenerate = false) {
+  let k = regenerate ? null : await getMeta(env, "cron_key");
+  if (!k) {
+    k = [...crypto.getRandomValues(new Uint8Array(12))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    await setMeta(env, "cron_key", k);
+  }
+  return k;
+}
+async function sha256(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(text)));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function getAdminHash(env) {
+  const r = await env.DB.prepare("SELECT value FROM secrets WHERE key = 'admin_pass_hash'").first();
+  return r?.value || "";
+}
+async function setAdminHash(env, password) {
+  const h = await sha256("frr:" + password);
+  await env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('admin_pass_hash', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(h).run();
+}
+async function getSitePassHash(env) {
+  const r = await env.DB.prepare("SELECT value FROM secrets WHERE key = 'site_pass_hash'").first();
+  return r?.value || "";
+}
+async function setSitePass(env, password) {
+  if (!password) return env.DB.prepare("DELETE FROM secrets WHERE key = 'site_pass_hash'").run();
+  const h = await sha256("frr-site:" + password);
+  return env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('site_pass_hash', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(h).run();
+}
+function dayOf(ts) {
+  return new Date(ts + 8 * 36e5).toISOString().slice(0, 10);
+}
+var DEFAULT_SOURCES, DEFAULT_SETTINGS, SEARCH_KEYS, SECRET_KEYS, KV_KEYS, kvName, schemaReady, SCHEMA_VER, KV_ALL, kvMemo, lines, storageMode;
+var init_db = __esm({
+  "src/db.js"() {
+    init_push();
+    init_extras();
+    DEFAULT_SOURCES = [
+      // 中文社区（部分源参考 ZiChuanLan/freebie-radar 的内置源）
+      { name: "V2EX \xB7 \u514D\u8D39\u8D60\u9001", type: "v2ex", node: "free", enabled: true },
+      { name: "V2EX \xB7 \u4E91\u8BA1\u7B97", type: "v2ex", node: "cloud", enabled: true },
+      { name: "V2EX \xB7 \u63A8\u5E7F\u4E0E\u6CE8\u518C\u9001", type: "v2ex", node: "promotions", enabled: true },
+      { name: "V2EX \xB7 \u5206\u4EAB\u53D1\u73B0", type: "v2ex", node: "share", enabled: false },
+      { name: "NodeSeek \xB7 \u798F\u5229\u60C5\u62A5", type: "rss", url: "https://rss.nodeseek.com/", enabled: true },
+      { name: "NodeLoc \xB7 \u7F8A\u6BDB\u4E0E\u4E3B\u673A", type: "rss", url: "https://www.nodeloc.com/latest.rss", enabled: true },
+      // LINUX DO 有 Cloudflare 护盾，机房 IP 常被拦，默认关闭
+      { name: "LINUX DO \xB7 \u798F\u5229\u7F8A\u6BDB", type: "rss", url: "https://linux.do/c/welfare/36.rss", enabled: false },
+      { name: "\u5C0F\u4F17\u8F6F\u4EF6\u8BBA\u575B \xB7 \u53D1\u73B0", type: "rss", url: "https://meta.appinn.net/c/faxian/10.rss", enabled: true },
+      // 白嫖专源：内容本身就是免费资源，免关键词预筛、免 AI 审核直接入库（trusted），分类固定
+      { name: "Epic \xB7 \u6BCF\u5468\u514D\u8D39\u6E38\u620F", type: "epic", category: "game", trusted: true, enabled: true },
+      { name: "GamerPower \xB7 \u9650\u514D\u6E38\u620F", type: "gamerpower", category: "game", trusted: true, enabled: true },
+      { name: "OpenRouter \xB7 \u514D\u8D39\u6A21\u578B", type: "openrouter_free", category: "ai", trusted: true, enabled: true },
+      // include：标题需匹配的正则（这个源混有打折商品，只要 100% 免费的）
+      { name: "SharewareOnSale \xB7 \u6B63\u7248\u8F6F\u4EF6\u9650\u514D", type: "rss", url: "https://sharewareonsale.com/feed", include: "100% discount|\\bfree\\b", category: "software", trusted: true, note: "\u6B63\u7248\u8F6F\u4EF6\u9650\u65F6 100% \u514D\u8D39\u9886\u53D6\uFF08\u82F1\u6587\u7AD9\uFF09", enabled: true },
+      { name: "V2EX \xB7 \u521B\u610F", type: "v2ex", node: "create", enabled: false },
+      // 中文白嫖专源。category: 'auto' 表示按关键词自动归类（归不进已勾选的分类就跳过）
+      { name: "\u53CD\u6597\u9650\u514D \xB7 \u9650\u65F6\u514D\u8D39", type: "rss", url: "https://free.apprcn.com/feed/", category: "auto", fallback: "software", trusted: true, enabled: true },
+      { name: "IT\u4E4B\u5BB6 \xB7 \u559C\u52A0\u4E00 / \u9650\u514D", type: "rss", url: "https://www.ithome.com/rss/", include: "\u559C\u52A0\u4E00|\u9650\u514D|\u9650\u65F6\u514D\u8D39|\u514D\u8D39\u9886|\u767D\u5AD6", category: "auto", fallback: "game", trusted: true, enabled: true },
+      { name: "\u5982\u6709\u4E50\u4EAB \xB7 \u514D\u8D39\u8D44\u6E90", type: "rss", url: "https://51.ruyo.net/feed", enabled: true },
+      { name: "\u5C0F\u4F17\u8F6F\u4EF6 \xB7 \u4E3B\u7AD9", type: "rss", url: "https://www.appinn.com/feed/", enabled: true },
+      { name: "\u5F02\u6B21\u5143\u8F6F\u4EF6\u4E16\u754C", type: "rss", url: "https://feed.iplaysoft.com/", enabled: true },
+      { name: "\u84DD\u70B9\u7F51", type: "rss", url: "https://www.landian.news/feed", include: "\u514D\u8D39|\u9650\u514D|\u767D\u5AD6|\u9886\u53D6|\u8D60\u9001", enabled: true },
+      // cats：这个源只收哪些分类（其它分类的内容直接丢弃）；hint：关键词归不了类时默认归到哪个分类
+      // 2026-11-21 实测可用的中文源
+      { name: "\u96F6\u5EA6\u89E3\u8BF4 \xB7 \u514D\u8D39\u8F6F\u4EF6\u4E0E\u8D44\u6E90", type: "rss", url: "https://www.freedidi.com/feed", enabled: true },
+      { name: "A\u59D0\u5206\u4EAB \xB7 \u514D\u8D39\u8D44\u6E90", type: "rss", url: "https://www.ahhhhfs.com/feed/", enabled: true },
+      { name: "TG \xB7 A\u59D0\u5206\u4EAB @abskoop", type: "telegram", channel: "abskoop", enabled: true },
+      { name: "TG \xB7 \u5728\u82B1\u79D1\u6280\u5708 @zaihuapd", type: "telegram", channel: "zaihuapd", include: "\u514D\u8D39|\u9650\u514D|\u767D\u5AD6|\u9886\u53D6|\u8D60\u9001|0\u5143|\u559C\u52A0\u4E00", enabled: true },
+      { name: "\u798F\u5229\u5427", type: "rss", url: "https://fuliba.net/feed", include: "\u514D\u8D39|\u9650\u514D|\u767D\u5AD6|\u9886\u53D6|\u8D60\u9001|\u7F8A\u6BDB|\u798F\u5229", enabled: true },
+      { name: "\u5C11\u6570\u6D3E \xB7 \u9650\u514D", type: "rss", url: "https://sspai.com/feed", include: "\u9650\u514D|\u514D\u8D39|\u767D\u5AD6", enabled: true },
+      { name: "\u679C\u6838\u5265\u58F3", type: "rss", url: "https://www.ghxi.com/feed", cats: ["software", "dev", "ai", "pan"], hint: "software", enabled: true },
+      { name: "\u5F02\u661F\u8F6F\u4EF6\u7A7A\u95F4", type: "rss", url: "https://www.yxssp.com/feed", cats: ["software", "dev", "ai"], hint: "software", enabled: true },
+      { name: "\u514B\u9686\u7A9D", type: "rss", url: "https://www.uy5.net/feed/", cats: ["software", "dev", "ai"], hint: "software", enabled: true },
+      { name: "\u7FFB\u5E94\u7528 \xB7 iOS \u9650\u514D", type: "rss", url: "https://www.iapps.me/feed", cats: ["software", "game"], hint: "software", enabled: true },
+      { name: "FreeGroup \xB7 \u514D\u8D39\u8D44\u6E90", type: "rss", url: "https://free.com.tw/feed/", enabled: true },
+      { name: "\u5176\u4E50 Keylol \xB7 \u6E38\u620F", type: "rss", url: "https://keylol.com/forum.php?mod=rss", include: "\u514D\u8D39|\u9650\u514D|\u559C\u52A0\u4E00|\u767D\u5AD6|\u9886\u53D6|\u8D60\u9001|giveaway", cats: ["game"], hint: "game", enabled: true },
+      { name: "VPS\u7CBE\u9009\u7F51", type: "rss", url: "https://www.vpsjxw.com/feed/", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
+      { name: "\u8001\u5DE6\u7B14\u8BB0", type: "rss", url: "https://www.laozuo.org/feed/", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
+      { name: "\u4E3B\u673A\u767E\u79D1", type: "rss", url: "https://zhujiwiki.com/feed/", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
+      { name: "VPS \u4FA6\u63A2", type: "rss", url: "https://www.vpser.net/feed", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
+      { name: "VEIDC", type: "rss", url: "https://www.veidc.com/feed", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
+      { name: "VPSGO", type: "rss", url: "https://www.vpsgo.com/feed", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
+      { name: "xiaoz \u535A\u5BA2", type: "rss", url: "https://blog.xiaoz.org/feed", cats: ["hosting", "domain", "cloud", "dev", "software"], enabled: true },
+      { name: "TG \xB7 \u7F51\u76D8\u8D44\u6E90\uFF08\u8FC5\u96F7\u4E91\u76D8\uFF09@yunpanxunlei", type: "telegram", channel: "yunpanxunlei", category: "pan", trusted: true, enabled: false },
+      // ---------- AI 专区（2026-11-22 实测可抓） ----------
+      // Ailyre AI 速递（ailyre.com/news）：「福利速递」轨道是厂商福利（限时免费开放、优惠码、送额度），其余是模型上新和服务变动
+      { name: "Ailyre \xB7 AI \u798F\u5229\u901F\u9012", type: "rss", url: "https://www.ailyre.com/news/rss.xml", tags: ["\u798F\u5229\u901F\u9012"], cats: ["ai", "aideal"], hint: "aideal", every: 3, enabled: true },
+      { name: "Ailyre \xB7 AI \u901F\u9012\uFF08\u6A21\u578B\u4E0E\u670D\u52A1\u53D8\u52A8\uFF09", type: "rss", url: "https://www.ailyre.com/news/rss.xml", skip_tags: ["\u798F\u5229\u901F\u9012"], category: "ainews", trusted: true, limit: 10, every: 6, enabled: true },
+      { name: "\u8D5B\u535A\u9E21\u86CB \xB7 AI \u514D\u8D39\u989D\u5EA6", type: "rss", url: "https://jidan.si/rss.xml", cats: ["ai", "aideal", "aitool"], hint: "ai", enabled: true },
+      { name: "AI \u798F\u5229\u96F7\u8FBE", type: "rss", url: "https://aifuli.dev/rss.xml", cats: ["ai", "aideal", "aitool"], hint: "aideal", enabled: true },
+      { name: "free-llm-intel \xB7 \u514D\u8D39\u989D\u5EA6\u53D8\u5316", type: "rss", url: "https://free-llm-intel.aishort.top/feeds/llm-intel-changes.xml", category: "ai", trusted: true, limit: 15, enabled: true },
+      { name: "TG \xB7 LINUX DO \u798F\u5229 @linuxdo_tg", type: "telegram", channel: "linuxdo_tg", include: "\u798F\u5229\u7F8A\u6BDB|\u516C\u76CA\u7AD9|\u516C\u76CA\u63A8\u5E7F|\u767D\u5AD6|\u514D\u8D39|\u989D\u5EA6|\u8D60\u9001|\u9001\\s*\\$?\\d", cats: ["ai", "aideal", "aitool", "cloud", "dev"], hint: "aideal", enabled: true },
+      { name: "TG \xB7 \u82F9\u679C\u79D1\u6280 @pgkj666", type: "telegram", channel: "pgkj666", include: "API|\u989D\u5EA6|Token|\u514D\u8D39|\u516C\u76CA|\u4E2D\u8F6C", cats: ["ai", "aideal", "aitool"], hint: "aideal", enabled: true },
+      // GitHub 同类清单：仓库一有新提交，就把新增的条目同步过来（读 commits.atom + 提交的 .patch，不走 GitHub API，不需要 Token）
+      { name: "GitHub \xB7 \u514D\u8D39 AI API \u4E2D\u8F6C\u7AD9\u5BFC\u822A", type: "repo", repo: "kirito8/free-newapi", mode: "diff", include: "\u516C\u76CA|\u514D\u8D39|\u7B7E\u5230|\u6CE8\u518C\u9001|\u8D60\u9001|\u9001\\s*[$\xA5]?\\d|\u767D\u5AD6|\u989D\u5EA6", category: "aideal", trusted: true, every: 12, enabled: true },
+      { name: "GitHub \xB7 AI API \u516C\u76CA\u7AD9\u5BFC\u822A", type: "repo", repo: "bubblevv/ai-api-gongyi-nav", mode: "diff", path: "README\\.md$", include: "\u516C\u76CA|\u514D\u8D39|\u7B7E\u5230|\u6CE8\u518C\u9001|\u8D60\u9001|\u9001\\s*[$\xA5]?\\d|\u767D\u5AD6|\u989D\u5EA6", category: "aideal", trusted: true, every: 12, enabled: true },
+      { name: "GitHub \xB7 \u514D\u8D39 AI Token \u6E05\u5355\uFF08\u4E2D\u56FD\u533A\uFF09", type: "repo", repo: "KJAI123/awesome-free-ai-tokens-cn", mode: "diff", category: "ai", trusted: true, every: 12, enabled: true },
+      { name: "GitHub \xB7 \u514D\u8D39\u5927\u6A21\u578B API \u5BFC\u822A", type: "repo", repo: "peter123023/awesome-free-llm-api", mode: "diff", path: "README\\.md$", category: "ai", trusted: true, every: 12, enabled: true },
+      { name: "GitHub \xB7 FreeToken \u514D\u8D39\u989D\u5EA6\u5927\u5168", type: "repo", repo: "AIPMAndy/FreeToken", mode: "diff", path: "README", category: "ai", trusted: true, every: 12, enabled: true },
+      { name: "GitHub \xB7 \u514D\u8D39 LLM API \u5E73\u53F0\u6C47\u603B", type: "repo", repo: "CYBIRD-D/FREE-LLM-API-Provider", mode: "diff", path: "README\\.zh-CN\\.md$", category: "ai", trusted: true, every: 12, enabled: true },
+      { name: "GitHub \xB7 \u4E2D\u56FD\u72EC\u7ACB\u5F00\u53D1\u8005\u9879\u76EE", type: "repo", repo: "1c7/chinese-independent-developer", mode: "diff", path: "^README\\.md$", cats: ["aitool", "software", "dev"], hint: "software", category: "auto", fallback: "software", trusted: true, every: 12, enabled: false },
+      { name: "GitHub \xB7 free-for-dev\uFF08\u82F1\u6587\uFF09", type: "repo", repo: "ripienaar/free-for-dev", mode: "diff", cats: ["dev", "cloud", "hosting", "ai"], hint: "dev", every: 12, enabled: false },
+      // ---------- 新闻资讯：资讯类专源直接收录，每次每个源最多取 limit 条 ----------
+      { name: "free-llm-intel \xB7 AI \u5382\u5546\u52A8\u6001", type: "rss", url: "https://free-llm-intel.aishort.top/feeds/llm-news-all.xml", category: "ainews", trusted: true, limit: 12, every: 6, enabled: true },
+      { name: "\u91CF\u5B50\u4F4D", type: "rss", url: "https://www.qbitai.com/feed", category: "ainews", trusted: true, limit: 10, every: 6, enabled: true },
+      { name: "Solidot", type: "rss", url: "https://www.solidot.org/index.rss", category: "news", trusted: true, limit: 10, every: 6, enabled: true },
+      { name: "\u7231\u8303\u513F", type: "rss", url: "https://www.ifanr.com/feed", category: "news", trusted: true, limit: 10, every: 6, enabled: true },
+      { name: "cnBeta", type: "rss", url: "https://www.cnbeta.com.tw/backend.php", category: "news", trusted: true, limit: 10, every: 6, enabled: true },
+      { name: "\u6781\u5BA2\u516C\u56ED", type: "rss", url: "https://www.geekpark.net/rss", category: "news", trusted: true, limit: 8, every: 6, enabled: true },
+      { name: "\u962E\u4E00\u5CF0 \xB7 \u79D1\u6280\u7231\u597D\u8005\u5468\u520A", type: "rss", url: "https://www.ruanyifeng.com/blog/atom.xml", category: "news", trusted: true, limit: 3, every: 6, enabled: true },
+      // 英文社区：默认过滤纯英文内容，这些源默认关闭；关掉「过滤纯英文」后可按需打开
+      { name: "LowEndTalk \xB7 Offers", type: "rss", url: "https://lowendtalk.com/categories/offers/feed.rss", enabled: false },
+      { name: "LowEndSpirit", type: "rss", url: "https://lowendspirit.com/discussions/feed.rss", enabled: false },
+      { name: "Hacker News \xB7 free domain", type: "hn", query: '"free domain"', enabled: false },
+      { name: "Hacker News \xB7 free subdomain", type: "hn", query: '"free subdomain"', enabled: false },
+      { name: "Hacker News \xB7 free hosting", type: "hn", query: '"free hosting"', enabled: false },
+      // GitHub 仓库搜索噪音大，建议配合 AI 判定再开启
+      { name: "GitHub \xB7 free domain", type: "github", query: "free domain", ai_only: true, enabled: false },
+      { name: "GitHub \xB7 free hosting", type: "github", query: "free hosting", ai_only: true, enabled: false },
+      // ai_only：讨论帖多，只有配置了 AI 判定时才抓
+      { name: "Hacker News \xB7 free tier", type: "hn", query: '"free tier"', ai_only: true, enabled: false },
+      { name: "Hacker News \xB7 free credits", type: "hn", query: '"free credits"', ai_only: true, enabled: false },
+      // Reddit 常拦截机房 IP，默认关闭
+      { name: "Reddit \xB7 free domain", type: "reddit", query: "free domain", enabled: false },
+      { name: "Reddit \xB7 free web hosting", type: "reddit", query: "free web hosting", enabled: false }
+    ];
+    DEFAULT_SETTINGS = {
+      // AI 判定（OpenAI 兼容接口）
+      ai_enabled: "true",
+      // 可选：填好接口地址、Key、模型就自动使用；不填则用关键词判定
+      ai_base_url: "https://api.openai.com/v1",
+      ai_api_key: "",
+      ai_model: "",
+      ai_batch_size: "12",
+      // 每次请求判定几条
+      ai_max_items: "60",
+      // 每次运行最多送 AI 判定几条（免费版 Worker 每次最多 50 个外部请求，别设太大）
+      ai_min_score: "60",
+      ai_review: "smart",
+      // smart：把握大的自动通过 / 拒绝，只把拿不准的交给 AI；all：全部交给 AI
+      fresh_days: "15",
+      // 发布超过这么多天的条目，前台和邮件里单独归到「较早发布」
+      ai_cache: "true",
+      // 同一个目标地址判过一次就复用结论，不重复花 AI 额度
+      // 联网搜索后端（见 search.js 的 BACKENDS）。全部默认开启：AnySearch、Keenable 免 Key 直接可用；其余填了 Key 就自动参与，没填就跳过
+      anysearch_enabled: "true",
+      anysearch_api_key: "",
+      // 可选；填了就固定走 Key
+      keenable_enabled: "true",
+      keenable_api_key: "",
+      // 可选；留空走免 Key 公共接口（按 IP 限流）
+      keenable_mode: "pro",
+      // pro / realtime
+      tavily_enabled: "true",
+      tavily_api_key: "",
+      tavily_depth: "basic",
+      // basic / advanced / fast
+      exa_enabled: "true",
+      exa_api_key: "",
+      brave_enabled: "true",
+      brave_api_key: "",
+      qianfan_enabled: "true",
+      qianfan_api_key: "",
+      volc_enabled: "true",
+      volc_api_key: "",
+      // 每个搜索后端负责哪些分类（逗号分隔的分类 key，留空 = 全部已勾选分类）：只用这些分类生成搜索词，结果也只收这些分类
+      anysearch_cats: "",
+      keenable_cats: "",
+      tavily_cats: "",
+      exa_cats: "",
+      brave_cats: "",
+      qianfan_cats: "",
+      volc_cats: "",
+      // 后台「更新源」从这些地址拉取数据源（每行一个）：freebie-radar 的 SEEDS（.ts）或本项目格式的 JSON 数组
+      source_sync_urls: "https://raw.githubusercontent.com/ZiChuanLan/freebie-radar/main/src/server/collectors/index.ts",
+      search_max_results: "10",
+      // 每个查询返回条数
+      search_queries: "",
+      // 留空：按勾选的分类自动生成中文搜索词；填写则只用你写的
+      search_max_queries: "6",
+      // 每次最多查几个词（省额度，也避免超出 Worker 外部请求上限）
+      search_lang: "zh_only",
+      // zh_first 中文优先 / zh_only 只要中文 / any 不限
+      search_block_domains: ["csdn.net", "baijiahao.baidu.com", "sohu.com", "163.com", "toutiao.com"].join("\n"),
+      // 屏蔽的站点（转载 / 搬运居多）
+      // 邮件日报
+      mail_enabled: "true",
+      // 填好账号和收件人后自动生效；未填写时跳过
+      mail_provider: "smtp",
+      // smtp / resend / brevo / cloudflare
+      smtp_host: "smtp.qq.com",
+      // QQ 邮箱默认配置
+      smtp_port: "465",
+      smtp_secure: "ssl",
+      // ssl（465）/ starttls（587）
+      smtp_user: "",
+      // 完整 QQ 邮箱，如 123456@qq.com
+      smtp_pass: "",
+      // QQ 邮箱授权码（不是 QQ 密码），存 KV
+      mail_api_key: "",
+      // Resend / Brevo 的 Key，存 KV
+      mail_from: "",
+      // 发件地址；SMTP 留空则使用 smtp_user（QQ 要求一致）
+      mail_from_name: "\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE",
+      mail_to: "",
+      // 收件人，多个用逗号分隔（最多 10 个）
+      mail_separate: "true",
+      // 每个收件人单独发一封，互相看不到地址
+      mail_subject: "\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 \u4ECA\u65E5\u767D\u5AD6",
+      mail_only_new: "true",
+      // 只发上次之后新通过的
+      mail_send_empty: "false",
+      // 没有新内容也发
+      mail_max_items: "60",
+      mail_site_url: "",
+      // 邮件底部“查看全部”链接，如 https://xxx.workers.dev
+      mail_last_sent_at: "0",
+      // 内部使用
+      // Telegram 推送（与邮件共用“上次推送时间”）
+      telegram_enabled: "false",
+      telegram_bot_token: "",
+      // 存 KV
+      telegram_chat_id: "",
+      // 存 KV
+      // Webhook 类推送（地址 / Key 存 KV），填了就推；{id}_enabled 可单独关掉
+      ...Object.fromEntries(PUSH_CHANNELS.flatMap((c) => [[c.key, ""], [`${c.id}_enabled`, "true"], ...c.secret ? [[c.secret, ""]] : []])),
+      // 抓取与过滤
+      noise_filter: "true",
+      filter_english: "true",
+      // 过滤纯英文内容（标题和正文都没有中文就丢弃）      // 跳过求助 / 吐槽类标题，不送 AI
+      allowed_obtain: "free,conditional",
+      // 允许的获取方式：free 直接白嫖 / conditional 有条件 / trial / lottery / promo / paid
+      block_rules: ["# \u6BCF\u884C\u4E00\u6761\uFF0C\u666E\u901A\u6587\u672C\u4E3A\u5173\u952E\u8BCD\uFF0C/\u6B63\u5219/i \u4E3A\u6B63\u5219\uFF1B\u547D\u4E2D\u5373\u4E22\u5F03\uFF0C\u4E0D\u9001 AI", "\u5DF2\u5931\u6548", "/\u5DF2(\u5173\u95ED|\u505C\u6B62)\u6CE8\u518C/"].join("\n"),
+      max_age_days: "180",
+      // 超过半年的消息过滤掉
+      retention_days: "15",
+      run_hour: "9",
+      // 每天第一次抓取的时间（北京时间，0-23）
+      crawl_every_hours: "6",
+      // 每隔几小时抓一次（从 run_hour 起算；24 = 每天一次）
+      mail_hours: "9,21",
+      // 每天几点推送（北京时间，逗号分隔；若刚好在抓取，抓完再推）
+      steps_per_tick: "1",
+      // 每次定时调用执行几步；免费版保持 1（10ms CPU 限制），付费版可调大   // 抓到的数据按日期存储，保留 15 天后自动清理
+      keep_undated: "false",
+      // 无发布日期的条目是否保留
+      // 访问触发与缓存
+      trigger_min_seconds: "30",
+      // 触发地址 / 访问触发的最小间隔（秒），间隔内的请求直接返回不执行
+      visit_trigger: "false",
+      // 有人打开资源页时顺带推进一步抓取（定时任务的备用方案）
+      public_cache_seconds: "60",
+      // 资源页数据缓存秒数，缓存期内不查数据库
+      // AI 福利雷达：用已开启的搜索后端按福利词 + 厂商轮流搜，结果只收「AI 免费额度 / AI 限时福利」，再经判定整理
+      aifree_radar: "true",
+      aifree_queries: DEFAULT_RADAR_QUERIES.join("\n"),
+      aifree_vendors: DEFAULT_RADAR_VENDORS.join("\n"),
+      aifree_vendors_per_run: "3",
+      // 每轮轮到几个厂商
+      aifree_days: "30",
+      // 只要最近多少天的
+      // v1.8 板块与功能
+      search_strict: "true",
+      // 搜索结果标题里必须有免费类字样（搜索来的条目质量参差，从严）
+      watch_enabled: "true",
+      // 关键词提醒：命中就单独推送，不等日报
+      watch_keywords: "",
+      // 每行一个关键词，如 Claude / 域名 / VPS
+      link_check: "true",
+      // 失效检测：每次抓取后抽查一批链接，打不开或写着已结束的标灰下沉
+      link_check_per_run: "5",
+      weekly_enabled: "false",
+      // 每周精选：每周一（可改）随推送附带本周最值的 10 条
+      weekly_weekday: "1",
+      // 0 = 周日，1 = 周一 …
+      vote_hide: "3",
+      // 「不值」比「值」多这么多票就自动隐藏（0 = 不隐藏）
+      checkin_sites: "",
+      // 签到清单，每行：名称 | 地址 | 备注
+      perks_extra: "",
+      // 学生 / 开发者专区追加，每行：名称 | 地址 | 说明 | 学生 或 开发者
+      login_max_fails: "10",
+      // 同一 IP 15 分钟内登录失败这么多次就暂时锁定
+      api_rate_per_min: "120",
+      // 公开接口每个 IP 每分钟最多请求数（0 = 不限）
+      // 分类：勾选要收集的；推送分类留空 = 与收集相同
+      enabled_categories: "domain,hosting,cloud,ai,aideal,aitool,software,dev,game,edu,ainews,news",
+      mail_categories: "",
+      simple_signup_only: "true",
+      // 只要注册简单的（邮箱 / GitHub / Google 登录）
+      topic_keywords: "",
+      // 额外主题词（每个分类已内置关键词，这里只需补充）
+      free_keywords: ["\u514D\u8D39", "\u767D\u5AD6", "0\u5143", "\u96F6\u5143", "\u6C38\u4E45\u514D\u8D39", "\u9650\u514D", "\u9650\u65F6\u514D\u8D39", "\u559C\u52A0\u4E00", "\u9001", "\u9886\u53D6", "free", "gratis", "$0", "giveaway", "100% off"].join("\n"),
+      hard_signup_keywords: ["\u4FE1\u7528\u5361", "\u94F6\u884C\u5361", "\u7ED1\u5361", "\u5B9E\u540D", "\u8EAB\u4EFD\u8BC1", "kyc", "\u624B\u673A\u9A8C\u8BC1", "\u77ED\u4FE1\u9A8C\u8BC1", "\u9080\u8BF7\u7801", "credit card", "debit card", "phone verification", "sms verification", "id verification", "passport", "invite code"].join("\n"),
+      sources: JSON.stringify(DEFAULT_SOURCES, null, 2)
+    };
+    SEARCH_KEYS = ["anysearch_api_key", "keenable_api_key", "tavily_api_key", "exa_api_key", "brave_api_key", "qianfan_api_key", "volc_api_key"];
+    SECRET_KEYS = ["ai_api_key", "mail_api_key", "smtp_pass", "telegram_bot_token", ...SEARCH_KEYS, ...PUSH_KEYS];
+    KV_KEYS = ["ai_base_url", "ai_api_key", "mail_api_key", "smtp_user", "smtp_pass", "telegram_bot_token", "telegram_chat_id", ...SEARCH_KEYS, ...PUSH_KEYS];
+    kvName = (k) => `cfg:${k}`;
+    schemaReady = false;
+    SCHEMA_VER = "1.8.4";
+    KV_ALL = "cfg:__all";
+    kvMemo = null;
+    lines = (txt2) => String(txt2 || "").split(/\r?\n|,/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+    storageMode = (env) => env.SECRETS && typeof env.SECRETS.get === "function" ? "kv" : "d1";
+  }
+});
+
+// src/ai.js
+function normalizeBase(u) {
+  return String(u || "").trim().replace(/\/+$/, "").replace(/\/chat\/completions$/, "").replace(/\/models$/, "");
+}
+async function listModels(baseUrl, apiKey) {
+  const r = await fetch(normalizeBase(baseUrl) + "/models", {
+    headers: { Authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(2e4)
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(`\u83B7\u53D6\u6A21\u578B\u5931\u8D25 HTTP ${r.status}: ${text.slice(0, 200)}`);
+  const j = JSON.parse(text);
+  const arr = j.data || j.models || (Array.isArray(j) ? j : []);
+  return arr.map((m) => typeof m === "string" ? m : m.id || m.name).filter(Boolean).sort();
+}
+async function chat({ baseUrl, apiKey, model, messages, extra = {}, temperature = 0.1, timeout = 12e4 }) {
+  if (!baseUrl || !apiKey || !model) throw new Error("AI \u672A\u914D\u7F6E\u5B8C\u6574\uFF08URL / Key / \u6A21\u578B\uFF09");
+  const body = { model, messages, temperature, ...extra };
+  const r = await fetch(normalizeBase(baseUrl) + "/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeout)
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(`AI HTTP ${r.status}: ${text.slice(0, 300)}`);
+  const j = JSON.parse(text);
+  const msg = j.choices?.[0]?.message || {};
+  let content = msg.content;
+  if (Array.isArray(content)) content = content.map((c) => c.text || "").join("");
+  return String(content || "");
+}
+function extractJson(text) {
+  let t = String(text || "").trim();
+  t = t.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) t = fence[1].trim();
+  try {
+    return JSON.parse(t);
+  } catch {
+  }
+  const starts = [t.indexOf("{"), t.indexOf("[")].filter((i) => i >= 0);
+  if (!starts.length) throw new Error("\u6A21\u578B\u8F93\u51FA\u4E2D\u6CA1\u6709 JSON");
+  const start = Math.min(...starts);
+  const close = t[start] === "{" ? "}" : "]";
+  const end = t.lastIndexOf(close);
+  return JSON.parse(t.slice(start, end + 1));
+}
+async function judgeBatch(items, s, bad = []) {
+  const payload = items.map((it, i) => ({
+    i,
+    title: it.title,
+    url: it.url,
+    source: it.source,
+    date: it.published_at ? new Date(it.published_at).toISOString().slice(0, 10) : null,
+    text: String(it.raw_text || "").slice(0, 700)
+  }));
+  const content = await chat({
+    baseUrl: s.ai_base_url,
+    apiKey: s.ai_api_key,
+    model: s.ai_model,
+    messages: [
+      { role: "system", content: judgePrompt(s) + (bad.length ? `
+\u7528\u6237\u53CD\u9988\u300C\u4E0D\u503C\u300D\u7684\u4F8B\u5B50\uFF08\u7C7B\u4F3C\u7684\u8BF7\u4ECE\u4E25\uFF0Crelevant \u586B false \u6216\u538B\u4F4E\u5206\u6570\uFF09\uFF1A
+${bad.map((t) => "- " + String(t).slice(0, 60)).join("\n")}` : "") },
+      { role: "user", content: JSON.stringify(payload) }
+    ]
+  });
+  const j = extractJson(content);
+  const results = Array.isArray(j) ? j : j.results || [];
+  const map = /* @__PURE__ */ new Map();
+  for (const r of results) if (r && Number.isInteger(Number(r.i))) map.set(Number(r.i), r);
+  return map;
+}
+var catLine, judgePrompt;
+var init_ai = __esm({
+  "src/ai.js"() {
+    init_categories();
+    catLine = (s) => enabledCats(s).map((k) => `${k}=${CAT_MAP[k].label}`).join("\uFF0C");
+    judgePrompt = (s) => `\u4F60\u662F"\u514D\u8D39\u8D44\u6E90 / \u767D\u5AD6\u798F\u5229"\u5BA1\u6838\u5458\u3002\u9010\u6761\u5224\u65AD\u8F93\u5165\u7684\u5E16\u5B50\u6216\u9875\u9762\uFF0C\u53EA\u8F93\u51FA\u4E25\u683C JSON\u3002
+\u5173\u6CE8\u7684\u5206\u7C7B\uFF08category \u53EA\u80FD\u53D6\u8FD9\u4E9B key\uFF0C\u4E0D\u5C5E\u4E8E\u4EFB\u4F55\u4E00\u7C7B\u586B other\uFF09\uFF1A${catLine(s)}\u3002
+\u5206\u7C7B\u8BF4\u660E\uFF1Aai=\u957F\u671F\u6709\u6548\u7684\u514D\u8D39\u989D\u5EA6 / \u514D\u8D39\u6A21\u578B / \u514D\u8D39 API\uFF1Baideal=\u6709\u65F6\u6548\u7684 AI \u798F\u5229\uFF08\u9650\u65F6\u514D\u8D39\u5F00\u653E\u3001\u6CE8\u518C\u9001\u989D\u5EA6\u3001\u4F18\u60E0\u7801 / \u514D\u8D39\u6708\u3001\u516C\u76CA\u7AD9\u7B7E\u5230\uFF09\u3002
+\u5224\u5B9A\u89C4\u5219\uFF1A
+1. relevant\uFF1A\u5185\u5BB9\u786E\u5B9E\u5728\u63D0\u4F9B\u6216\u4ECB\u7ECD\u3010\u53EF\u514D\u8D39\u83B7\u5F97\u3011\u4E14\u5C5E\u4E8E\u4E0A\u8FF0\u5206\u7C7B\u7684\u8D44\u6E90\uFF08\u514D\u8D39\u989D\u5EA6\u3001\u9650\u514D\u3001\u8D60\u9001\u3001\u514D\u8D39\u5957\u9910\u7B49\uFF09\u3002\u4EE5\u4E0B\u60C5\u51B5\u4E3A false\uFF1A\u7EAF\u8BA8\u8BBA\u6216\u6C42\u52A9\u3001\u4ED8\u8D39\u4FC3\u9500\u6216\u6253\u6298\uFF08\u975E\u514D\u8D39\uFF09\u3001\u5DF2\u5931\u6548 / \u5DF2\u5173\u95ED / \u5DF2\u552E\u7F44 / \u5DF2\u9886\u5B8C\u3001\u5E7F\u544A\u6216\u660E\u663E\u4E0D\u53EF\u4FE1\u3001\u65B0\u95FB\u8D44\u8BAF\u3002
+2. simple_signup\uFF1A\u53EA\u9700\u90AE\u7BB1\uFF0C\u6216 GitHub / Google \u7B49\u7B2C\u4E09\u65B9\u8D26\u53F7\u5373\u53EF\u6CE8\u518C\u4F7F\u7528 \u2192 true\u3002\u9700\u8981\u4FE1\u7528\u5361 / PayPal \u7ED1\u5361\u3001\u624B\u673A\u53F7\u77ED\u4FE1\u9A8C\u8BC1\u3001\u5B9E\u540D / KYC / \u8EAB\u4EFD\u8BC1\u3001\u9080\u8BF7\u7801\u3001\u4EBA\u5DE5\u5BA1\u6838\u7533\u8BF7\u3001\u5148\u4ED8\u8D39 \u2192 false\u3002\u4FE1\u606F\u4E0D\u8DB3\u65F6\u6309\u5E38\u8BC6\u8C28\u614E\u5224\u65AD\uFF0C\u5E76\u5728 signup \u5B57\u6BB5\u5199\u660E\u4F9D\u636E\u3002
+3. obtain\uFF1A\u83B7\u53D6\u65B9\u5F0F\uFF0C\u53EA\u80FD\u662F free\uFF08\u76F4\u63A5\u767D\u5AD6\uFF0C\u6CE8\u518C\u5373\u7528\uFF09\u3001conditional\uFF08\u9700\u8981\u5B8C\u6210\u7B80\u5355\u4EFB\u52A1\uFF0C\u5982\u56DE\u5E16\u3001\u9080\u8BF7\u3001\u7B7E\u5230\uFF09\u3001lottery\uFF08\u62BD\u5956 / \u540D\u989D\u968F\u673A\uFF09\u3001trial\uFF08\u9650\u65F6\u8BD5\u7528\uFF0C\u5230\u671F\u6536\u8D39\uFF09\u3001promo\uFF08\u5546\u5BB6\u63A8\u5E7F\u5F15\u6D41\uFF09\u3001paid\uFF08\u9700\u8981\u4ED8\u8D39\uFF09\u3002
+4. score\uFF1A0-100 \u7684\u6574\u6570\uFF0C\u7EFC\u5408\u76F8\u5173\u6027\u3001\u6CE8\u518C\u7B80\u6613\u5EA6\u3001\u8D44\u6E90\u4EF7\u503C\u3001\u53EF\u4FE1\u5EA6\u3001\u662F\u5426\u957F\u671F\u53EF\u7528\u3002
+5. summary\uFF1A\u798F\u5229\u7C7B\u5199\u300C\u9001\u4EC0\u4E48 + \u6709\u4EC0\u4E48\u9650\u5236\u300D\uFF0C\u8D44\u8BAF\u7C7B\u5199\u4E00\u53E5\u8BDD\u8981\u70B9\uFF0C\u90FD\u4E0D\u8D85\u8FC7 40 \u5B57\uFF1Bhow\uFF1A\u600E\u4E48\u9886\uFF08\u5982\u201CGitHub \u767B\u5F55\u540E\u5728\u63A7\u5236\u53F0\u9886\u53D6\u201D\uFF09\uFF0C20 \u5B57\u5185\uFF0C\u6CA1\u6709\u5C31\u586B null\uFF1Bdeadline\uFF1A\u539F\u6587\u5199\u660E\u7684\u622A\u6B62\u65E5\u671F YYYY-MM-DD\uFF0C\u6CA1\u5199\u5C31\u586B null\uFF0C\u4E0D\u8981\u731C\u3002
+6. name\uFF1A\u670D\u52A1\u6216\u8D44\u6E90\u672C\u8EAB\u7684\u540D\u5B57\uFF08\u5982\u201CCloudflare R2\u201D\uFF09\uFF0C\u4E0D\u8981\u5E26\u7AD9\u70B9\u540D\u3001\u3010\u8F6C\u3011\u4E4B\u7C7B\u7684\u524D\u540E\u7F00\u3002
+7. \u53EA\u5BF9 ai / aideal \u4E24\u7C7B\uFF1Avendor \u586B\u63D0\u4F9B\u798F\u5229\u7684\u5382\u5546\u6216\u4EA7\u54C1\u65B9\uFF08\u5982\u201CGoogle\u201D\u201Cpacket.ai\u201D\u201C\u67D0\u67D0\u516C\u76CA\u7AD9\u201D\uFF0C\u4E0D\u77E5\u9053\u586B null\uFF09\uFF1Bperk \u586B\u798F\u5229\u7C7B\u578B\uFF0C\u53EA\u80FD\u662F \u514D\u8D39\u989D\u5EA6 / \u9650\u65F6\u514D\u8D39 / \u8D60\u91D1 / \u4F18\u60E0\u7801 / \u514D\u8D39\u4F1A\u5458 / \u516C\u76CA\u7AD9 / \u5176\u5B83\u3002\u798F\u5229\u5DF2\u7ED3\u675F\u3001\u53EA\u6709\u4ED8\u8D39\u6298\u6263\u3001\u6216\u9700\u8981\u5148\u4ED8\u8D39\u7684\uFF0Crelevant \u586B false\u3002
+\u8F93\u51FA\u683C\u5F0F\uFF1A{"results":[{"i":\u5E8F\u53F7,"relevant":true,"category":"\u5206\u7C7Bkey","obtain":"free","simple_signup":true,"signup":"\u6CE8\u518C\u8981\u6C42\uFF0C15\u5B57\u5185","name":"\u670D\u52A1\u6216\u8D44\u6E90\u540D\u79F0","summary":"\u9001\u4EC0\u4E48 + \u9650\u5236\uFF0C40\u5B57\u5185","how":"\u600E\u4E48\u9886\uFF0C20\u5B57\u5185","deadline":null,"vendor":null,"perk":null,"score":80}]}`;
+  }
+});
+
+// src/fold.js
+function foldItems(list) {
+  const by = /* @__PURE__ */ new Map(), out = [];
+  for (const it of list) {
+    let extra = [];
+    try {
+      extra = JSON.parse(it.sources || "[]");
+    } catch {
+    }
+    const key = it.target || it.url;
+    const head = by.get(key);
+    const mine = [{ n: it.source, u: it.url }, ...extra];
+    if (head) {
+      for (const x of mine) if (!head.srcs.some((y) => y.u === x.u)) head.srcs.push(x);
+      continue;
+    }
+    const { target, sources, ...rest } = it;
+    const o = { ...rest, srcs: mine };
+    by.set(key, o);
+    out.push(o);
+  }
+  for (const o of out) if (o.srcs.length < 2) delete o.srcs;
+  else o.srcs = o.srcs.slice(0, 8);
+  return out;
+}
+var init_fold = __esm({
+  "src/fold.js"() {
+  }
+});
 
 // src/smtp.js
 var smtp_exports = {};
@@ -123,933 +1080,7 @@ var init_smtp = __esm({
   }
 });
 
-// src/categories.js
-var CATEGORIES = [
-  { key: "domain", label: "\u514D\u8D39\u57DF\u540D", color: "#4f46e5", kw: ["\u57DF\u540D", "\u4E8C\u7EA7\u57DF\u540D", "\u5B50\u57DF\u540D", "domain", "subdomain", "dns", ".eu.org", ".us.kg"], q: ["\u514D\u8D39\u57DF\u540D \u6CE8\u518C", "\u514D\u8D39\u4E8C\u7EA7\u57DF\u540D"] },
-  { key: "hosting", label: "\u4E3B\u673A / VPS", color: "#0891b2", kw: ["\u4E3B\u673A", "\u865A\u62DF\u4E3B\u673A", "\u7A7A\u95F4", "vps", "\u670D\u52A1\u5668", "\u5EFA\u7AD9", "hosting", "webhost", "web host", "cpanel", "server", "\u5C0F\u9E21"], q: ["\u514D\u8D39\u865A\u62DF\u4E3B\u673A", "\u514D\u8D39 VPS \u670D\u52A1\u5668"] },
-  { key: "cloud", label: "\u4E91\u670D\u52A1 / CDN", color: "#0284c7", kw: ["\u4E91\u670D\u52A1", "\u4E91\u51FD\u6570", "serverless", "cdn", "\u5BF9\u8C61\u5B58\u50A8", "s3", "\u6570\u636E\u5E93", "database", "cloud", "pages", "workers", "\u6258\u7BA1", "deploy", "paas"], q: ["\u514D\u8D39\u4E91\u670D\u52A1 \u989D\u5EA6", "\u514D\u8D39 CDN \u5BF9\u8C61\u5B58\u50A8"] },
-  { key: "ai", label: "AI \u514D\u8D39\u989D\u5EA6", group: "aifree", color: "#7c3aed", kw: ["ai", "gpt", "claude", "gemini", "llm", "\u5927\u6A21\u578B", "api key", "token", "\u989D\u5EA6", "\u6A21\u578B", "openrouter", "deepseek", "copilot", "cursor", "\u514D\u8D39\u6A21\u578B", "\u514D\u8D39\u5C42", "free tier"], q: ["\u514D\u8D39 AI API \u989D\u5EA6", "\u5927\u6A21\u578B \u514D\u8D39 token"] },
-  // AI 限时福利：限时免费开放、注册送额度、优惠码 / 免费月、公益站签到，时效强，单独成类
-  { key: "aideal", label: "AI \u9650\u65F6\u798F\u5229", group: "aifree", color: "#c026d3", need: /(^|[^a-z])(ai|api|gpt|llm|agent|token)([^a-z]|$)|claude|gemini|deepseek|qwen|kimi|glm|grok|openai|anthropic|cursor|copilot|大模型|模型|智能体|算力|生图|编程助手/i, kw: ["\u9650\u65F6\u514D\u8D39", "\u514D\u8D39\u5F00\u653E", "\u9001\u989D\u5EA6", "\u6CE8\u518C\u9001", "\u8D60\u91D1", "\u8D60\u9001", "\u514D\u8D39\u9886", "\u514D\u8D39\u4E00\u4E2A\u6708", "\u514D\u8D39\u8BD5\u7528", "\u4F18\u60E0\u7801", "\u5151\u6362\u7801", "\u516C\u76CA\u7AD9", "\u4E2D\u8F6C\u7AD9", "new api", "\u7B7E\u5230", "\u798F\u5229", "free credits", "free month"], q: ["AI \u9650\u65F6\u514D\u8D39 \u9001\u989D\u5EA6", "AI \u516C\u76CA\u7AD9 \u6CE8\u518C\u9001\u989D\u5EA6"] },
-  { key: "aitool", label: "AI \u5DE5\u5177", group: "ai", color: "#a21caf", kw: ["ai \u5DE5\u5177", "ai\u5DE5\u5177", "agent", "\u667A\u80FD\u4F53", "ai \u7ED8\u753B", "ai\u7ED8\u56FE", "\u751F\u56FE", "ai \u5199\u4F5C", "chatgpt \u955C\u50CF", "\u955C\u50CF\u7AD9", "mcp", "ai \u52A9\u624B", "ai\u52A9\u624B", "\u63D2\u4EF6"], q: ["\u514D\u8D39 AI \u5DE5\u5177 \u63A8\u8350"] },
-  { key: "software", label: "\u8F6F\u4EF6\u6388\u6743", color: "#db2777", kw: ["\u6FC0\u6D3B\u7801", "\u6388\u6743", "\u6CE8\u518C\u7801", "\u8BB8\u53EF\u8BC1", "license", "giveaway", "\u9650\u514D", "\u6B63\u7248", "pro \u7248", "\u4F1A\u5458\u7248", "lifetime"], q: ["\u6B63\u7248\u8F6F\u4EF6 \u9650\u514D", "\u8F6F\u4EF6 \u6FC0\u6D3B\u7801 \u514D\u8D39\u9886\u53D6"] },
-  { key: "dev", label: "\u5F00\u53D1\u5DE5\u5177", color: "#475569", kw: ["\u5F00\u53D1\u8005", "developer", "ide", "github", "api", "sdk", "ci", "\u76D1\u63A7", "\u90AE\u7BB1\u670D\u52A1", "smtp", "free tier", "free plan"], q: ["\u5F00\u53D1\u8005 \u514D\u8D39\u5957\u9910", "free tier for developers"] },
-  { key: "game", label: "\u6E38\u620F", color: "#16a34a", kw: ["\u6E38\u620F", "steam", "epic", "gog", "game", "\u559C\u52A0\u4E00", "dlc"], q: ["\u559C\u52A0\u4E00 \u514D\u8D39\u9886\u53D6"] },
-  { key: "media", label: "\u5F71\u97F3\u4F1A\u5458", color: "#e11d48", kw: ["\u4F1A\u5458", "\u89C6\u9891", "\u97F3\u4E50", "\u5F71\u89C6", "vip", "spotify", "youtube", "netflix", "\u7535\u5B50\u4E66", "kindle"], q: ["\u514D\u8D39\u4F1A\u5458 \u9886\u53D6"] },
-  { key: "design", label: "\u8BBE\u8BA1\u7D20\u6750", color: "#ea580c", kw: ["\u5B57\u4F53", "\u7D20\u6750", "\u56FE\u6807", "\u6A21\u677F", "font", "icon", "template", "figma", "psd"], q: ["\u514D\u8D39\u5546\u7528 \u5B57\u4F53 \u7D20\u6750"] },
-  { key: "edu", label: "\u5B66\u751F / \u6559\u80B2", color: "#ca8a04", kw: ["\u5B66\u751F", "\u6559\u80B2", "edu", "student", "\u5B66\u672F", "\u6821\u56ED"], q: ["\u5B66\u751F \u514D\u8D39 \u6743\u76CA"] },
-  { key: "course", label: "\u7F51\u8BFE\u6559\u7A0B", color: "#65a30d", kw: ["\u8BFE\u7A0B", "\u7F51\u8BFE", "\u6559\u7A0B", "course", "udemy", "coursera", "\u8BAD\u7EC3\u8425"], q: ["\u9650\u65F6\u514D\u8D39 \u8BFE\u7A0B"] },
-  { key: "pan", label: "\u7F51\u76D8\u8D44\u6E90", color: "#0d9488", kw: ["\u7F51\u76D8", "\u4E91\u76D8", "\u963F\u91CC\u4E91\u76D8", "\u767E\u5EA6\u7F51\u76D8", "\u5938\u514B", "\u5206\u4EAB\u94FE\u63A5", "\u8D44\u6E90\u5408\u96C6"], q: [] },
-  { key: "goods", label: "\u5B9E\u7269\u798F\u5229", color: "#dc2626", kw: ["\u5305\u90AE", "\u5B9E\u7269", "\u5468\u8FB9", "0\u5143\u8D2D", "\u514D\u8D39\u9001", "\u8D60\u9001", "\u8D34\u7EB8", "swag"], q: [] },
-  { key: "invite", label: "\u9080\u8BF7\u7801", color: "#9333ea", kw: ["\u9080\u8BF7\u7801", "\u9080\u8BF7\u94FE\u63A5", "invite", "\u5185\u6D4B\u8D44\u683C", "beta"], q: [] },
-  // 资讯与梯子：不是“白嫖资源”，不要求出现“免费”字样，一般由专源直接收录
-  { key: "ainews", label: "AI \u8D44\u8BAF", group: "ai", info: true, color: "#6d28d9", kw: ["\u53D1\u5E03", "\u4E0A\u7EBF", "\u5F00\u6E90", "\u5927\u6A21\u578B", "\u6A21\u578B", "openai", "anthropic", "gemini", "deepseek", "\u667A\u80FD\u4F53"], q: [] },
-  { key: "news", label: "\u79D1\u6280\u8D44\u8BAF", group: "news", info: true, color: "#2563eb", kw: ["\u53D1\u5E03", "\u5BA3\u5E03", "\u6D88\u606F", "\u62A5\u9053", "\u8D22\u62A5", "\u65B0\u54C1", "\u66F4\u65B0"], q: [] },
-  { key: "proxy", label: "\u68AF\u5B50\u8BA2\u9605", group: "proxy", info: true, color: "#0f766e", kw: ["\u8282\u70B9", "\u8BA2\u9605", "v2ray", "clash", "vless", "trojan", "shadowsocks", "\u673A\u573A", "\u79D1\u5B66\u4E0A\u7F51", "\u68AF\u5B50"], q: [] },
-  { key: "other", label: "\u5176\u5B83", color: "#9ca3af", kw: [], q: [] }
-];
-for (const c of CATEGORIES) c.group ||= "fuli";
-var CAT_MAP = Object.fromEntries(CATEGORIES.map((c) => [c.key, c]));
-var GROUPS = [
-  { key: "fuli", label: "\u798F\u5229\u7F8A\u6BDB", icon: "\u7F8A" },
-  { key: "aifree", label: "AI \u798F\u5229", icon: "\u60E0" },
-  { key: "ai", label: "AI \u5DE5\u5177\u4E0E\u8D44\u8BAF", icon: "AI" },
-  { key: "news", label: "\u65B0\u95FB\u8D44\u8BAF", icon: "\u8BAF" },
-  { key: "proxy", label: "\u514D\u8D39\u68AF\u5B50", icon: "\u68AF" }
-];
-var isInfoCat = (k) => !!CAT_MAP[k]?.info;
-var DEFAULT_ENABLED = ["domain", "hosting", "cloud", "ai", "aideal", "aitool", "software", "dev", "game", "edu", "ainews", "news", "proxy"];
-function enabledCats(s) {
-  const list = String(s.enabled_categories || "").split(/[,\s]+/).filter((k) => CAT_MAP[k]);
-  return list.length ? list : DEFAULT_ENABLED;
-}
-function mailCats(s) {
-  const list = String(s.mail_categories || "").split(/[,\s]+/).filter((k) => CAT_MAP[k]);
-  return list.length ? list : enabledCats(s);
-}
-var reCache = /* @__PURE__ */ new Map();
-function kwHit(text, w) {
-  if (/^[a-z0-9.\- ]{1,4}$/.test(w)) {
-    let re = reCache.get(w);
-    if (!re) {
-      re = new RegExp(`(^|[^a-z0-9])${w.replace(/[.\-]/g, "\\$&")}($|[^a-z0-9])`);
-      reCache.set(w, re);
-    }
-    return re.test(text);
-  }
-  return text.includes(w);
-}
-function compileWords(words) {
-  const esc2 = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const parts = [...new Set(words.filter(Boolean))].map((w) => /^[a-z0-9.\- ]{1,4}$/.test(w) ? `(?:^|[^a-z0-9])${esc2(w)}(?:$|[^a-z0-9])` : esc2(w));
-  return parts.length ? new RegExp(parts.join("|")) : null;
-}
-function guessCategory(text, enabled) {
-  const t = String(text || "").toLowerCase();
-  let best = null, bestN = 0;
-  for (const k of enabled) {
-    if (CAT_MAP[k]?.need && !CAT_MAP[k].need.test(t)) continue;
-    const n = (CAT_MAP[k]?.kw || []).reduce((a, w) => a + (kwHit(t, w) ? 1 : 0), 0);
-    if (n > bestN) {
-      best = k;
-      bestN = n;
-    }
-  }
-  return best;
-}
-function topicWordsFor(enabled) {
-  return [...new Set(enabled.flatMap((k) => CAT_MAP[k]?.kw || []))];
-}
-function searchQueriesFor(enabled) {
-  return enabled.flatMap((k) => CAT_MAP[k]?.q || []);
-}
-
-// src/push.js
-var CAT = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
-var OBTAIN_ZH = { free: "\u76F4\u63A5\u767D\u5AD6", conditional: "\u6709\u6761\u4EF6", lottery: "\u62BD\u5956", trial: "\u8BD5\u7528", promo: "\u63A8\u5E7F", paid: "\u9700\u4ED8\u8D39" };
-var PUSH_CHANNELS = [
-  { id: "wecom", name: "\u4F01\u4E1A\u5FAE\u4FE1\u673A\u5668\u4EBA", key: "wecom_webhook", hint: "\u7FA4\u673A\u5668\u4EBA\u7684 Webhook \u5730\u5740\uFF08https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=\u2026\uFF09" },
-  { id: "dingtalk", name: "\u9489\u9489\u673A\u5668\u4EBA", key: "dingtalk_webhook", secret: "dingtalk_secret", hint: "\u81EA\u5B9A\u4E49\u673A\u5668\u4EBA\u7684 Webhook \u5730\u5740\uFF1B\u5B89\u5168\u8BBE\u7F6E\u9009\u300C\u52A0\u7B7E\u300D\u65F6\u628A\u5BC6\u94A5\u586B\u5230\u4E0B\u9762\uFF0C\u9009\u300C\u81EA\u5B9A\u4E49\u5173\u952E\u8BCD\u300D\u65F6\u5173\u952E\u8BCD\u586B\uFF1A\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE" },
-  { id: "feishu", name: "\u98DE\u4E66\u673A\u5668\u4EBA", key: "feishu_webhook", secret: "feishu_secret", hint: "\u81EA\u5B9A\u4E49\u673A\u5668\u4EBA\u7684 Webhook \u5730\u5740\uFF1B\u5F00\u4E86\u7B7E\u540D\u6821\u9A8C\u5C31\u628A\u5BC6\u94A5\u586B\u5230\u4E0B\u9762" },
-  { id: "serverchan", name: "Server \u9171\uFF08\u5FAE\u4FE1\uFF09", key: "serverchan_key", hint: "SendKey\uFF08sct.ftqq.com \u6216 Server \u9171\xB3 \u7684 sctp \u5F00\u5934\u7684 Key\uFF09" },
-  { id: "pushplus", name: "PushPlus\uFF08\u5FAE\u4FE1\uFF09", key: "pushplus_token", hint: "pushplus.plus \u7684 token" },
-  { id: "bark", name: "Bark\uFF08iPhone\uFF09", key: "bark_url", hint: "Bark App \u91CC\u590D\u5236\u7684\u5730\u5740\uFF0C\u5982 https://api.day.app/\u4F60\u7684Key" },
-  { id: "webhook", name: "\u901A\u7528 Webhook", key: "webhook_url", hint: "POST JSON\uFF1A{title, text, items:[{title,url,summary,category}]}\uFF0C\u53EF\u63A5 n8n / \u81EA\u5EFA\u670D\u52A1" }
-];
-var PUSH_KEYS = PUSH_CHANNELS.flatMap((c) => [c.key, c.secret].filter(Boolean));
-var pushReady = (s, c) => !!String(s[c.key] || "").trim() && s[`${c.id}_enabled`] !== "false";
-var line = (it) => {
-  const tags = [CAT[it.category] || "", it.obtain && OBTAIN_ZH[it.obtain] && it.obtain !== "free" ? OBTAIN_ZH[it.obtain] : "", it.expires_at ? "\u622A\u6B62 " + new Date(it.expires_at + 8 * 36e5).toISOString().slice(5, 10) : ""].filter(Boolean).join(" \xB7 ");
-  return { name: String(it.name || it.title).slice(0, 80), url: it.url, summary: String(it.summary || "").slice(0, 90), tags };
-};
-function markdown(title, items, max, siteUrl) {
-  let out = `### ${title}
-`;
-  let n = 0;
-  for (const it of items) {
-    const l = line(it);
-    const block = `
-- [${l.name.replace(/[[\]]/g, "")}](${l.url})${l.summary ? `
-  ${l.summary}` : ""}${l.tags ? `
-  <font color="comment">${l.tags}</font>` : ""}`;
-    if (new TextEncoder().encode(out + block).length > max - 200) break;
-    out += block;
-    n++;
-  }
-  if (n < items.length) out += `
-
-\u2026\u2026\u8FD8\u6709 ${items.length - n} \u6761${siteUrl ? `\uFF0C[\u67E5\u770B\u5168\u90E8](${siteUrl})` : ""}`;
-  else if (siteUrl) out += `
-
-[\u67E5\u770B\u5168\u90E8](${siteUrl})`;
-  if (!items.length) out += "\n\u4ECA\u5929\u6CA1\u6709\u65B0\u7684\u8D44\u6E90\u3002";
-  return out;
-}
-var plain = (title, items, siteUrl) => [title, "", ...items.slice(0, 30).map((it, i) => {
-  const l = line(it);
-  return `${i + 1}. ${l.name}
-${l.url}${l.summary ? "\n" + l.summary : ""}`;
-}), items.length > 30 ? `\u2026\u2026\u8FD8\u6709 ${items.length - 30} \u6761` : "", siteUrl ? `\u67E5\u770B\u5168\u90E8\uFF1A${siteUrl}` : ""].filter((x) => x !== "").join("\n");
-async function hmacB64(key, msg) {
-  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(msg)));
-  return btoa(String.fromCharCode(...sig));
-}
-async function post(url, body, type = "json") {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": type === "json" ? "application/json" : "application/x-www-form-urlencoded" },
-    body: type === "json" ? JSON.stringify(body) : new URLSearchParams(body).toString(),
-    signal: AbortSignal.timeout(15e3)
-  });
-  const t = await r.text();
-  if (!r.ok) throw new Error(`HTTP ${r.status}: ${t.slice(0, 160)}`);
-  let j = {};
-  try {
-    j = JSON.parse(t);
-  } catch {
-  }
-  const code = j.errcode ?? j.code ?? j.StatusCode ?? 0;
-  if (code !== 0 && code !== 200 && code !== "0") throw new Error(j.errmsg || j.msg || j.message || `\u8FD4\u56DE\u7801 ${code}`);
-  return j;
-}
-async function pushTo(id, s, title, items) {
-  const c = PUSH_CHANNELS.find((x) => x.id === id);
-  if (!c) throw new Error("\u672A\u77E5\u6E20\u9053");
-  const v = String(s[c.key] || "").trim();
-  if (!v) throw new Error(`\u672A\u586B\u5199${c.name}`);
-  const site = (s.mail_site_url || "").replace(/\/+$/, "");
-  switch (id) {
-    case "wecom":
-      return post(v, { msgtype: "markdown", markdown: { content: markdown(title, items, 4e3, site) } });
-    case "dingtalk": {
-      let url = v;
-      if (s.dingtalk_secret) {
-        const ts = Date.now();
-        url += `${url.includes("?") ? "&" : "?"}timestamp=${ts}&sign=${encodeURIComponent(await hmacB64(s.dingtalk_secret, `${ts}
-${s.dingtalk_secret}`))}`;
-      }
-      return post(url, { msgtype: "markdown", markdown: { title: `\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 ${title}`.slice(0, 60), text: markdown(`\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 ${title}`, items, 18e3, site) } });
-    }
-    case "feishu": {
-      const body = { msg_type: "text", content: { text: `\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 ${plain(title, items, site)}`.slice(0, 18e3) } };
-      if (s.feishu_secret) {
-        const ts = Math.floor(Date.now() / 1e3);
-        body.timestamp = String(ts);
-        body.sign = await hmacB64(`${ts}
-${s.feishu_secret}`, "");
-      }
-      return post(v, body);
-    }
-    case "serverchan": {
-      const m = /^sctp(\d+)t/i.exec(v);
-      const url = m ? `https://${m[1]}.push.ft07.com/send/${v}.send` : `https://sctapi.ftqq.com/${v}.send`;
-      return post(url, { title: title.slice(0, 32), desp: markdown(title, items, 3e4, site) }, "form");
-    }
-    case "pushplus":
-      return post("https://www.pushplus.plus/send", { token: v, title: title.slice(0, 100), content: markdown(title, items, 18e3, site), template: "markdown" });
-    case "bark": {
-      const first = items[0];
-      return post(v.replace(/\/+$/, ""), { title: title.slice(0, 60), body: items.length ? items.slice(0, 5).map((it) => "\xB7 " + (it.name || it.title)).join("\n") + (items.length > 5 ? `
-\u2026\u5171 ${items.length} \u6761` : "") : "\u4ECA\u5929\u6CA1\u6709\u65B0\u7684\u8D44\u6E90", group: "\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE", url: items.length === 1 ? first.url : site || void 0 });
-    }
-    case "webhook":
-      return post(v, { title, text: plain(title, items, site), items: items.map((it) => ({ title: it.name || it.title, url: it.url, summary: it.summary || "", category: it.category, obtain: it.obtain || null, expires_at: it.expires_at || null })) });
-  }
-}
-async function pushAll(s, title, items, only) {
-  const ok = [], errors = [];
-  for (const c of PUSH_CHANNELS) {
-    if (only ? c.id !== only : !pushReady(s, c)) continue;
-    try {
-      await pushTo(c.id, s, title, items);
-      ok.push(c.name);
-    } catch (e) {
-      errors.push(`${c.name}\uFF1A${e.message}`);
-    }
-  }
-  return { ok, errors };
-}
-
-// src/extras.js
-var DAY = 864e5;
-function rankOf(it) {
-  const srcN = Array.isArray(it.srcs) ? it.srcs.length : 0;
-  return (it.score ?? 70) + (it.up || 0) * 6 - (it.down || 0) * 8 + srcN * 4 + (it.obtain === "free" ? 5 : 0) + (it.expires_at ? 3 : 0) - (it.dead ? 60 : 0);
-}
-function weeklyPicks(items, now = Date.now(), n = 10) {
-  const list = items.filter((it) => !isInfoCat(it.category) && !it.dead && !(it.extra && it.extra.subs) && now - (it.published_at || it.fetched_at || 0) <= 7 * DAY && !(it.expires_at && it.expires_at < now));
-  list.sort((a, b) => rankOf(b) - rankOf(a));
-  const per = {}, out = [], seen = /* @__PURE__ */ new Set();
-  for (const it of list) {
-    const k = String(it.name || it.title).toLowerCase().replace(/[（(【[][^)）】\]]*[)）】\]]/g, "").replace(/giveaway|免费领取|限免|epic|steam|[^\p{L}\p{N}]+/gu, "").slice(0, 24);
-    if (k && seen.has(k)) continue;
-    if (k) seen.add(k);
-    if ((per[it.category] = (per[it.category] || 0) + 1) > 3) continue;
-    out.push(it);
-    if (out.length >= n) break;
-  }
-  return out;
-}
-var PERKS = [
-  { name: "GitHub \u5B66\u751F\u5F00\u53D1\u8005\u5305", url: "https://education.github.com/pack", note: "\u5B66\u751F\u8BA4\u8BC1\u540E\u9001 Copilot Pro\u3001\u57DF\u540D\u3001\u4E91\u670D\u52A1\u989D\u5EA6\u7B49\u51E0\u5341\u9879\u6743\u76CA", who: "\u5B66\u751F" },
-  { name: "JetBrains \u6559\u80B2\u8BB8\u53EF", url: "https://www.jetbrains.com/academy/student-pack/", note: "\u5B66\u751F\u548C\u8001\u5E08\u514D\u8D39\u7528 IntelliJ IDEA\u3001PyCharm \u7B49\u5168\u5BB6\u6876", who: "\u5B66\u751F" },
-  { name: "Azure \u5B66\u751F\u7248", url: "https://azure.microsoft.com/free/students/", note: "\u5B66\u6821\u90AE\u7BB1\u8BA4\u8BC1\uFF0C\u9001 100 \u7F8E\u5143\u989D\u5EA6\uFF0C\u4E0D\u7528\u4FE1\u7528\u5361", who: "\u5B66\u751F" },
-  { name: "Figma \u6559\u80B2\u7248", url: "https://www.figma.com/education/", note: "\u5B66\u751F\u548C\u8001\u5E08\u514D\u8D39\u7528\u4E13\u4E1A\u7248", who: "\u5B66\u751F" },
-  { name: "Notion \u6559\u80B2\u7248", url: "https://www.notion.com/product/notion-for-education", note: "\u5B66\u6821\u90AE\u7BB1\u6CE8\u518C\uFF0C\u4E2A\u4EBA Plus \u514D\u8D39", who: "\u5B66\u751F" },
-  { name: "Autodesk \u6559\u80B2\u7248", url: "https://www.autodesk.com/education/home", note: "AutoCAD\u3001Maya\u3001Fusion \u7B49\u6559\u80B2\u8BB8\u53EF", who: "\u5B66\u751F" },
-  { name: "Canva \u6559\u80B2\u7248", url: "https://www.canva.com/education/", note: "\u8001\u5E08\u548C\u5B66\u751F\u514D\u8D39\u7528\u9AD8\u7EA7\u529F\u80FD", who: "\u5B66\u751F" },
-  { name: "Cloudflare \u514D\u8D39\u8BA1\u5212", url: "https://www.cloudflare.com/plans/free/", note: "CDN\u3001DNS\u3001Workers\u3001Pages\u3001R2 \u90FD\u6709\u957F\u671F\u514D\u8D39\u989D\u5EA6", who: "\u5F00\u53D1\u8005" },
-  { name: "Oracle Cloud \u6C38\u4E45\u514D\u8D39", url: "https://www.oracle.com/cloud/free/", note: "\u6C38\u4E45\u514D\u8D39\u7684 ARM \u4E91\u4E3B\u673A\u548C\u6570\u636E\u5E93\uFF08\u6CE8\u518C\u8981\u7ED1\u5361\u9A8C\u8BC1\uFF09", who: "\u5F00\u53D1\u8005" },
-  { name: "Google Cloud \u514D\u8D39\u5C42", url: "https://cloud.google.com/free", note: "\u65B0\u7528\u6237 300 \u7F8E\u5143\u989D\u5EA6 + \u957F\u671F\u514D\u8D39\u7684\u5C0F\u89C4\u683C\u8D44\u6E90", who: "\u5F00\u53D1\u8005" },
-  { name: "AWS \u514D\u8D39\u5957\u9910", url: "https://aws.amazon.com/free/", note: "\u65B0\u7528\u6237\u989D\u5EA6 + \u4E00\u6279\u957F\u671F\u514D\u8D39\u7684\u670D\u52A1", who: "\u5F00\u53D1\u8005" },
-  { name: "Vercel Hobby", url: "https://vercel.com/pricing", note: "\u4E2A\u4EBA\u9879\u76EE\u514D\u8D39\u6258\u7BA1\u524D\u7AEF\u548C Serverless \u51FD\u6570", who: "\u5F00\u53D1\u8005" },
-  { name: "Netlify \u514D\u8D39\u7248", url: "https://www.netlify.com/pricing/", note: "\u9759\u6001\u7AD9\u70B9\u548C\u51FD\u6570\u514D\u8D39\u6258\u7BA1", who: "\u5F00\u53D1\u8005" },
-  { name: "Supabase \u514D\u8D39\u7248", url: "https://supabase.com/pricing", note: "\u514D\u8D39\u7684 Postgres \u6570\u636E\u5E93\u3001\u8BA4\u8BC1\u548C\u5B58\u50A8", who: "\u5F00\u53D1\u8005" },
-  { name: "EU.org \u514D\u8D39\u57DF\u540D", url: "https://nic.eu.org/", note: "\u8001\u724C\u514D\u8D39\u4E8C\u7EA7\u57DF\u540D\uFF0C\u4EBA\u5DE5\u5BA1\u6838\uFF0C\u53EF\u63A5 Cloudflare", who: "\u5F00\u53D1\u8005" },
-  { name: "free-for-dev \u6E05\u5355", url: "https://free-for.dev/", note: "\u5F00\u53D1\u8005\u514D\u8D39\u670D\u52A1\u5927\u5168\uFF08\u82F1\u6587\uFF09\uFF0C\u6301\u7EED\u66F4\u65B0", who: "\u5F00\u53D1\u8005" }
-];
-function parseRows(text, keys) {
-  const out = [];
-  for (const raw of String(text || "").split(/\r?\n/)) {
-    const l = raw.trim();
-    if (!l || l.startsWith("#")) continue;
-    const parts = l.split(/\s*[|｜]\s*/);
-    const url = parts.find((x) => /^https?:\/\//.test(x));
-    if (!url) continue;
-    const rest = parts.filter((x) => x !== url);
-    const o = { url };
-    keys.forEach((k, i) => {
-      if (rest[i]) o[k] = rest[i];
-    });
-    if (!o.name) {
-      try {
-        o.name = new URL(url).hostname.replace(/^www\./, "");
-      } catch {
-        o.name = url;
-      }
-    }
-    out.push(o);
-    if (out.length >= 60) break;
-  }
-  return out;
-}
-var perksOf = (s) => s.perks_enabled === "false" ? [] : [...PERKS, ...parseRows(s.perks_extra, ["name", "note", "who"]).map((x) => ({ ...x, who: /学生|edu|student/i.test(x.who || "") ? "\u5B66\u751F" : "\u5F00\u53D1\u8005" }))];
-var checkinOf = (s) => parseRows(s.checkin_sites, ["name", "note"]);
-var VENDORS = [
-  ["OpenAI", /openai|chatgpt|gpt-?\d|codex|sora/i],
-  ["Anthropic", /anthropic|claude/i],
-  ["Google", /google|gemini|antigravity|vertex|ai studio|jules/i],
-  ["DeepSeek", /deepseek|深度求索/i],
-  ["\u963F\u91CC", /qwen|通义|阿里云百炼|百炼|modelscope|魔搭/i],
-  ["\u6708\u4E4B\u6697\u9762", /kimi|moonshot|月之暗面/i],
-  ["\u667A\u8C31", /智谱|glm-?\d|chatglm|bigmodel/i],
-  ["MiniMax", /minimax|海螺/i],
-  ["\u5B57\u8282", /豆包|doubao|火山方舟|火山引擎|trae|coze|扣子/i],
-  ["\u817E\u8BAF", /混元|hunyuan|腾讯云|codebuddy|元宝/i],
-  ["\u767E\u5EA6", /文心|ernie|千帆/i],
-  ["xAI", /xai|grok/i],
-  ["Mistral", /mistral/i],
-  ["Meta", /llama|meta ai/i],
-  ["Microsoft", /microsoft|azure|copilot|bing/i],
-  ["Amazon", /aws|amazon|bedrock|kiro/i],
-  ["OpenRouter", /openrouter/i],
-  ["Groq", /groq(?!k)/i],
-  ["Cerebras", /cerebras/i],
-  ["\u7845\u57FA\u6D41\u52A8", /siliconflow|硅基流动/i],
-  ["NVIDIA", /nvidia|nim/i],
-  ["Cursor", /cursor/i],
-  ["Windsurf", /windsurf|codeium/i],
-  ["GitHub", /github copilot|github models/i],
-  ["Perplexity", /perplexity/i],
-  ["Hugging Face", /hugging ?face/i],
-  ["Cloudflare", /cloudflare workers ai|workers ai/i],
-  ["Fireworks", /fireworks/i],
-  ["Together", /together\.ai|together ai/i],
-  ["\u516C\u76CA\u7AD9", /公益站|中转站|new ?api/i]
-];
-function guessVendor(text) {
-  const t = String(text || "").replace(/^(【[^】]*】|\[[^\]]*\]|额度变化\s*·\s*)+/, "").trim().slice(0, 400);
-  let best = null, at = Infinity;
-  for (const [n, re] of VENDORS) {
-    const m = re.exec(t);
-    if (m && m.index < at) {
-      best = n;
-      at = m.index;
-    }
-  }
-  const head = /^([A-Za-z][\w.+-]{1,24})(?=\s|：|:|，|的|上线|推出|限时|免费|送|宣布)/.exec(t);
-  if (head && (best === null || at > head[1].length + 2) && !/^(AI|API|LLM|GPT|Free|The|New|Pro)$/i.test(head[1])) return head[1];
-  return best;
-}
-var PERKS_TYPE = [
-  ["\u4F18\u60E0\u7801", /优惠码|兑换码|折扣码|promo code|coupon|redeem/i],
-  ["\u516C\u76CA\u7AD9", /公益站|中转站|new ?api|签到/i],
-  ["\u514D\u8D39\u4F1A\u5458", /免费(领|送|获得)?.{0,6}(会员|pro|plus|max|studio|一个月|1 ?个月|月卡)|free (month|pro|plus)/i],
-  ["\u8D60\u91D1", /送\s*[$¥￥]?\s*\d+\s*(刀|美元|美金|元|积分|credits?)|赠金|赠送.{0,6}(额度|积分|credits?)|\$\d+\s*(free )?credits?|免费.{0,4}\d+\s*(刀|美元|积分)/i],
-  ["\u9650\u65F6\u514D\u8D39", /限时免费|限免|免费开放|限时.{0,6}免费|free for a limited time|limited[- ]time free/i],
-  ["\u514D\u8D39\u989D\u5EA6", /免费额度|免费层|免费档|free tier|free plan|每日.{0,6}(次|额度)|免费调用|免费模型|:free/i]
-];
-function guessPerk(text) {
-  const t = String(text || "").slice(0, 600);
-  for (const [n, re] of PERKS_TYPE) if (re.test(t)) return n;
-  return null;
-}
-var PERK_TYPES = PERKS_TYPE.map((x) => x[0]).concat("\u5176\u5B83");
-var DEFAULT_RADAR_QUERIES = ["AI \u9650\u65F6\u514D\u8D39 \u9001\u989D\u5EA6", "\u5927\u6A21\u578B API \u514D\u8D39\u989D\u5EA6 \u6D3B\u52A8", "\u6CE8\u518C\u9001 \u7F8E\u5143 \u989D\u5EA6 API", "AI \u7F16\u7A0B\u52A9\u624B \u514D\u8D39 Pro", "AI \u516C\u76CA\u7AD9 \u6CE8\u518C\u9001\u989D\u5EA6", "\u514D\u8D39 Token \u6D3B\u52A8 \u5927\u6A21\u578B"];
-var DEFAULT_RADAR_VENDORS = ["Claude", "Gemini", "ChatGPT", "DeepSeek", "\u901A\u4E49\u5343\u95EE Qwen", "Kimi", "\u667A\u8C31 GLM", "\u8C46\u5305 \u706B\u5C71\u65B9\u821F", "MiniMax", "Grok", "Cursor", "GitHub Copilot", "OpenRouter", "\u7845\u57FA\u6D41\u52A8", "Trae", "Perplexity"];
-function radarQueries(s, round) {
-  const base = String(s.aifree_queries || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
-  const vendors = String(s.aifree_vendors || "").split(/\r?\n|,|，/).map((x) => x.trim()).filter(Boolean);
-  const n = Math.min(8, Math.max(0, Number(s.aifree_vendors_per_run) || 4));
-  const pick2 = [];
-  for (let i = 0; i < Math.min(n, vendors.length); i++) pick2.push(vendors[(round * n + i) % vendors.length]);
-  const qBase = Math.max(1, Math.min(8, Number(s.search_max_queries) || 6) - pick2.length);
-  const b = [];
-  for (let i = 0; i < Math.min(qBase, base.length); i++) b.push(base[(round * qBase + i) % base.length]);
-  return [...b, ...pick2.map((v) => `${v} \u514D\u8D39 \u989D\u5EA6 \u798F\u5229`)];
-}
-
-// src/db.js
-var DEFAULT_SOURCES = [
-  // 中文社区（部分源参考 ZiChuanLan/freebie-radar 的内置源）
-  { name: "V2EX \xB7 \u514D\u8D39\u8D60\u9001", type: "v2ex", node: "free", enabled: true },
-  { name: "V2EX \xB7 \u4E91\u8BA1\u7B97", type: "v2ex", node: "cloud", enabled: true },
-  { name: "V2EX \xB7 \u63A8\u5E7F\u4E0E\u6CE8\u518C\u9001", type: "v2ex", node: "promotions", enabled: true },
-  { name: "V2EX \xB7 \u5206\u4EAB\u53D1\u73B0", type: "v2ex", node: "share", enabled: false },
-  { name: "NodeSeek \xB7 \u798F\u5229\u60C5\u62A5", type: "rss", url: "https://rss.nodeseek.com/", enabled: true },
-  { name: "NodeLoc \xB7 \u7F8A\u6BDB\u4E0E\u4E3B\u673A", type: "rss", url: "https://www.nodeloc.com/latest.rss", enabled: true },
-  // LINUX DO 有 Cloudflare 护盾，机房 IP 常被拦，默认关闭
-  { name: "LINUX DO \xB7 \u798F\u5229\u7F8A\u6BDB", type: "rss", url: "https://linux.do/c/welfare/36.rss", enabled: false },
-  { name: "\u5C0F\u4F17\u8F6F\u4EF6\u8BBA\u575B \xB7 \u53D1\u73B0", type: "rss", url: "https://meta.appinn.net/c/faxian/10.rss", enabled: true },
-  // 白嫖专源：内容本身就是免费资源，免关键词预筛、免 AI 审核直接入库（trusted），分类固定
-  { name: "Epic \xB7 \u6BCF\u5468\u514D\u8D39\u6E38\u620F", type: "epic", category: "game", trusted: true, enabled: true },
-  { name: "GamerPower \xB7 \u9650\u514D\u6E38\u620F", type: "gamerpower", category: "game", trusted: true, enabled: true },
-  { name: "OpenRouter \xB7 \u514D\u8D39\u6A21\u578B", type: "openrouter_free", category: "ai", trusted: true, enabled: true },
-  // include：标题需匹配的正则（这个源混有打折商品，只要 100% 免费的）
-  { name: "SharewareOnSale \xB7 \u6B63\u7248\u8F6F\u4EF6\u9650\u514D", type: "rss", url: "https://sharewareonsale.com/feed", include: "100% discount|\\bfree\\b", category: "software", trusted: true, note: "\u6B63\u7248\u8F6F\u4EF6\u9650\u65F6 100% \u514D\u8D39\u9886\u53D6\uFF08\u82F1\u6587\u7AD9\uFF09", enabled: true },
-  { name: "V2EX \xB7 \u521B\u610F", type: "v2ex", node: "create", enabled: false },
-  // 中文白嫖专源。category: 'auto' 表示按关键词自动归类（归不进已勾选的分类就跳过）
-  { name: "\u53CD\u6597\u9650\u514D \xB7 \u9650\u65F6\u514D\u8D39", type: "rss", url: "https://free.apprcn.com/feed/", category: "auto", fallback: "software", trusted: true, enabled: true },
-  { name: "IT\u4E4B\u5BB6 \xB7 \u559C\u52A0\u4E00 / \u9650\u514D", type: "rss", url: "https://www.ithome.com/rss/", include: "\u559C\u52A0\u4E00|\u9650\u514D|\u9650\u65F6\u514D\u8D39|\u514D\u8D39\u9886|\u767D\u5AD6", category: "auto", fallback: "game", trusted: true, enabled: true },
-  { name: "\u5982\u6709\u4E50\u4EAB \xB7 \u514D\u8D39\u8D44\u6E90", type: "rss", url: "https://51.ruyo.net/feed", enabled: true },
-  { name: "\u5C0F\u4F17\u8F6F\u4EF6 \xB7 \u4E3B\u7AD9", type: "rss", url: "https://www.appinn.com/feed/", enabled: true },
-  { name: "\u5F02\u6B21\u5143\u8F6F\u4EF6\u4E16\u754C", type: "rss", url: "https://feed.iplaysoft.com/", enabled: true },
-  { name: "\u84DD\u70B9\u7F51", type: "rss", url: "https://www.landian.news/feed", include: "\u514D\u8D39|\u9650\u514D|\u767D\u5AD6|\u9886\u53D6|\u8D60\u9001", enabled: true },
-  // cats：这个源只收哪些分类（其它分类的内容直接丢弃）；hint：关键词归不了类时默认归到哪个分类
-  // 2026-11-21 实测可用的中文源
-  { name: "\u96F6\u5EA6\u89E3\u8BF4 \xB7 \u514D\u8D39\u8F6F\u4EF6\u4E0E\u8D44\u6E90", type: "rss", url: "https://www.freedidi.com/feed", enabled: true },
-  { name: "A\u59D0\u5206\u4EAB \xB7 \u514D\u8D39\u8D44\u6E90", type: "rss", url: "https://www.ahhhhfs.com/feed/", enabled: true },
-  { name: "TG \xB7 A\u59D0\u5206\u4EAB @abskoop", type: "telegram", channel: "abskoop", enabled: true },
-  { name: "TG \xB7 \u5728\u82B1\u79D1\u6280\u5708 @zaihuapd", type: "telegram", channel: "zaihuapd", include: "\u514D\u8D39|\u9650\u514D|\u767D\u5AD6|\u9886\u53D6|\u8D60\u9001|0\u5143|\u559C\u52A0\u4E00", enabled: true },
-  { name: "\u798F\u5229\u5427", type: "rss", url: "https://fuliba.net/feed", include: "\u514D\u8D39|\u9650\u514D|\u767D\u5AD6|\u9886\u53D6|\u8D60\u9001|\u7F8A\u6BDB|\u798F\u5229", enabled: true },
-  { name: "\u5C11\u6570\u6D3E \xB7 \u9650\u514D", type: "rss", url: "https://sspai.com/feed", include: "\u9650\u514D|\u514D\u8D39|\u767D\u5AD6", enabled: true },
-  { name: "\u679C\u6838\u5265\u58F3", type: "rss", url: "https://www.ghxi.com/feed", cats: ["software", "dev", "ai", "pan"], hint: "software", enabled: true },
-  { name: "\u5F02\u661F\u8F6F\u4EF6\u7A7A\u95F4", type: "rss", url: "https://www.yxssp.com/feed", cats: ["software", "dev", "ai"], hint: "software", enabled: true },
-  { name: "\u514B\u9686\u7A9D", type: "rss", url: "https://www.uy5.net/feed/", cats: ["software", "dev", "ai"], hint: "software", enabled: true },
-  { name: "\u7FFB\u5E94\u7528 \xB7 iOS \u9650\u514D", type: "rss", url: "https://www.iapps.me/feed", cats: ["software", "game"], hint: "software", enabled: true },
-  { name: "FreeGroup \xB7 \u514D\u8D39\u8D44\u6E90", type: "rss", url: "https://free.com.tw/feed/", enabled: true },
-  { name: "\u5176\u4E50 Keylol \xB7 \u6E38\u620F", type: "rss", url: "https://keylol.com/forum.php?mod=rss", include: "\u514D\u8D39|\u9650\u514D|\u559C\u52A0\u4E00|\u767D\u5AD6|\u9886\u53D6|\u8D60\u9001|giveaway", cats: ["game"], hint: "game", enabled: true },
-  { name: "VPS\u7CBE\u9009\u7F51", type: "rss", url: "https://www.vpsjxw.com/feed/", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
-  { name: "\u8001\u5DE6\u7B14\u8BB0", type: "rss", url: "https://www.laozuo.org/feed/", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
-  { name: "\u4E3B\u673A\u767E\u79D1", type: "rss", url: "https://zhujiwiki.com/feed/", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
-  { name: "VPS \u4FA6\u63A2", type: "rss", url: "https://www.vpser.net/feed", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
-  { name: "VEIDC", type: "rss", url: "https://www.veidc.com/feed", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
-  { name: "VPSGO", type: "rss", url: "https://www.vpsgo.com/feed", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
-  { name: "xiaoz \u535A\u5BA2", type: "rss", url: "https://blog.xiaoz.org/feed", cats: ["hosting", "domain", "cloud", "dev", "software"], enabled: true },
-  { name: "TG \xB7 \u7F51\u76D8\u8D44\u6E90\uFF08\u8FC5\u96F7\u4E91\u76D8\uFF09@yunpanxunlei", type: "telegram", channel: "yunpanxunlei", category: "pan", trusted: true, enabled: false },
-  // ---------- AI 专区（2026-11-22 实测可抓） ----------
-  // Ailyre AI 速递（ailyre.com/news）：「福利速递」轨道是厂商福利（限时免费开放、优惠码、送额度），其余是模型上新和服务变动
-  { name: "Ailyre \xB7 AI \u798F\u5229\u901F\u9012", type: "rss", url: "https://www.ailyre.com/news/rss.xml", tags: ["\u798F\u5229\u901F\u9012"], cats: ["ai", "aideal"], hint: "aideal", every: 3, enabled: true },
-  { name: "Ailyre \xB7 AI \u901F\u9012\uFF08\u6A21\u578B\u4E0E\u670D\u52A1\u53D8\u52A8\uFF09", type: "rss", url: "https://www.ailyre.com/news/rss.xml", skip_tags: ["\u798F\u5229\u901F\u9012"], category: "ainews", trusted: true, limit: 10, every: 6, enabled: true },
-  { name: "\u8D5B\u535A\u9E21\u86CB \xB7 AI \u514D\u8D39\u989D\u5EA6", type: "rss", url: "https://jidan.si/rss.xml", cats: ["ai", "aideal", "aitool"], hint: "ai", enabled: true },
-  { name: "AI \u798F\u5229\u96F7\u8FBE", type: "rss", url: "https://aifuli.dev/rss.xml", cats: ["ai", "aideal", "aitool"], hint: "aideal", enabled: true },
-  { name: "free-llm-intel \xB7 \u514D\u8D39\u989D\u5EA6\u53D8\u5316", type: "rss", url: "https://free-llm-intel.aishort.top/feeds/llm-intel-changes.xml", category: "ai", trusted: true, limit: 15, enabled: true },
-  { name: "TG \xB7 LINUX DO \u798F\u5229 @linuxdo_tg", type: "telegram", channel: "linuxdo_tg", include: "\u798F\u5229\u7F8A\u6BDB|\u516C\u76CA\u7AD9|\u516C\u76CA\u63A8\u5E7F|\u767D\u5AD6|\u514D\u8D39|\u989D\u5EA6|\u8D60\u9001|\u9001\\s*\\$?\\d", cats: ["ai", "aideal", "aitool", "cloud", "dev"], hint: "aideal", enabled: true },
-  { name: "TG \xB7 \u82F9\u679C\u79D1\u6280 @pgkj666", type: "telegram", channel: "pgkj666", include: "API|\u989D\u5EA6|Token|\u514D\u8D39|\u516C\u76CA|\u4E2D\u8F6C", cats: ["ai", "aideal", "aitool"], hint: "aideal", enabled: true },
-  // GitHub 同类清单：仓库一有新提交，就把新增的条目同步过来（读 commits.atom + 提交的 .patch，不走 GitHub API，不需要 Token）
-  { name: "GitHub \xB7 \u514D\u8D39 AI API \u4E2D\u8F6C\u7AD9\u5BFC\u822A", type: "repo", repo: "kirito8/free-newapi", mode: "diff", include: "\u516C\u76CA|\u514D\u8D39|\u7B7E\u5230|\u6CE8\u518C\u9001|\u8D60\u9001|\u9001\\s*[$\xA5]?\\d|\u767D\u5AD6|\u989D\u5EA6", category: "aideal", trusted: true, every: 12, enabled: true },
-  { name: "GitHub \xB7 AI API \u516C\u76CA\u7AD9\u5BFC\u822A", type: "repo", repo: "bubblevv/ai-api-gongyi-nav", mode: "diff", path: "README\\.md$", include: "\u516C\u76CA|\u514D\u8D39|\u7B7E\u5230|\u6CE8\u518C\u9001|\u8D60\u9001|\u9001\\s*[$\xA5]?\\d|\u767D\u5AD6|\u989D\u5EA6", category: "aideal", trusted: true, every: 12, enabled: true },
-  { name: "GitHub \xB7 \u514D\u8D39 AI Token \u6E05\u5355\uFF08\u4E2D\u56FD\u533A\uFF09", type: "repo", repo: "KJAI123/awesome-free-ai-tokens-cn", mode: "diff", category: "ai", trusted: true, every: 12, enabled: true },
-  { name: "GitHub \xB7 \u514D\u8D39\u5927\u6A21\u578B API \u5BFC\u822A", type: "repo", repo: "peter123023/awesome-free-llm-api", mode: "diff", path: "README\\.md$", category: "ai", trusted: true, every: 12, enabled: true },
-  { name: "GitHub \xB7 FreeToken \u514D\u8D39\u989D\u5EA6\u5927\u5168", type: "repo", repo: "AIPMAndy/FreeToken", mode: "diff", path: "README", category: "ai", trusted: true, every: 12, enabled: true },
-  { name: "GitHub \xB7 \u514D\u8D39 LLM API \u5E73\u53F0\u6C47\u603B", type: "repo", repo: "CYBIRD-D/FREE-LLM-API-Provider", mode: "diff", path: "README\\.zh-CN\\.md$", category: "ai", trusted: true, every: 12, enabled: true },
-  { name: "GitHub \xB7 \u4E2D\u56FD\u72EC\u7ACB\u5F00\u53D1\u8005\u9879\u76EE", type: "repo", repo: "1c7/chinese-independent-developer", mode: "diff", path: "^README\\.md$", cats: ["aitool", "software", "dev"], hint: "software", category: "auto", fallback: "software", trusted: true, every: 12, enabled: false },
-  { name: "GitHub \xB7 free-for-dev\uFF08\u82F1\u6587\uFF09", type: "repo", repo: "ripienaar/free-for-dev", mode: "diff", cats: ["dev", "cloud", "hosting", "ai"], hint: "dev", every: 12, enabled: false },
-  // ---------- 新闻资讯：资讯类专源直接收录，每次每个源最多取 limit 条 ----------
-  { name: "free-llm-intel \xB7 AI \u5382\u5546\u52A8\u6001", type: "rss", url: "https://free-llm-intel.aishort.top/feeds/llm-news-all.xml", category: "ainews", trusted: true, limit: 12, every: 6, enabled: true },
-  { name: "\u91CF\u5B50\u4F4D", type: "rss", url: "https://www.qbitai.com/feed", category: "ainews", trusted: true, limit: 10, every: 6, enabled: true },
-  { name: "Solidot", type: "rss", url: "https://www.solidot.org/index.rss", category: "news", trusted: true, limit: 10, every: 6, enabled: true },
-  { name: "\u7231\u8303\u513F", type: "rss", url: "https://www.ifanr.com/feed", category: "news", trusted: true, limit: 10, every: 6, enabled: true },
-  { name: "cnBeta", type: "rss", url: "https://www.cnbeta.com.tw/backend.php", category: "news", trusted: true, limit: 10, every: 6, enabled: true },
-  { name: "\u6781\u5BA2\u516C\u56ED", type: "rss", url: "https://www.geekpark.net/rss", category: "news", trusted: true, limit: 8, every: 6, enabled: true },
-  { name: "\u962E\u4E00\u5CF0 \xB7 \u79D1\u6280\u7231\u597D\u8005\u5468\u520A", type: "rss", url: "https://www.ruanyifeng.com/blog/atom.xml", category: "news", trusted: true, limit: 3, every: 6, enabled: true },
-  // ---------- 免费梯子：GitHub 上自动更新的公共节点订阅，每个仓库只占一条，有新提交就刷新时间 ----------
-  { name: "Pawdroid / Free-servers", type: "repo", repo: "Pawdroid/Free-servers", mode: "sub", category: "proxy", trusted: true, subs: [["\u901A\u7528\u8BA2\u9605", "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub"]], every: 12, enabled: true },
-  { name: "ermaozi / get_subscribe", type: "repo", repo: "ermaozi/get_subscribe", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt"], ["Clash", "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/clash.yml"]], every: 12, enabled: true },
-  { name: "chengaopan / AutoMergePublicNodes", type: "repo", repo: "chengaopan/AutoMergePublicNodes", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/chengaopan/AutoMergePublicNodes/master/list.txt"], ["Clash", "https://raw.githubusercontent.com/chengaopan/AutoMergePublicNodes/master/list.yml"]], every: 12, enabled: true },
-  { name: "peasoft / NoMoreWalls", type: "repo", repo: "peasoft/NoMoreWalls", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.txt"], ["Clash", "https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.yml"]], every: 12, enabled: true },
-  { name: "mahdibland / V2RayAggregator", type: "repo", repo: "mahdibland/V2RayAggregator", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt"], ["Clash", "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/Eternity.yml"]], every: 12, enabled: true },
-  { name: "snakem982 / proxypool", type: "repo", repo: "snakem982/proxypool", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/snakem982/proxypool/main/source/v2ray-2.txt"], ["Clash Meta", "https://raw.githubusercontent.com/snakem982/proxypool/main/source/clash-meta-2.yaml"]], every: 12, enabled: true },
-  { name: "Barabama / FreeNodes", type: "repo", repo: "Barabama/FreeNodes", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/clashmeta.txt"], ["Clash Meta", "https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/clashmeta.yaml"]], every: 12, enabled: true },
-  { name: "free18 / v2ray", type: "repo", repo: "free18/v2ray", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/free18/v2ray/main/v.txt"], ["Clash", "https://raw.githubusercontent.com/free18/v2ray/main/c.yaml"]], every: 12, enabled: true },
-  // 英文社区：默认过滤纯英文内容，这些源默认关闭；关掉「过滤纯英文」后可按需打开
-  { name: "LowEndTalk \xB7 Offers", type: "rss", url: "https://lowendtalk.com/categories/offers/feed.rss", enabled: false },
-  { name: "LowEndSpirit", type: "rss", url: "https://lowendspirit.com/discussions/feed.rss", enabled: false },
-  { name: "Hacker News \xB7 free domain", type: "hn", query: '"free domain"', enabled: false },
-  { name: "Hacker News \xB7 free subdomain", type: "hn", query: '"free subdomain"', enabled: false },
-  { name: "Hacker News \xB7 free hosting", type: "hn", query: '"free hosting"', enabled: false },
-  // GitHub 仓库搜索噪音大，建议配合 AI 判定再开启
-  { name: "GitHub \xB7 free domain", type: "github", query: "free domain", ai_only: true, enabled: false },
-  { name: "GitHub \xB7 free hosting", type: "github", query: "free hosting", ai_only: true, enabled: false },
-  // ai_only：讨论帖多，只有配置了 AI 判定时才抓
-  { name: "Hacker News \xB7 free tier", type: "hn", query: '"free tier"', ai_only: true, enabled: false },
-  { name: "Hacker News \xB7 free credits", type: "hn", query: '"free credits"', ai_only: true, enabled: false },
-  // Reddit 常拦截机房 IP，默认关闭
-  { name: "Reddit \xB7 free domain", type: "reddit", query: "free domain", enabled: false },
-  { name: "Reddit \xB7 free web hosting", type: "reddit", query: "free web hosting", enabled: false }
-];
-var DEFAULT_SETTINGS = {
-  // AI 判定（OpenAI 兼容接口）
-  ai_enabled: "true",
-  // 可选：填好接口地址、Key、模型就自动使用；不填则用关键词判定
-  ai_base_url: "https://api.openai.com/v1",
-  ai_api_key: "",
-  ai_model: "",
-  ai_batch_size: "12",
-  // 每次请求判定几条
-  ai_max_items: "60",
-  // 每次运行最多送 AI 判定几条（免费版 Worker 每次最多 50 个外部请求，别设太大）
-  ai_min_score: "60",
-  ai_review: "smart",
-  // smart：把握大的自动通过 / 拒绝，只把拿不准的交给 AI；all：全部交给 AI
-  fresh_days: "15",
-  // 发布超过这么多天的条目，前台和邮件里单独归到「较早发布」
-  ai_cache: "true",
-  // 同一个目标地址判过一次就复用结论，不重复花 AI 额度
-  // 联网搜索后端（见 search.js 的 BACKENDS）。全部默认开启：AnySearch、Keenable 免 Key 直接可用；其余填了 Key 就自动参与，没填就跳过
-  anysearch_enabled: "true",
-  anysearch_api_key: "",
-  // 可选；填了就固定走 Key
-  keenable_enabled: "true",
-  keenable_api_key: "",
-  // 可选；留空走免 Key 公共接口（按 IP 限流）
-  keenable_mode: "pro",
-  // pro / realtime
-  tavily_enabled: "true",
-  tavily_api_key: "",
-  tavily_depth: "basic",
-  // basic / advanced / fast
-  exa_enabled: "true",
-  exa_api_key: "",
-  brave_enabled: "true",
-  brave_api_key: "",
-  qianfan_enabled: "true",
-  qianfan_api_key: "",
-  volc_enabled: "true",
-  volc_api_key: "",
-  // 每个搜索后端负责哪些分类（逗号分隔的分类 key，留空 = 全部已勾选分类）：只用这些分类生成搜索词，结果也只收这些分类
-  anysearch_cats: "",
-  keenable_cats: "",
-  tavily_cats: "",
-  exa_cats: "",
-  brave_cats: "",
-  qianfan_cats: "",
-  volc_cats: "",
-  // 后台「更新源」从这些地址拉取数据源（每行一个）：freebie-radar 的 SEEDS（.ts）或本项目格式的 JSON 数组
-  source_sync_urls: "https://raw.githubusercontent.com/ZiChuanLan/freebie-radar/main/src/server/collectors/index.ts",
-  search_max_results: "10",
-  // 每个查询返回条数
-  search_queries: "",
-  // 留空：按勾选的分类自动生成中文搜索词；填写则只用你写的
-  search_max_queries: "6",
-  // 每次最多查几个词（省额度，也避免超出 Worker 外部请求上限）
-  search_lang: "zh_only",
-  // zh_first 中文优先 / zh_only 只要中文 / any 不限
-  search_block_domains: ["csdn.net", "baijiahao.baidu.com", "sohu.com", "163.com", "toutiao.com"].join("\n"),
-  // 屏蔽的站点（转载 / 搬运居多）
-  // 邮件日报
-  mail_enabled: "true",
-  // 填好账号和收件人后自动生效；未填写时跳过
-  mail_provider: "smtp",
-  // smtp / resend / brevo / cloudflare
-  smtp_host: "smtp.qq.com",
-  // QQ 邮箱默认配置
-  smtp_port: "465",
-  smtp_secure: "ssl",
-  // ssl（465）/ starttls（587）
-  smtp_user: "",
-  // 完整 QQ 邮箱，如 123456@qq.com
-  smtp_pass: "",
-  // QQ 邮箱授权码（不是 QQ 密码），存 KV
-  mail_api_key: "",
-  // Resend / Brevo 的 Key，存 KV
-  mail_from: "",
-  // 发件地址；SMTP 留空则使用 smtp_user（QQ 要求一致）
-  mail_from_name: "\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE",
-  mail_to: "",
-  // 收件人，多个用逗号分隔（最多 10 个）
-  mail_separate: "true",
-  // 每个收件人单独发一封，互相看不到地址
-  mail_subject: "\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 \u4ECA\u65E5\u767D\u5AD6",
-  mail_only_new: "true",
-  // 只发上次之后新通过的
-  mail_send_empty: "false",
-  // 没有新内容也发
-  mail_max_items: "60",
-  mail_site_url: "",
-  // 邮件底部“查看全部”链接，如 https://xxx.workers.dev
-  mail_last_sent_at: "0",
-  // 内部使用
-  // Telegram 推送（与邮件共用“上次推送时间”）
-  telegram_enabled: "false",
-  telegram_bot_token: "",
-  // 存 KV
-  telegram_chat_id: "",
-  // 存 KV
-  // Webhook 类推送（地址 / Key 存 KV），填了就推；{id}_enabled 可单独关掉
-  ...Object.fromEntries(PUSH_CHANNELS.flatMap((c) => [[c.key, ""], [`${c.id}_enabled`, "true"], ...c.secret ? [[c.secret, ""]] : []])),
-  // 抓取与过滤
-  noise_filter: "true",
-  filter_english: "true",
-  // 过滤纯英文内容（标题和正文都没有中文就丢弃）      // 跳过求助 / 吐槽类标题，不送 AI
-  allowed_obtain: "free,conditional",
-  // 允许的获取方式：free 直接白嫖 / conditional 有条件 / trial / lottery / promo / paid
-  block_rules: ["# \u6BCF\u884C\u4E00\u6761\uFF0C\u666E\u901A\u6587\u672C\u4E3A\u5173\u952E\u8BCD\uFF0C/\u6B63\u5219/i \u4E3A\u6B63\u5219\uFF1B\u547D\u4E2D\u5373\u4E22\u5F03\uFF0C\u4E0D\u9001 AI", "\u5DF2\u5931\u6548", "/\u5DF2(\u5173\u95ED|\u505C\u6B62)\u6CE8\u518C/"].join("\n"),
-  max_age_days: "180",
-  // 超过半年的消息过滤掉
-  retention_days: "15",
-  run_hour: "9",
-  // 每天第一次抓取的时间（北京时间，0-23）
-  crawl_every_hours: "6",
-  // 每隔几小时抓一次（从 run_hour 起算；24 = 每天一次）
-  mail_hours: "9,21",
-  // 每天几点推送（北京时间，逗号分隔；若刚好在抓取，抓完再推）
-  steps_per_tick: "1",
-  // 每次定时调用执行几步；免费版保持 1（10ms CPU 限制），付费版可调大   // 抓到的数据按日期存储，保留 15 天后自动清理
-  keep_undated: "false",
-  // 无发布日期的条目是否保留
-  // 访问触发与缓存
-  trigger_min_seconds: "30",
-  // 触发地址 / 访问触发的最小间隔（秒），间隔内的请求直接返回不执行
-  visit_trigger: "false",
-  // 有人打开资源页时顺带推进一步抓取（定时任务的备用方案）
-  public_cache_seconds: "60",
-  // 资源页数据缓存秒数，缓存期内不查数据库
-  // AI 福利雷达：用已开启的搜索后端按福利词 + 厂商轮流搜，结果只收「AI 免费额度 / AI 限时福利」，再经判定整理
-  aifree_radar: "true",
-  aifree_queries: DEFAULT_RADAR_QUERIES.join("\n"),
-  aifree_vendors: DEFAULT_RADAR_VENDORS.join("\n"),
-  aifree_vendors_per_run: "3",
-  // 每轮轮到几个厂商
-  aifree_days: "30",
-  // 只要最近多少天的
-  // v1.8 板块与功能
-  search_strict: "true",
-  // 搜索结果标题里必须有免费类字样（搜索来的条目质量参差，从严）
-  watch_enabled: "true",
-  // 关键词提醒：命中就单独推送，不等日报
-  watch_keywords: "",
-  // 每行一个关键词，如 Claude / 域名 / VPS
-  link_check: "true",
-  // 失效检测：每次抓取后抽查一批链接，打不开或写着已结束的标灰下沉
-  link_check_per_run: "5",
-  weekly_enabled: "false",
-  // 每周精选：每周一（可改）随推送附带本周最值的 10 条
-  weekly_weekday: "1",
-  // 0 = 周日，1 = 周一 …
-  vote_hide: "3",
-  // 「不值」比「值」多这么多票就自动隐藏（0 = 不隐藏）
-  checkin_sites: "",
-  // 签到清单，每行：名称 | 地址 | 备注
-  perks_extra: "",
-  // 学生 / 开发者专区追加，每行：名称 | 地址 | 说明 | 学生 或 开发者
-  login_max_fails: "10",
-  // 同一 IP 15 分钟内登录失败这么多次就暂时锁定
-  api_rate_per_min: "120",
-  // 公开接口每个 IP 每分钟最多请求数（0 = 不限）
-  // 分类：勾选要收集的；推送分类留空 = 与收集相同
-  enabled_categories: "domain,hosting,cloud,ai,aideal,aitool,software,dev,game,edu,ainews,news,proxy",
-  mail_categories: "",
-  simple_signup_only: "true",
-  // 只要注册简单的（邮箱 / GitHub / Google 登录）
-  topic_keywords: "",
-  // 额外主题词（每个分类已内置关键词，这里只需补充）
-  free_keywords: ["\u514D\u8D39", "\u767D\u5AD6", "0\u5143", "\u96F6\u5143", "\u6C38\u4E45\u514D\u8D39", "\u9650\u514D", "\u9650\u65F6\u514D\u8D39", "\u559C\u52A0\u4E00", "\u9001", "\u9886\u53D6", "free", "gratis", "$0", "giveaway", "100% off"].join("\n"),
-  hard_signup_keywords: ["\u4FE1\u7528\u5361", "\u94F6\u884C\u5361", "\u7ED1\u5361", "\u5B9E\u540D", "\u8EAB\u4EFD\u8BC1", "kyc", "\u624B\u673A\u9A8C\u8BC1", "\u77ED\u4FE1\u9A8C\u8BC1", "\u9080\u8BF7\u7801", "credit card", "debit card", "phone verification", "sms verification", "id verification", "passport", "invite code"].join("\n"),
-  sources: JSON.stringify(DEFAULT_SOURCES, null, 2)
-};
-var SEARCH_KEYS = ["anysearch_api_key", "keenable_api_key", "tavily_api_key", "exa_api_key", "brave_api_key", "qianfan_api_key", "volc_api_key"];
-var SECRET_KEYS = ["ai_api_key", "mail_api_key", "smtp_pass", "telegram_bot_token", ...SEARCH_KEYS, ...PUSH_KEYS];
-var KV_KEYS = ["ai_base_url", "ai_api_key", "mail_api_key", "smtp_user", "smtp_pass", "telegram_bot_token", "telegram_chat_id", ...SEARCH_KEYS, ...PUSH_KEYS];
-var kvName = (k) => `cfg:${k}`;
-var schemaReady = false;
-var SCHEMA_VER = "1.8.1";
-async function ensureSchema(env) {
-  if (schemaReady) return;
-  const cur = await env.DB.prepare("SELECT value FROM secrets WHERE key = 'meta:schema'").first().catch(() => null);
-  if (cur?.value === SCHEMA_VER) {
-    schemaReady = true;
-    return;
-  }
-  await env.DB.batch([
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
-    env.DB.prepare(`CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, title TEXT NOT NULL, url TEXT NOT NULL, source TEXT, raw_text TEXT, published_at INTEGER, fetched_at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', category TEXT, name TEXT, summary TEXT, signup TEXT, score INTEGER, judged_by TEXT, judged_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0)`),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_items_status ON items(status, published_at)"),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_items_published ON items(published_at)"),
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS runs (id INTEGER PRIMARY KEY AUTOINCREMENT, trigger TEXT, started_at INTEGER, finished_at INTEGER, stats TEXT, log TEXT)"),
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS secrets (key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
-    // 一次抓取拆成的步骤（每个数据源 / 判定批次 / 推送各一步），定时任务每分钟执行一步
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL, seq INTEGER NOT NULL, kind TEXT NOT NULL, payload TEXT, status TEXT NOT NULL DEFAULT 'pending', claimed_at INTEGER, tries INTEGER NOT NULL DEFAULT 0)"),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_jobs_run ON jobs(run_id, status, seq)"),
-    // 去重记忆：条目 15 天后会清理，但“见过”的记录保留更久，避免旧帖被重新抓取、重复推送
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, fp TEXT, seen_at INTEGER NOT NULL)"),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_seen_fp ON seen(fp)"),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_seen_at ON seen(seen_at)"),
-    // v1.8：投票、来源健康、AI 结论缓存、登录失败计数
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS votes (id TEXT NOT NULL, voter TEXT NOT NULL, v INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (id, voter))"),
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS src_health (name TEXT NOT NULL, day TEXT NOT NULL, fetched INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0, last_at INTEGER, last_err TEXT, PRIMARY KEY (name, day))"),
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS verdicts (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)"),
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS rate (k TEXT PRIMARY KEY, n INTEGER NOT NULL, reset INTEGER NOT NULL)"),
-    // v1.8.1：资源页快照（分块预先生成，访问时直接读）
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS snap (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)")
-  ]);
-  const cols = new Set(((await env.DB.prepare("PRAGMA table_info(items)").all()).results || []).map((r) => r.name));
-  const add = [["obtain", "TEXT"], ["fp", "TEXT"], ["day", "TEXT"], ["cats", "TEXT"], ["hint", "TEXT"], ["target", "TEXT"], ["sources", "TEXT"], ["extra", "TEXT"], ["expires_at", "INTEGER"], ["up", "INTEGER NOT NULL DEFAULT 0"], ["down", "INTEGER NOT NULL DEFAULT 0"], ["dead", "INTEGER NOT NULL DEFAULT 0"], ["checked_at", "INTEGER"]].filter(([c]) => !cols.has(c));
-  for (const [c, t] of add) {
-    try {
-      await env.DB.prepare(`ALTER TABLE items ADD COLUMN ${c} ${t}`).run();
-    } catch {
-    }
-  }
-  const jcols = new Set(((await env.DB.prepare("PRAGMA table_info(jobs)").all()).results || []).map((r) => r.name));
-  if (!jcols.has("claimed_at")) {
-    try {
-      await env.DB.prepare("ALTER TABLE jobs ADD COLUMN claimed_at INTEGER").run();
-    } catch {
-    }
-  }
-  if (!jcols.has("tries")) {
-    try {
-      await env.DB.prepare("ALTER TABLE jobs ADD COLUMN tries INTEGER NOT NULL DEFAULT 0").run();
-    } catch {
-    }
-  }
-  if (add.length) {
-    await env.DB.batch([
-      "CREATE INDEX IF NOT EXISTS idx_items_target ON items(target)",
-      "CREATE INDEX IF NOT EXISTS idx_items_fp ON items(fp)",
-      "CREATE INDEX IF NOT EXISTS idx_items_day ON items(day, status)",
-      "CREATE INDEX IF NOT EXISTS idx_items_fetched ON items(fetched_at)",
-      "CREATE INDEX IF NOT EXISTS idx_items_expires ON items(expires_at)",
-      "CREATE INDEX IF NOT EXISTS idx_health_name ON src_health(name, last_at)"
-    ].map((q) => env.DB.prepare(q))).catch(() => {
-    });
-  }
-  await env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('meta:schema', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(SCHEMA_VER).run();
-  schemaReady = true;
-}
-async function getSettings(env) {
-  const { results } = await env.DB.prepare("SELECT key, value FROM settings").all();
-  const s = { ...DEFAULT_SETTINGS };
-  for (const r of results || []) if (r.key in DEFAULT_SETTINGS) s[r.key] = r.value;
-  const sec = await env.DB.prepare("SELECT key, value FROM secrets").all();
-  for (const r of sec.results || []) if (KV_KEYS.includes(r.key)) s[r.key] = r.value;
-  if (env.SECRETS) Object.assign(s, await kvAll(env));
-  return s;
-}
-function maskSecret(v) {
-  if (!v) return "";
-  if (v.length <= 8) return "****";
-  return v.slice(0, 3) + "****" + v.slice(-4);
-}
-function settingsForAdmin(s) {
-  const out = { ...s };
-  for (const k of SECRET_KEYS) out[k] = maskSecret(s[k]);
-  return out;
-}
-var KV_ALL = "cfg:__all";
-var kvMemo = null;
-async function kvAll(env) {
-  if (kvMemo && kvMemo.exp > Date.now()) return kvMemo.v;
-  let v = null;
-  try {
-    v = JSON.parse(await env.SECRETS.get(KV_ALL) || "null");
-  } catch {
-  }
-  if (!v) {
-    const vals = await Promise.all(KV_KEYS.map((k) => env.SECRETS.get(kvName(k))));
-    v = {};
-    KV_KEYS.forEach((k, i) => {
-      if (vals[i] !== null) v[k] = vals[i];
-    });
-    await env.SECRETS.put(KV_ALL, JSON.stringify(v)).catch(() => {
-    });
-  }
-  kvMemo = { v, exp: Date.now() + 6e4 };
-  return v;
-}
-async function saveSettings(env, patch) {
-  const stmts = [];
-  const kvWrites = [];
-  const kvPatch = {};
-  for (const [k, v] of Object.entries(patch || {})) {
-    if (!(k in DEFAULT_SETTINGS)) continue;
-    let val = typeof v === "boolean" ? String(v) : String(v ?? "");
-    if (SECRET_KEYS.includes(k) && val.includes("****")) continue;
-    if (k === "sources") JSON.parse(val);
-    if (KV_KEYS.includes(k)) {
-      stmts.push(env.DB.prepare("DELETE FROM settings WHERE key = ?").bind(k));
-      if (env.SECRETS) {
-        kvPatch[k] = val;
-        kvWrites.push(env.SECRETS.put(kvName(k), val));
-        stmts.push(env.DB.prepare("DELETE FROM secrets WHERE key = ?").bind(k));
-      } else {
-        stmts.push(env.DB.prepare("INSERT INTO secrets (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(k, val));
-      }
-      continue;
-    }
-    stmts.push(
-      env.DB.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(k, val)
-    );
-  }
-  if (Object.keys(kvPatch).length) {
-    kvMemo = null;
-    const all = { ...await kvAll(env), ...kvPatch };
-    kvWrites.push(env.SECRETS.put(KV_ALL, JSON.stringify(all)));
-    kvMemo = { v: all, exp: Date.now() + 6e4 };
-  }
-  await Promise.all(kvWrites);
-  if (stmts.length) await env.DB.batch(stmts);
-}
-async function getBasicSettings(env) {
-  const { results } = await env.DB.prepare("SELECT key, value FROM settings").all();
-  const s = { ...DEFAULT_SETTINGS };
-  for (const r of results || []) if (r.key in DEFAULT_SETTINGS && !KV_KEYS.includes(r.key)) s[r.key] = r.value;
-  return s;
-}
-async function getMeta(env, k) {
-  const r = await env.DB.prepare("SELECT value FROM secrets WHERE key = ?").bind("meta:" + k).first();
-  return r?.value ?? null;
-}
-function setMeta(env, k, v) {
-  return env.DB.prepare("INSERT INTO secrets (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind("meta:" + k, String(v)).run();
-}
-async function getCronKey(env, regenerate = false) {
-  let k = regenerate ? null : await getMeta(env, "cron_key");
-  if (!k) {
-    k = [...crypto.getRandomValues(new Uint8Array(12))].map((b) => b.toString(16).padStart(2, "0")).join("");
-    await setMeta(env, "cron_key", k);
-  }
-  return k;
-}
-var lines = (txt) => String(txt || "").split(/\r?\n|,/).map((x) => x.trim().toLowerCase()).filter(Boolean);
-var storageMode = (env) => env.SECRETS && typeof env.SECRETS.get === "function" ? "kv" : "d1";
-async function sha256(text) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(text)));
-  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-async function getAdminHash(env) {
-  const r = await env.DB.prepare("SELECT value FROM secrets WHERE key = 'admin_pass_hash'").first();
-  return r?.value || "";
-}
-async function setAdminHash(env, password) {
-  const h = await sha256("frr:" + password);
-  await env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('admin_pass_hash', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(h).run();
-}
-async function getSitePassHash(env) {
-  const r = await env.DB.prepare("SELECT value FROM secrets WHERE key = 'site_pass_hash'").first();
-  return r?.value || "";
-}
-async function setSitePass(env, password) {
-  if (!password) return env.DB.prepare("DELETE FROM secrets WHERE key = 'site_pass_hash'").run();
-  const h = await sha256("frr-site:" + password);
-  return env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('site_pass_hash', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(h).run();
-}
-function dayOf(ts) {
-  return new Date(ts + 8 * 36e5).toISOString().slice(0, 10);
-}
-
-// src/ai.js
-function normalizeBase(u) {
-  return String(u || "").trim().replace(/\/+$/, "").replace(/\/chat\/completions$/, "").replace(/\/models$/, "");
-}
-async function listModels(baseUrl, apiKey) {
-  const r = await fetch(normalizeBase(baseUrl) + "/models", {
-    headers: { Authorization: `Bearer ${apiKey}` },
-    signal: AbortSignal.timeout(2e4)
-  });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`\u83B7\u53D6\u6A21\u578B\u5931\u8D25 HTTP ${r.status}: ${text.slice(0, 200)}`);
-  const j = JSON.parse(text);
-  const arr = j.data || j.models || (Array.isArray(j) ? j : []);
-  return arr.map((m) => typeof m === "string" ? m : m.id || m.name).filter(Boolean).sort();
-}
-async function chat({ baseUrl, apiKey, model, messages, extra = {}, temperature = 0.1, timeout = 12e4 }) {
-  if (!baseUrl || !apiKey || !model) throw new Error("AI \u672A\u914D\u7F6E\u5B8C\u6574\uFF08URL / Key / \u6A21\u578B\uFF09");
-  const body = { model, messages, temperature, ...extra };
-  const r = await fetch(normalizeBase(baseUrl) + "/chat/completions", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(timeout)
-  });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`AI HTTP ${r.status}: ${text.slice(0, 300)}`);
-  const j = JSON.parse(text);
-  const msg = j.choices?.[0]?.message || {};
-  let content = msg.content;
-  if (Array.isArray(content)) content = content.map((c) => c.text || "").join("");
-  return String(content || "");
-}
-function extractJson(text) {
-  let t = String(text || "").trim();
-  t = t.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence) t = fence[1].trim();
-  try {
-    return JSON.parse(t);
-  } catch {
-  }
-  const starts = [t.indexOf("{"), t.indexOf("[")].filter((i) => i >= 0);
-  if (!starts.length) throw new Error("\u6A21\u578B\u8F93\u51FA\u4E2D\u6CA1\u6709 JSON");
-  const start = Math.min(...starts);
-  const close = t[start] === "{" ? "}" : "]";
-  const end = t.lastIndexOf(close);
-  return JSON.parse(t.slice(start, end + 1));
-}
-var catLine = (s) => enabledCats(s).map((k) => `${k}=${CAT_MAP[k].label}`).join("\uFF0C");
-var judgePrompt = (s) => `\u4F60\u662F"\u514D\u8D39\u8D44\u6E90 / \u767D\u5AD6\u798F\u5229"\u5BA1\u6838\u5458\u3002\u9010\u6761\u5224\u65AD\u8F93\u5165\u7684\u5E16\u5B50\u6216\u9875\u9762\uFF0C\u53EA\u8F93\u51FA\u4E25\u683C JSON\u3002
-\u5173\u6CE8\u7684\u5206\u7C7B\uFF08category \u53EA\u80FD\u53D6\u8FD9\u4E9B key\uFF0C\u4E0D\u5C5E\u4E8E\u4EFB\u4F55\u4E00\u7C7B\u586B other\uFF09\uFF1A${catLine(s)}\u3002
-\u5206\u7C7B\u8BF4\u660E\uFF1Aai=\u957F\u671F\u6709\u6548\u7684\u514D\u8D39\u989D\u5EA6 / \u514D\u8D39\u6A21\u578B / \u514D\u8D39 API\uFF1Baideal=\u6709\u65F6\u6548\u7684 AI \u798F\u5229\uFF08\u9650\u65F6\u514D\u8D39\u5F00\u653E\u3001\u6CE8\u518C\u9001\u989D\u5EA6\u3001\u4F18\u60E0\u7801 / \u514D\u8D39\u6708\u3001\u516C\u76CA\u7AD9\u7B7E\u5230\uFF09\u3002
-\u5224\u5B9A\u89C4\u5219\uFF1A
-1. relevant\uFF1A\u5185\u5BB9\u786E\u5B9E\u5728\u63D0\u4F9B\u6216\u4ECB\u7ECD\u3010\u53EF\u514D\u8D39\u83B7\u5F97\u3011\u4E14\u5C5E\u4E8E\u4E0A\u8FF0\u5206\u7C7B\u7684\u8D44\u6E90\uFF08\u514D\u8D39\u989D\u5EA6\u3001\u9650\u514D\u3001\u8D60\u9001\u3001\u514D\u8D39\u5957\u9910\u7B49\uFF09\u3002\u4EE5\u4E0B\u60C5\u51B5\u4E3A false\uFF1A\u7EAF\u8BA8\u8BBA\u6216\u6C42\u52A9\u3001\u4ED8\u8D39\u4FC3\u9500\u6216\u6253\u6298\uFF08\u975E\u514D\u8D39\uFF09\u3001\u5DF2\u5931\u6548 / \u5DF2\u5173\u95ED / \u5DF2\u552E\u7F44 / \u5DF2\u9886\u5B8C\u3001\u5E7F\u544A\u6216\u660E\u663E\u4E0D\u53EF\u4FE1\u3001\u65B0\u95FB\u8D44\u8BAF\u3002
-2. simple_signup\uFF1A\u53EA\u9700\u90AE\u7BB1\uFF0C\u6216 GitHub / Google \u7B49\u7B2C\u4E09\u65B9\u8D26\u53F7\u5373\u53EF\u6CE8\u518C\u4F7F\u7528 \u2192 true\u3002\u9700\u8981\u4FE1\u7528\u5361 / PayPal \u7ED1\u5361\u3001\u624B\u673A\u53F7\u77ED\u4FE1\u9A8C\u8BC1\u3001\u5B9E\u540D / KYC / \u8EAB\u4EFD\u8BC1\u3001\u9080\u8BF7\u7801\u3001\u4EBA\u5DE5\u5BA1\u6838\u7533\u8BF7\u3001\u5148\u4ED8\u8D39 \u2192 false\u3002\u4FE1\u606F\u4E0D\u8DB3\u65F6\u6309\u5E38\u8BC6\u8C28\u614E\u5224\u65AD\uFF0C\u5E76\u5728 signup \u5B57\u6BB5\u5199\u660E\u4F9D\u636E\u3002
-3. obtain\uFF1A\u83B7\u53D6\u65B9\u5F0F\uFF0C\u53EA\u80FD\u662F free\uFF08\u76F4\u63A5\u767D\u5AD6\uFF0C\u6CE8\u518C\u5373\u7528\uFF09\u3001conditional\uFF08\u9700\u8981\u5B8C\u6210\u7B80\u5355\u4EFB\u52A1\uFF0C\u5982\u56DE\u5E16\u3001\u9080\u8BF7\u3001\u7B7E\u5230\uFF09\u3001lottery\uFF08\u62BD\u5956 / \u540D\u989D\u968F\u673A\uFF09\u3001trial\uFF08\u9650\u65F6\u8BD5\u7528\uFF0C\u5230\u671F\u6536\u8D39\uFF09\u3001promo\uFF08\u5546\u5BB6\u63A8\u5E7F\u5F15\u6D41\uFF09\u3001paid\uFF08\u9700\u8981\u4ED8\u8D39\uFF09\u3002
-4. score\uFF1A0-100 \u7684\u6574\u6570\uFF0C\u7EFC\u5408\u76F8\u5173\u6027\u3001\u6CE8\u518C\u7B80\u6613\u5EA6\u3001\u8D44\u6E90\u4EF7\u503C\u3001\u53EF\u4FE1\u5EA6\u3001\u662F\u5426\u957F\u671F\u53EF\u7528\u3002
-5. summary\uFF1A\u798F\u5229\u7C7B\u5199\u300C\u9001\u4EC0\u4E48 + \u6709\u4EC0\u4E48\u9650\u5236\u300D\uFF0C\u8D44\u8BAF\u7C7B\u5199\u4E00\u53E5\u8BDD\u8981\u70B9\uFF0C\u90FD\u4E0D\u8D85\u8FC7 40 \u5B57\uFF1Bhow\uFF1A\u600E\u4E48\u9886\uFF08\u5982\u201CGitHub \u767B\u5F55\u540E\u5728\u63A7\u5236\u53F0\u9886\u53D6\u201D\uFF09\uFF0C20 \u5B57\u5185\uFF0C\u6CA1\u6709\u5C31\u586B null\uFF1Bdeadline\uFF1A\u539F\u6587\u5199\u660E\u7684\u622A\u6B62\u65E5\u671F YYYY-MM-DD\uFF0C\u6CA1\u5199\u5C31\u586B null\uFF0C\u4E0D\u8981\u731C\u3002
-6. name\uFF1A\u670D\u52A1\u6216\u8D44\u6E90\u672C\u8EAB\u7684\u540D\u5B57\uFF08\u5982\u201CCloudflare R2\u201D\uFF09\uFF0C\u4E0D\u8981\u5E26\u7AD9\u70B9\u540D\u3001\u3010\u8F6C\u3011\u4E4B\u7C7B\u7684\u524D\u540E\u7F00\u3002
-7. \u53EA\u5BF9 ai / aideal \u4E24\u7C7B\uFF1Avendor \u586B\u63D0\u4F9B\u798F\u5229\u7684\u5382\u5546\u6216\u4EA7\u54C1\u65B9\uFF08\u5982\u201CGoogle\u201D\u201Cpacket.ai\u201D\u201C\u67D0\u67D0\u516C\u76CA\u7AD9\u201D\uFF0C\u4E0D\u77E5\u9053\u586B null\uFF09\uFF1Bperk \u586B\u798F\u5229\u7C7B\u578B\uFF0C\u53EA\u80FD\u662F \u514D\u8D39\u989D\u5EA6 / \u9650\u65F6\u514D\u8D39 / \u8D60\u91D1 / \u4F18\u60E0\u7801 / \u514D\u8D39\u4F1A\u5458 / \u516C\u76CA\u7AD9 / \u5176\u5B83\u3002\u798F\u5229\u5DF2\u7ED3\u675F\u3001\u53EA\u6709\u4ED8\u8D39\u6298\u6263\u3001\u6216\u9700\u8981\u5148\u4ED8\u8D39\u7684\uFF0Crelevant \u586B false\u3002
-\u8F93\u51FA\u683C\u5F0F\uFF1A{"results":[{"i":\u5E8F\u53F7,"relevant":true,"category":"\u5206\u7C7Bkey","obtain":"free","simple_signup":true,"signup":"\u6CE8\u518C\u8981\u6C42\uFF0C15\u5B57\u5185","name":"\u670D\u52A1\u6216\u8D44\u6E90\u540D\u79F0","summary":"\u9001\u4EC0\u4E48 + \u9650\u5236\uFF0C40\u5B57\u5185","how":"\u600E\u4E48\u9886\uFF0C20\u5B57\u5185","deadline":null,"vendor":null,"perk":null,"score":80}]}`;
-async function judgeBatch(items, s, bad = []) {
-  const payload = items.map((it, i) => ({
-    i,
-    title: it.title,
-    url: it.url,
-    source: it.source,
-    date: it.published_at ? new Date(it.published_at).toISOString().slice(0, 10) : null,
-    text: String(it.raw_text || "").slice(0, 700)
-  }));
-  const content = await chat({
-    baseUrl: s.ai_base_url,
-    apiKey: s.ai_api_key,
-    model: s.ai_model,
-    messages: [
-      { role: "system", content: judgePrompt(s) + (bad.length ? `
-\u7528\u6237\u53CD\u9988\u300C\u4E0D\u503C\u300D\u7684\u4F8B\u5B50\uFF08\u7C7B\u4F3C\u7684\u8BF7\u4ECE\u4E25\uFF0Crelevant \u586B false \u6216\u538B\u4F4E\u5206\u6570\uFF09\uFF1A
-${bad.map((t) => "- " + String(t).slice(0, 60)).join("\n")}` : "") },
-      { role: "user", content: JSON.stringify(payload) }
-    ]
-  });
-  const j = extractJson(content);
-  const results = Array.isArray(j) ? j : j.results || [];
-  const map = /* @__PURE__ */ new Map();
-  for (const r of results) if (r && Number.isInteger(Number(r.i))) map.set(Number(r.i), r);
-  return map;
-}
-
-// src/fold.js
-function foldItems(list) {
-  const by = /* @__PURE__ */ new Map(), out = [];
-  for (const it of list) {
-    let extra = [];
-    try {
-      extra = JSON.parse(it.sources || "[]");
-    } catch {
-    }
-    const key = it.target || it.url;
-    const head = by.get(key);
-    const mine = [{ n: it.source, u: it.url }, ...extra];
-    if (head) {
-      for (const x of mine) if (!head.srcs.some((y) => y.u === x.u)) head.srcs.push(x);
-      continue;
-    }
-    const { target, sources, ...rest } = it;
-    const o = { ...rest, srcs: mine };
-    by.set(key, o);
-    out.push(o);
-  }
-  for (const o of out) if (o.srcs.length < 2) delete o.srcs;
-  else o.srcs = o.srcs.slice(0, 8);
-  return out;
-}
-
 // src/mailer.js
-var esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-var recipients = (s) => [...new Set(String(s || "").split(/[,;，；\s]+/).map((x) => x.trim().toLowerCase()).filter((x) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))].slice(0, 10);
-var ymd = (t) => new Date(t + 8 * 36e5).toISOString().slice(0, 10);
-var CAT2 = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
-var OBTAIN_ZH2 = { free: "\u76F4\u63A5\u767D\u5AD6", conditional: "\u6709\u6761\u4EF6", lottery: "\u62BD\u5956", trial: "\u8BD5\u7528", promo: "\u63A8\u5E7F", paid: "\u9700\u4ED8\u8D39" };
 async function collectDigest(env, s) {
   const onlyNew = s.mail_only_new !== "false";
   const since = onlyNew ? Number(s.mail_last_sent_at) || 0 : 0;
@@ -1064,18 +1095,6 @@ async function collectDigest(env, s) {
   ).bind(since, cutoff, ...cats, limit).all();
   return foldItems(results || []);
 }
-var xo = (it) => {
-  if (it._x) return it._x;
-  let x = it.extra;
-  if (typeof x === "string") {
-    try {
-      x = JSON.parse(x);
-    } catch {
-      x = null;
-    }
-  }
-  return it._x = x || {};
-};
 function renderDigest(items, s, dateStr) {
   const groups = {};
   const freshMs = Math.max(1, Number(s.fresh_days) || 15) * 864e5;
@@ -1131,14 +1150,6 @@ ${body}
   ]) : ["\u4ECA\u5929\u6CA1\u6709\u65B0\u7684\u8D44\u6E90\u3002"]).concat(siteUrl ? [`\u67E5\u770B\u5168\u90E8\uFF1A${siteUrl}`] : []).join("\n");
   return { html: html2, text };
 }
-var b642 = (str) => {
-  const bytes = new TextEncoder().encode(str);
-  let bin = "";
-  for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode(...bytes.subarray(i, i + 32768));
-  return btoa(bin);
-};
-var wrap76 = (s) => s.replace(/.{1,76}/g, "$&\r\n").trim();
-var encHeader = (s) => `=?UTF-8?B?${b642(s)}?=`;
 function buildMime({ fromName, from, to, subject, html: html2, text }) {
   const toList = Array.isArray(to) ? to : [to];
   const boundary = "b_" + crypto.randomUUID().replace(/-/g, "");
@@ -1230,7 +1241,6 @@ async function previewDigest(env) {
   const items = await collectDigest(env, s);
   return renderDigest(items, s, ymd(Date.now())).html;
 }
-var tgEsc = (x) => String(x ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
 async function sendTelegram(s, items, title) {
   if (!s.telegram_bot_token || !s.telegram_chat_id) throw new Error("\u672A\u586B\u5199 Telegram Bot Token \u6216 Chat ID");
   const blocks = items.map((it) => {
@@ -1316,9 +1326,44 @@ async function sendWeekly(env, { channel, test = false } = {}) {
   if (!items.length) return { skipped: "\u8FD9\u5468\u6CA1\u6709\u53EF\u9009\u7684\u6761\u76EE" };
   return deliver(env, s, { kind: "weekly", title: `${test ? "[\u6D4B\u8BD5] " : ""}\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 \u672C\u5468\u7CBE\u9009 ${ymd(Date.now())}\uFF08${items.length} \u6761\uFF09`, items, channel, sub: "\u8FD1 7 \u5929\u7EFC\u5408 AI \u8BC4\u5206\u3001\u6295\u7968\u548C\u6765\u6E90\u6570\u6311\u51FA\u7684 10 \u6761" });
 }
+var esc, recipients, ymd, CAT2, OBTAIN_ZH2, xo, b642, wrap76, encHeader, tgEsc;
+var init_mailer = __esm({
+  "src/mailer.js"() {
+    init_db();
+    init_fold();
+    init_categories();
+    init_push();
+    init_extras();
+    esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    recipients = (s) => [...new Set(String(s || "").split(/[,;，；\s]+/).map((x) => x.trim().toLowerCase()).filter((x) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))].slice(0, 10);
+    ymd = (t) => new Date(t + 8 * 36e5).toISOString().slice(0, 10);
+    CAT2 = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
+    OBTAIN_ZH2 = { free: "\u76F4\u63A5\u767D\u5AD6", conditional: "\u6709\u6761\u4EF6", lottery: "\u62BD\u5956", trial: "\u8BD5\u7528", promo: "\u63A8\u5E7F", paid: "\u9700\u4ED8\u8D39" };
+    xo = (it) => {
+      if (it._x) return it._x;
+      let x = it.extra;
+      if (typeof x === "string") {
+        try {
+          x = JSON.parse(x);
+        } catch {
+          x = null;
+        }
+      }
+      return it._x = x || {};
+    };
+    b642 = (str) => {
+      const bytes = new TextEncoder().encode(str);
+      let bin = "";
+      for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode(...bytes.subarray(i, i + 32768));
+      return btoa(bin);
+    };
+    wrap76 = (s) => s.replace(/.{1,76}/g, "$&\r\n").trim();
+    encHeader = (s) => `=?UTF-8?B?${b642(s)}?=`;
+    tgEsc = (x) => String(x ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  }
+});
 
 // src/search.js
-var CJK = /[\u4e00-\u9fff]/;
 function backendCats(s, id) {
   const all = enabledCats(s);
   const own = String(s[`${id}_cats`] || "").split(",").map((x) => x.trim()).filter(Boolean);
@@ -1345,7 +1390,6 @@ async function postJson(url, headers, body, name) {
   if (!r.ok) throw new Error(`${name} HTTP ${r.status}: ${text.slice(0, 200)}`);
   return JSON.parse(text);
 }
-var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function runQueries(queries, fn, name, concurrency = 4) {
   const settled = [];
   const once = async (q) => {
@@ -1368,133 +1412,6 @@ async function runQueries(queries, fn, name, concurrency = 4) {
   const errors = settled.filter((x) => x.status === "rejected").map((x) => x.reason?.message);
   return { items: ok.flatMap((x) => x.value), errors };
 }
-var sinceDate = (days) => new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
-var pick = (r) => ({ title: r.title || r.url, url: r.url, published_at: r.published_at || null, raw_text: String(r.raw_text || "").slice(0, 1500) });
-var parseTime = (v) => {
-  if (!v) return null;
-  const t = Date.parse(v);
-  return Number.isFinite(t) ? t : null;
-};
-var BACKENDS = [
-  {
-    id: "anysearch",
-    name: "AnySearch",
-    keyless: true,
-    zh: true,
-    free: "\u514D Key \u6BCF\u5929 1000 \u6B21\uFF08\u6309 IP\uFF09\uFF1B\u6CE8\u518C\u540E\u6BCF\u5929 1000 \u6B21",
-    signup: "https://www.anysearch.com",
-    note: "\u4E2D\u6587\u7ED3\u679C\u597D\uFF08zone=cn\uFF09\uFF0C\u63A8\u8350",
-    async search(s, query, days) {
-      const headers = s.anysearch_api_key ? { Authorization: `Bearer ${s.anysearch_api_key}` } : {};
-      const j = await postJson("https://api.anysearch.com/v1/search", headers, { query, max_results: Math.min(10, Number(s.search_max_results) || 10), zone: "cn" }, "AnySearch");
-      if (j.code && j.code !== 0) throw new Error(`AnySearch ${j.code}: ${String(j.message || "").slice(0, 100)}`);
-      return (j.data?.results || []).map((r) => pick({ title: r.title, url: r.url, raw_text: r.snippet || r.content }));
-    }
-  },
-  {
-    id: "keenable",
-    name: "Keenable",
-    keyless: true,
-    free: "\u514D Key \u6BCF\u5C0F\u65F6 1000 \u6B21\uFF08\u6309 IP\uFF09\uFF1B\u6CE8\u518C\u540E\u6BCF\u6708 10 \u4E07\u6B21",
-    signup: "https://keenable.ai",
-    note: "\u652F\u6301\u6309\u53D1\u5E03\u65F6\u95F4\u8FC7\u6EE4",
-    async search(s, query, days) {
-      const key = s.keenable_api_key;
-      const url = key ? "https://api.keenable.ai/v1/search" : "https://api.keenable.ai/v1/search/public";
-      const headers = key ? { "X-API-Key": key } : { "X-Keenable-Title": "Free Resource Radar" };
-      const body = { query, mode: s.keenable_mode || "pro", max_results: Math.min(50, Number(s.search_max_results) || 10), published_after: `${days}d`, snippet_max_length: 800, disable_cards: true };
-      const ex = blockList(s);
-      if (ex.length) body.exclude_domains = ex;
-      const j = await postJson(url, headers, body, "Keenable");
-      return (j.results || []).map((r) => pick({ title: r.title, url: r.url, published_at: parseTime(r.published_at), raw_text: r.snippet }));
-    }
-  },
-  {
-    id: "tavily",
-    name: "Tavily",
-    keyless: false,
-    free: "\u6BCF\u6708 1000 credits\uFF0C\u4E0D\u7528\u7ED1\u5361",
-    signup: "https://app.tavily.com",
-    note: "\u4E2D\u6587\u67E5\u8BE2\u81EA\u52A8 language=zh-cn",
-    async search(s, query, days) {
-      const body = { query, search_depth: s.tavily_depth || "basic", max_results: Math.min(20, Number(s.search_max_results) || 10), topic: "general", auto_parameters: false, start_date: sinceDate(days), filter_by_published_date: true, include_published_date: true, include_answer: false, include_raw_content: false };
-      const ex = blockList(s).slice(0, 150);
-      if (ex.length) body.exclude_domains = ex;
-      if (CJK.test(query) && (s.search_lang || "zh_only") !== "any") {
-        body.language = "zh-cn";
-        if ((s.search_lang || "zh_only") === "zh_only") body.filter_by_language = true;
-      }
-      const j = await postJson("https://api.tavily.com/search", { Authorization: `Bearer ${s.tavily_api_key}` }, body, "Tavily");
-      return (j.results || []).map((r) => pick({ title: r.title, url: r.url, published_at: parseTime(r.published_date), raw_text: r.content }));
-    }
-  },
-  {
-    id: "exa",
-    name: "Exa",
-    keyless: false,
-    free: "\u6CE8\u518C\u9001 $10\uFF0C\u6BCF\u6708 1 \u65E5\u91CD\u7F6E\u4E3A $10\uFF08\u7EA6 1400 \u6B21 lite \u641C\u7D22\uFF09",
-    signup: "https://dashboard.exa.ai",
-    note: "",
-    async search(s, query, days) {
-      const body = { query, type: "lite", numResults: Math.min(10, Number(s.search_max_results) || 10), startPublishedDate: new Date(Date.now() - days * 864e5).toISOString(), contents: { highlights: true } };
-      const j = await postJson("https://api.exa.ai/search", { "x-api-key": s.exa_api_key }, body, "Exa");
-      return (j.results || []).map((r) => pick({ title: r.title, url: r.url, published_at: parseTime(r.publishedDate), raw_text: (r.highlights || []).join(" ") || r.text }));
-    }
-  },
-  {
-    id: "brave",
-    name: "Brave Search",
-    keyless: false,
-    free: "\u6BCF\u6708\u81EA\u52A8\u8D60\u9001 $5 \u989D\u5EA6\uFF08\u7EA6 1000 \u6B21\uFF09",
-    signup: "https://api-dashboard.search.brave.com",
-    note: "",
-    async search(s, query, days) {
-      const fresh = days <= 1 ? "pd" : days <= 7 ? "pw" : days <= 31 ? "pm" : "py";
-      const qs = new URLSearchParams({ q: query, count: String(Math.min(20, Number(s.search_max_results) || 10)), freshness: fresh });
-      if (CJK.test(query)) qs.set("search_lang", "zh-hans");
-      const r = await fetch(`https://api.search.brave.com/res/v1/web/search?${qs}`, { headers: { "X-Subscription-Token": s.brave_api_key, Accept: "application/json" }, signal: AbortSignal.timeout(3e4) });
-      const text = await r.text();
-      if (!r.ok) throw new Error(`Brave HTTP ${r.status}: ${text.slice(0, 200)}`);
-      const j = JSON.parse(text);
-      return (j.web?.results || []).map((x) => pick({ title: x.title, url: x.url, raw_text: [x.description, ...x.extra_snippets || []].join(" ").replace(/<[^>]+>/g, "") }));
-    }
-  },
-  {
-    id: "qianfan",
-    name: "\u767E\u5EA6\u5343\u5E06\u641C\u7D22",
-    keyless: false,
-    zh: true,
-    free: "\u6BCF\u6708 1500 \u6B21\uFF08\u7EA6\u6BCF\u5929 50 \u6B21\uFF09\uFF0C\u9700\u5B9E\u540D\u5F00\u901A",
-    signup: "https://cloud.baidu.cn/doc/qianfan/s/nmweljpt3",
-    note: "\u767E\u5EA6\u4E2D\u6587\u7ED3\u679C",
-    async search(s, query, days) {
-      const recency = days <= 7 ? "week" : days <= 31 ? "month" : days <= 183 ? "semiyear" : "year";
-      const body = { messages: [{ role: "user", content: query }], search_source: "baidu_search_v2", edition: "standard", resource_type_filter: [{ type: "web", top_k: Math.min(20, Number(s.search_max_results) || 10) }], search_recency_filter: recency };
-      const j = await postJson("https://qianfan.baidubce.com/v2/ai_search/web_search", { Authorization: `Bearer ${s.qianfan_api_key}` }, body, "\u767E\u5EA6\u5343\u5E06");
-      if (j.code && !j.references) throw new Error(`\u767E\u5EA6\u5343\u5E06 ${j.code}: ${String(j.message || "").slice(0, 100)}`);
-      return (j.references || []).map((r) => pick({ title: r.title, url: r.url, published_at: parseTime(r.date), raw_text: r.snippet || r.content }));
-    }
-  },
-  {
-    id: "volc",
-    name: "\u706B\u5C71\u5F15\u64CE\u8054\u7F51\u641C\u7D22",
-    keyless: false,
-    zh: true,
-    free: "\u6BCF\u6708 500 \u6B21\uFF0C\u9700\u5F00\u901A\u670D\u52A1",
-    signup: "https://docs.volcengine.com/docs/networked-search/networked-search?lang=zh",
-    note: "\u6296\u97F3 / \u5934\u6761\u7CFB\u4E2D\u6587\u7ED3\u679C",
-    async search(s, query, days) {
-      const range = days <= 1 ? "OneDay" : days <= 7 ? "OneWeek" : days <= 31 ? "OneMonth" : "OneYear";
-      const body = { Query: query.slice(0, 100), SearchType: "web", Count: Math.min(50, Number(s.search_max_results) || 10), TimeRange: range, Filter: { NeedUrl: true }, QueryControl: { QueryRewrite: false } };
-      const j = await postJson("https://open.feedcoopapi.com/search_api/web_search", { Authorization: `Bearer ${s.volc_api_key}` }, body, "\u706B\u5C71\u5F15\u64CE");
-      const err = j.ResponseMetadata?.Error;
-      if (err) throw new Error(`\u706B\u5C71\u5F15\u64CE ${err.Code || ""}: ${String(err.Message || "").slice(0, 100)}`);
-      return (j.Result?.WebResults || []).map((r) => pick({ title: r.Title, url: r.Url, published_at: parseTime(r.PublishTime), raw_text: r.Summary || r.Snippet }));
-    }
-  }
-];
-var BACKEND_MAP = Object.fromEntries(BACKENDS.map((b) => [b.id, b]));
-var backendReady = (s, b) => s[`${b.id}_enabled`] === "true" && (b.keyless || !!s[`${b.id}_api_key`]);
 async function runBackend(s, id, maxAgeDays) {
   const b = BACKEND_MAP[id];
   if (!b) throw new Error(`\u672A\u77E5\u641C\u7D22\u540E\u7AEF\uFF1A${id}`);
@@ -1513,15 +1430,152 @@ async function searchForDiscovery(s, queries) {
   await Promise.all(jobs);
   return { results, errors };
 }
+var CJK, sleep, sinceDate, pick, parseTime, BACKENDS, BACKEND_MAP, backendReady;
+var init_search = __esm({
+  "src/search.js"() {
+    init_db();
+    init_categories();
+    CJK = /[\u4e00-\u9fff]/;
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    sinceDate = (days) => new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+    pick = (r) => ({ title: r.title || r.url, url: r.url, published_at: r.published_at || null, raw_text: String(r.raw_text || "").slice(0, 1500) });
+    parseTime = (v) => {
+      if (!v) return null;
+      const t = Date.parse(v);
+      return Number.isFinite(t) ? t : null;
+    };
+    BACKENDS = [
+      {
+        id: "anysearch",
+        name: "AnySearch",
+        keyless: true,
+        zh: true,
+        free: "\u514D Key \u6BCF\u5929 1000 \u6B21\uFF08\u6309 IP\uFF09\uFF1B\u6CE8\u518C\u540E\u6BCF\u5929 1000 \u6B21",
+        signup: "https://www.anysearch.com",
+        note: "\u4E2D\u6587\u7ED3\u679C\u597D\uFF08zone=cn\uFF09\uFF0C\u63A8\u8350",
+        async search(s, query, days) {
+          const headers = s.anysearch_api_key ? { Authorization: `Bearer ${s.anysearch_api_key}` } : {};
+          const j = await postJson("https://api.anysearch.com/v1/search", headers, { query, max_results: Math.min(10, Number(s.search_max_results) || 10), zone: "cn" }, "AnySearch");
+          if (j.code && j.code !== 0) throw new Error(`AnySearch ${j.code}: ${String(j.message || "").slice(0, 100)}`);
+          return (j.data?.results || []).map((r) => pick({ title: r.title, url: r.url, raw_text: r.snippet || r.content }));
+        }
+      },
+      {
+        id: "keenable",
+        name: "Keenable",
+        keyless: true,
+        free: "\u514D Key \u6BCF\u5C0F\u65F6 1000 \u6B21\uFF08\u6309 IP\uFF09\uFF1B\u6CE8\u518C\u540E\u6BCF\u6708 10 \u4E07\u6B21",
+        signup: "https://keenable.ai",
+        note: "\u652F\u6301\u6309\u53D1\u5E03\u65F6\u95F4\u8FC7\u6EE4",
+        async search(s, query, days) {
+          const key = s.keenable_api_key;
+          const url = key ? "https://api.keenable.ai/v1/search" : "https://api.keenable.ai/v1/search/public";
+          const headers = key ? { "X-API-Key": key } : { "X-Keenable-Title": "Free Resource Radar" };
+          const body = { query, mode: s.keenable_mode || "pro", max_results: Math.min(50, Number(s.search_max_results) || 10), published_after: `${days}d`, snippet_max_length: 800, disable_cards: true };
+          const ex = blockList(s);
+          if (ex.length) body.exclude_domains = ex;
+          const j = await postJson(url, headers, body, "Keenable");
+          return (j.results || []).map((r) => pick({ title: r.title, url: r.url, published_at: parseTime(r.published_at), raw_text: r.snippet }));
+        }
+      },
+      {
+        id: "tavily",
+        name: "Tavily",
+        keyless: false,
+        free: "\u6BCF\u6708 1000 credits\uFF0C\u4E0D\u7528\u7ED1\u5361",
+        signup: "https://app.tavily.com",
+        note: "\u4E2D\u6587\u67E5\u8BE2\u81EA\u52A8 language=zh-cn",
+        async search(s, query, days) {
+          const body = { query, search_depth: s.tavily_depth || "basic", max_results: Math.min(20, Number(s.search_max_results) || 10), topic: "general", auto_parameters: false, start_date: sinceDate(days), filter_by_published_date: true, include_published_date: true, include_answer: false, include_raw_content: false };
+          const ex = blockList(s).slice(0, 150);
+          if (ex.length) body.exclude_domains = ex;
+          if (CJK.test(query) && (s.search_lang || "zh_only") !== "any") {
+            body.language = "zh-cn";
+            if ((s.search_lang || "zh_only") === "zh_only") body.filter_by_language = true;
+          }
+          const j = await postJson("https://api.tavily.com/search", { Authorization: `Bearer ${s.tavily_api_key}` }, body, "Tavily");
+          return (j.results || []).map((r) => pick({ title: r.title, url: r.url, published_at: parseTime(r.published_date), raw_text: r.content }));
+        }
+      },
+      {
+        id: "exa",
+        name: "Exa",
+        keyless: false,
+        free: "\u6CE8\u518C\u9001 $10\uFF0C\u6BCF\u6708 1 \u65E5\u91CD\u7F6E\u4E3A $10\uFF08\u7EA6 1400 \u6B21 lite \u641C\u7D22\uFF09",
+        signup: "https://dashboard.exa.ai",
+        note: "",
+        async search(s, query, days) {
+          const body = { query, type: "lite", numResults: Math.min(10, Number(s.search_max_results) || 10), startPublishedDate: new Date(Date.now() - days * 864e5).toISOString(), contents: { highlights: true } };
+          const j = await postJson("https://api.exa.ai/search", { "x-api-key": s.exa_api_key }, body, "Exa");
+          return (j.results || []).map((r) => pick({ title: r.title, url: r.url, published_at: parseTime(r.publishedDate), raw_text: (r.highlights || []).join(" ") || r.text }));
+        }
+      },
+      {
+        id: "brave",
+        name: "Brave Search",
+        keyless: false,
+        free: "\u6BCF\u6708\u81EA\u52A8\u8D60\u9001 $5 \u989D\u5EA6\uFF08\u7EA6 1000 \u6B21\uFF09",
+        signup: "https://api-dashboard.search.brave.com",
+        note: "",
+        async search(s, query, days) {
+          const fresh = days <= 1 ? "pd" : days <= 7 ? "pw" : days <= 31 ? "pm" : "py";
+          const qs = new URLSearchParams({ q: query, count: String(Math.min(20, Number(s.search_max_results) || 10)), freshness: fresh });
+          if (CJK.test(query)) qs.set("search_lang", "zh-hans");
+          const r = await fetch(`https://api.search.brave.com/res/v1/web/search?${qs}`, { headers: { "X-Subscription-Token": s.brave_api_key, Accept: "application/json" }, signal: AbortSignal.timeout(3e4) });
+          const text = await r.text();
+          if (!r.ok) throw new Error(`Brave HTTP ${r.status}: ${text.slice(0, 200)}`);
+          const j = JSON.parse(text);
+          return (j.web?.results || []).map((x) => pick({ title: x.title, url: x.url, raw_text: [x.description, ...x.extra_snippets || []].join(" ").replace(/<[^>]+>/g, "") }));
+        }
+      },
+      {
+        id: "qianfan",
+        name: "\u767E\u5EA6\u5343\u5E06\u641C\u7D22",
+        keyless: false,
+        zh: true,
+        free: "\u6BCF\u6708 1500 \u6B21\uFF08\u7EA6\u6BCF\u5929 50 \u6B21\uFF09\uFF0C\u9700\u5B9E\u540D\u5F00\u901A",
+        signup: "https://cloud.baidu.cn/doc/qianfan/s/nmweljpt3",
+        note: "\u767E\u5EA6\u4E2D\u6587\u7ED3\u679C",
+        async search(s, query, days) {
+          const recency = days <= 7 ? "week" : days <= 31 ? "month" : days <= 183 ? "semiyear" : "year";
+          const body = { messages: [{ role: "user", content: query }], search_source: "baidu_search_v2", edition: "standard", resource_type_filter: [{ type: "web", top_k: Math.min(20, Number(s.search_max_results) || 10) }], search_recency_filter: recency };
+          const j = await postJson("https://qianfan.baidubce.com/v2/ai_search/web_search", { Authorization: `Bearer ${s.qianfan_api_key}` }, body, "\u767E\u5EA6\u5343\u5E06");
+          if (j.code && !j.references) throw new Error(`\u767E\u5EA6\u5343\u5E06 ${j.code}: ${String(j.message || "").slice(0, 100)}`);
+          return (j.references || []).map((r) => pick({ title: r.title, url: r.url, published_at: parseTime(r.date), raw_text: r.snippet || r.content }));
+        }
+      },
+      {
+        id: "volc",
+        name: "\u706B\u5C71\u5F15\u64CE\u8054\u7F51\u641C\u7D22",
+        keyless: false,
+        zh: true,
+        free: "\u6BCF\u6708 500 \u6B21\uFF0C\u9700\u5F00\u901A\u670D\u52A1",
+        signup: "https://docs.volcengine.com/docs/networked-search/networked-search?lang=zh",
+        note: "\u6296\u97F3 / \u5934\u6761\u7CFB\u4E2D\u6587\u7ED3\u679C",
+        async search(s, query, days) {
+          const range = days <= 1 ? "OneDay" : days <= 7 ? "OneWeek" : days <= 31 ? "OneMonth" : "OneYear";
+          const body = { Query: query.slice(0, 100), SearchType: "web", Count: Math.min(50, Number(s.search_max_results) || 10), TimeRange: range, Filter: { NeedUrl: true }, QueryControl: { QueryRewrite: false } };
+          const j = await postJson("https://open.feedcoopapi.com/search_api/web_search", { Authorization: `Bearer ${s.volc_api_key}` }, body, "\u706B\u5C71\u5F15\u64CE");
+          const err2 = j.ResponseMetadata?.Error;
+          if (err2) throw new Error(`\u706B\u5C71\u5F15\u64CE ${err2.Code || ""}: ${String(err2.Message || "").slice(0, 100)}`);
+          return (j.Result?.WebResults || []).map((r) => pick({ title: r.Title, url: r.Url, published_at: parseTime(r.PublishTime), raw_text: r.Summary || r.Snippet }));
+        }
+      }
+    ];
+    BACKEND_MAP = Object.fromEntries(BACKENDS.map((b) => [b.id, b]));
+    backendReady = (s, b) => s[`${b.id}_enabled`] === "true" && (b.keyless || !!s[`${b.id}_api_key`]);
+  }
+});
 
 // src/rules.js
-var NOISE_TITLE = /^(怎样|怎么|如何|哪里|哪个|为什么|为何)|请问|有没有|求推荐|求一个|哪里(有|能)|值得买吗|怎么样[?？]|不够用|用完了|失效了|吐槽|踩坑|后悔|失望|谁有|求个|求购|哪有|多少钱|求助|求带|有人吗|有人知道|被封|封号|跑路|[?？]\s*$/;
+function isProxyTopic(text) {
+  return PROXY_TOPIC.test(String(text || ""));
+}
 function isNoiseTitle(title) {
   const t = String(title || "");
   if (/^(如何|怎么|怎样)/.test(t) && /教程|攻略|步骤|指南/.test(t) && !/请问|求助|有没有|失效|[?？]/.test(t)) return false;
   return NOISE_TITLE.test(t);
 }
-var stripNegated = (t) => String(t || "").replace(/(无需|不需要|不需|不用|无须|免|不必|没有|no|without)\s*(绑定|绑)?\s*(信用卡|银行卡|绑卡|卡|实名|手机号?验证|手机号|短信验证|邀请码|充值|付费|kyc|credit card|phone verification)/gi, " ");
 function guessObtain(title, summary = "") {
   const t = stripNegated(`${title} ${summary}`);
   if (/抽奖|抽\s*\d+\s*(份|个|名|位)|抽取|随机送|开奖|中奖|摇号|giveaway/i.test(t)) return "lottery";
@@ -1556,8 +1610,6 @@ function matchBlock(rules, text) {
 function titleFingerprint(title) {
   return String(title || "").toLowerCase().replace(/【[^】]*】|\[[^\]]*\]|\([^)]*\)|（[^）]*）/g, "").replace(/https?:\/\/\S+/g, "").replace(/[^\p{L}\p{N}]+/gu, "").slice(0, 60);
 }
-var SITE_TAIL = /(社区|论坛|博客|官网|网站|频道|之家|周刊|日报|资讯|新闻网|科技|分享|软件|吧|网|blog|news|forum|community)$/i;
-var KNOWN_TAIL = /\s*[-_|｜–—]\s*(腾讯云开发者社区(-腾讯云)?|阿里云开发者社区|博客园|CSDN博客|CSDN|知乎专栏|知乎|掘金|简书|51CTO博客|开源中国|哔哩哔哩|bilibili|今日头条|网易|搜狐|新浪科技|IT之家|cnBeta\.COM|cnBeta)\s*$/i;
 function cleanTitle(title, source = "", url = "") {
   let t = String(title || "").replace(/[\u3000\s]+/g, " ").trim();
   t = t.replace(/^(【\s*(转|转载|转帖|原创|分享|置顶|推荐)\s*】|\[\s*(转|转载|原创|分享|置顶)\s*\]|(转载|转帖)[:：])\s*/, "");
@@ -1579,11 +1631,6 @@ function cleanTitle(title, source = "", url = "") {
   }
   return t.replace(/\s*[（(](转载|转|原创)[)）]\s*$/, "").trim();
 }
-var BJ = 8 * 36e5;
-var endOfDay = (y, m, d) => {
-  const t = Date.UTC(y, m - 1, d, 23, 59, 59) - BJ;
-  return Number.isFinite(t) && m >= 1 && m <= 12 && d >= 1 && d <= 31 ? t : null;
-};
 function extractDeadline(text, publishedAt, now = Date.now()) {
   const s = String(text || "").slice(0, 1500);
   if (!s) return null;
@@ -1632,10 +1679,23 @@ function firstSentence(text, n = 90) {
   const s = m && m[1].length <= n ? m[1] : t.slice(0, n);
   return s.length < t.length && !/[。！？!?；;]$/.test(s) ? s.replace(/[，,、\s]+$/, "") + "\u2026" : s;
 }
+var NOISE_TITLE, PROXY_TOPIC, stripNegated, SITE_TAIL, KNOWN_TAIL, BJ, endOfDay;
+var init_rules = __esm({
+  "src/rules.js"() {
+    NOISE_TITLE = /^(怎样|怎么|如何|哪里|哪个|为什么|为何)|请问|有没有|求推荐|求一个|哪里(有|能)|值得买吗|怎么样[?？]|不够用|用完了|失效了|吐槽|踩坑|后悔|失望|谁有|求个|求购|哪有|多少钱|求助|求带|有人吗|有人知道|被封|封号|跑路|[?？]\s*$/;
+    PROXY_TOPIC = /梯子|翻墙|科学上网|机场|节点订阅|免费节点|v2ray|vless|vmess|trojan|shadowsocks|ssr?订阅|clash\s*(订阅|节点|meta)|代理节点|proxy\s*(pool|list|node)/i;
+    stripNegated = (t) => String(t || "").replace(/(无需|不需要|不需|不用|无须|免|不必|没有|no|without)\s*(绑定|绑)?\s*(信用卡|银行卡|绑卡|卡|实名|手机号?验证|手机号|短信验证|邀请码|充值|付费|kyc|credit card|phone verification)/gi, " ");
+    SITE_TAIL = /(社区|论坛|博客|官网|网站|频道|之家|周刊|日报|资讯|新闻网|科技|分享|软件|吧|网|blog|news|forum|community)$/i;
+    KNOWN_TAIL = /\s*[-_|｜–—]\s*(腾讯云开发者社区(-腾讯云)?|阿里云开发者社区|博客园|CSDN博客|CSDN|知乎专栏|知乎|掘金|简书|51CTO博客|开源中国|哔哩哔哩|bilibili|今日头条|网易|搜狐|新浪科技|IT之家|cnBeta\.COM|cnBeta)\s*$/i;
+    BJ = 8 * 36e5;
+    endOfDay = (y, m, d) => {
+      const t = Date.UTC(y, m - 1, d, 23, 59, 59) - BJ;
+      return Number.isFinite(t) && m >= 1 && m <= 12 && d >= 1 && d <= 31 ? t : null;
+    };
+  }
+});
 
 // src/crawler.js
-var UA = "Mozilla/5.0 (compatible; FreeResourceRadar/1.0; +https://workers.cloudflare.com)";
-var DAY2 = 864e5;
 async function getText(url, headers = {}, maxBytes = 0) {
   const r = await fetch(url, {
     headers: { "User-Agent": UA, Accept: "*/*", ...headers },
@@ -1664,8 +1724,6 @@ async function getText(url, headers = {}, maxBytes = 0) {
   }
   return new TextDecoder().decode(buf);
 }
-var getJson = async (url, headers) => JSON.parse(await getText(url, { Accept: "application/json", ...headers }));
-var ENT = { nbsp: " ", quot: '"', apos: "'", lt: "<", gt: ">", amp: "&" };
 function decodeEntities(s) {
   s = String(s || "");
   if (!s.includes("&")) return s;
@@ -1711,11 +1769,6 @@ function targetKey(u) {
     return String(u || "").slice(0, 300);
   }
 }
-var mergeSources = (a, b) => {
-  const out = [...a];
-  for (const x of b) if (!out.some((y) => y.u === x.u)) out.push(x);
-  return out.slice(0, 12);
-};
 function parseTelegram(html2, ch) {
   const out = [];
   const parts = html2.split('class="tgme_widget_message_wrap');
@@ -1796,7 +1849,6 @@ function parseFeed(xml) {
   for (const x of out) if (x.target && n[x.target] > 1) x.target = null;
   return out;
 }
-var SKIP_TARGET = /(^|\.)(twitter\.com|x\.com|facebook\.com|weibo\.com|t\.me|telegram\.me|gravatar\.com|creativecommons\.org|feedburner\.com|wordpress\.org|wp\.com|qr\.|github\.com$)/i;
 function contentTarget(html2, self) {
   if (!html2) return null;
   let own = "";
@@ -1836,7 +1888,6 @@ async function hashId(s) {
   const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(s));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-var GH = { "User-Agent": "Mozilla/5.0 (compatible; FreeResourceRadar/1.0)" };
 async function ghCommits(repo) {
   const xml = await getText(`https://github.com/${repo}/commits.atom`, { ...GH, Accept: "application/atom+xml" }, 8e4);
   const out = [];
@@ -1866,9 +1917,6 @@ function addedLines(patch, pathRe) {
   }
   return out;
 }
-var MD_LINK = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
-var GENERIC_LINK = /^(注册链接|注册|链接|官网|官网链接|地址|入口|官方入口|官方来源|官方链接|官方页|官方页面|官方文档|文档|公告|活动公告|活动页|专属链接|点击|访问|前往|link|website|docs|官方|source|源码|github|详情|官方免费层|免费层|试用|限时|限时免费|永久免费|试用 \/ 限时权益|有效|待核实|已失效)$/i;
-var mdPlain = (x) => decodeEntities(x.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(MD_LINK, "$1").replace(/<[^>]+>/g, " ").replace(/[*_`>#]|:[a-z0-9_+-]+:/g, "").replace(/\s+/g, " ")).trim();
 function lineToItem(line2) {
   const l = line2.trim();
   if (l.length < 6 || /^#|^\|?\s*:?-{3}|^<!--|^>|^(POST|GET|curl)\s/i.test(l)) return null;
@@ -1899,26 +1947,13 @@ function lineToItem(line2) {
   if (name.length < 2) return null;
   return { title: (summary ? `${name}\uFF1A${summary}` : name).slice(0, 160), name, url: pick2.u, summary: summary.slice(0, 200), raw_text: mdPlain(l).slice(0, 600) };
 }
-async function countNodes(url) {
-  const t = await getText(url, { Accept: "text/plain, */*" }, 15e4);
-  const more = t.length >= 149e3;
-  if (/^\s*(proxies:|port:|mixed-port:|allow-lan:|mode:|#)/m.test(t.slice(0, 3e3))) return { n: (t.match(/^\s*-\s*(\{\s*)?name:/gm) || []).length, more };
-  let body = t;
-  if (!/:\/\//.test(t.slice(0, 500))) {
-    try {
-      body = atob(t.replace(/\s+/g, "").slice(0, more ? Math.floor(t.replace(/\s+/g, "").length / 4) * 4 : void 0));
-    } catch {
-      body = t;
-    }
-  }
-  return { n: (body.match(/^(vmess|vless|trojan|ss|ssr|hysteria2?|hy2|tuic|wireguard|socks5?|http|https|anytls):\/\//gim) || []).length, more };
-}
 async function fetchRepo(src, env) {
   const repo = String(src.repo || "").replace(/^https?:\/\/github\.com\//, "").replace(/\.git$|\/+$/g, "");
   if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error("repo \u5E94\u5199\u6210 owner/name");
   const commits = await ghCommits(repo);
   if (!commits.length) return [];
-  if (src.mode === "sub") {
+  if (src.mode === "sub") return [];
+  if (false) {
     const c0 = commits[0];
     const subs = (src.subs || []).slice(0, 6);
     let nodes = null, more = false;
@@ -2069,7 +2104,6 @@ async function fetchSource(src, cutoff, env) {
       return parseFeed(await getText(src.url, { Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*" }, 12e4));
   }
 }
-var CJK2 = /[\u4e00-\u9fff]/;
 function isBlocked(u, domains) {
   if (!domains.length) return false;
   let host = "";
@@ -2080,8 +2114,6 @@ function isBlocked(u, domains) {
   }
   return domains.some((d) => host === d || host.endsWith("." + d));
 }
-var containsAny = (text, words) => words.some((w) => text.includes(w));
-var csv = (v) => (Array.isArray(v) ? v : String(v || "").split(",")).map((x) => String(x).trim()).filter(Boolean);
 function allowedOf(item, cats) {
   const own = csv(item.cats);
   return own.length ? cats.filter((k) => own.includes(k)) : cats;
@@ -2107,7 +2139,6 @@ function heuristicJudge(item, s) {
     judged_by: "keywords"
   };
 }
-var DOUBT = /抽奖|开奖|转发|付费|充值|折扣|打折|优惠码|优惠券|半价|首月|首年|低至|特价|促销|秒杀|续费|年付|月付|季付|限量|名额|内测资格|邀请码|aff|推广|广告|招聘|求助|请问|求推荐|有没有|怎么|吗[？?]?$|[？?]$|[$¥￥]\s?\d|\d+(\.\d+)?\s*(元|美元|欧元|rmb|usd)(?![a-z])/i;
 function triage(item, s) {
   const h = heuristicJudge(item, s);
   if (isInfoCat(h.category) && item.hint === h.category) return { verdict: h, sure: true };
@@ -2118,8 +2149,6 @@ function triage(item, s) {
   if (/^(求|请问|问下|有没有|求助)|[？?]\s*$/.test(String(item.title || "").trim())) return { verdict: { ...h, status: "rejected", signup: "\u63D0\u95EE\u5E16", judged_by: "auto" }, sure: true };
   return { verdict: h, sure: false };
 }
-var ZERO_STATS = () => ({ auto: 0, cached: 0, dead: 0, watched: 0, skipped_src: 0, merged: 0, fetched: 0, blocked: 0, block_rule: 0, noise: 0, dup_title: 0, non_zh: 0, hard_signup: 0, too_old: 0, undated: 0, off_topic: 0, candidates: 0, new: 0, trusted: 0, judged: 0, approved: 0, rejected: 0, expired_removed: 0, errors: 0 });
-var aiReadyOf = (s) => s.ai_enabled !== "false" && !!(s.ai_api_key && s.ai_base_url && s.ai_model);
 function ctxOf(s, now) {
   const maxAgeDays = Math.max(1, Number(s.max_age_days) || 180);
   const cats = enabledCats(s);
@@ -2152,7 +2181,6 @@ function listSources(s, aiReady, log) {
   if (skipped.length) log.push(`\u2013 \u672A\u914D\u7F6E AI\uFF0C\u8DF3\u8FC7 ${skipped.length} \u4E2A\u566A\u97F3\u8F83\u5927\u7684\u6E90\uFF08${skipped.map((x) => x.name).join("\u3001")}\uFF09`);
   return sources.filter((x) => !(x.ai_only && !aiReady));
 }
-var RADAR_SKIP = /怎么选|如何选|对比|评测|常见问题|差多少|该不该|是什么|有哪些|哪个好|值得|吗[？?]?\s*$|[？?]\s*$|速率限制|限制详解|使用限制|教程|入门|#shorts|\br\/\w+|套餐\s*[|｜]|pricing|价格/i;
 async function ingest(env, c, src, items, stats, log) {
   const cats = c.cats;
   const autoCat = src.category === "auto";
@@ -2224,6 +2252,10 @@ async function ingest(env, c, src, items, stats, log) {
     }
     if (isBlocked(it.url, c.blockDomains)) {
       stats.blocked++;
+      continue;
+    }
+    if (isProxyTopic(it.title + " " + (it.raw_text || "").slice(0, 300))) {
+      stats.noise++;
       continue;
     }
     if (c.noiseOn && isNoiseTitle(it.title)) {
@@ -2356,9 +2388,9 @@ ${it.raw_text || ""}`;
     const codes = extractCodes(blob);
     const ex0 = codes.length ? { codes } : {};
     if (it.trusted && (it.category === "ai" || it.category === "aideal")) {
-      const txt = `${it.name || ""} ${it.title} ${it.summary || ""} ${String(it.raw_text || "").slice(0, 300)}`;
-      ex0.vendor = guessVendor(it.name || it.title) || guessVendor(txt) || void 0;
-      ex0.perk = guessPerk(txt) || void 0;
+      const txt2 = `${it.name || ""} ${it.title} ${it.summary || ""} ${String(it.raw_text || "").slice(0, 300)}`;
+      ex0.vendor = guessVendor(it.name || it.title) || guessVendor(txt2) || void 0;
+      ex0.perk = guessPerk(txt2) || void 0;
     }
     const extra = Object.keys(ex0).some((k) => ex0[k] !== void 0) ? JSON.stringify(ex0) : null;
     const direct = it.trusted && it.category;
@@ -2397,8 +2429,8 @@ async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
     }
     if (v.how) ex = { ...ex || {}, how: String(v.how).slice(0, 40) };
     if (v.status === "approved" && (v.category === "ai" || v.category === "aideal")) {
-      const txt = `${v.name || ""} ${it.title} ${v.summary || ""}`;
-      ex = { ...ex || {}, vendor: String(v.vendor || guessVendor(it.title) || guessVendor(txt) || "").slice(0, 24) || void 0, perk: String(v.perk || guessPerk(txt) || "").slice(0, 8) || void 0 };
+      const txt2 = `${v.name || ""} ${it.title} ${v.summary || ""}`;
+      ex = { ...ex || {}, vendor: String(v.vendor || guessVendor(it.title) || guessVendor(txt2) || "").slice(0, 24) || void 0, perk: String(v.perk || guessPerk(txt2) || "").slice(0, 8) || void 0 };
     }
     const exp = v.expires_at || it.expires_at || null;
     updates.push(
@@ -2521,8 +2553,6 @@ async function cleanupStep(env, c, stats) {
     env.DB.prepare("DELETE FROM runs WHERE started_at < ?").bind(c.now - keepMs)
   ]);
 }
-var DEAD_RE = /活动已结束|活动结束|已结束|已失效|已下架|已领完|已抢光|已售罄|已停止|已关闭注册|停止注册|页面不存在|帖子不存在|主题不存在|内容已删除|已被删除|404 not found|page not found|has ended|giveaway ended|offer expired|no longer available|expired/i;
-var SKIP_CHECK = /(^|\.)(t\.me|telegram\.me|github\.com|raw\.githubusercontent\.com|store\.epicgames\.com|reddit\.com|x\.com|twitter\.com)$/i;
 async function checkLink(url) {
   let host = "";
   try {
@@ -2599,7 +2629,6 @@ async function watchStep(env, c, stats, log) {
   }
   return false;
 }
-var STEP_LABEL = { source: "\u6293\u53D6", search: "\u641C\u7D22", radar: "AI \u798F\u5229\u96F7\u8FBE", judge: "\u5224\u5B9A", cleanup: "\u6E05\u7406", mail: "\u63A8\u9001", check: "\u5931\u6548\u68C0\u6D4B", watch: "\u5173\u952E\u8BCD\u63D0\u9192" };
 async function planRun(env, trigger = "cron", opts = {}) {
   const now = Date.now();
   const active = await env.DB.prepare("SELECT id, started_at FROM runs WHERE finished_at IS NULL ORDER BY id DESC LIMIT 1").first();
@@ -2777,24 +2806,46 @@ async function tick(env, maxSteps = 1) {
   if (add) await env.DB.prepare("UPDATE runs SET log = CASE WHEN log = '' THEN ? ELSE log || char(10) || ? END WHERE id = ?").bind(add, add, run.id).run();
   return { run_id: run.id, done, busy, current, left: left?.n || 0, total: left?.total || 0, stats: runStats, log };
 }
+var UA, DAY2, getJson, ENT, mergeSources, SKIP_TARGET, GH, MD_LINK, GENERIC_LINK, mdPlain, CJK2, containsAny, csv, DOUBT, ZERO_STATS, aiReadyOf, RADAR_SKIP, DEAD_RE, SKIP_CHECK, STEP_LABEL;
+var init_crawler = __esm({
+  "src/crawler.js"() {
+    init_db();
+    init_ai();
+    init_mailer();
+    init_db();
+    init_categories();
+    init_search();
+    init_rules();
+    init_extras();
+    init_mailer();
+    UA = "Mozilla/5.0 (compatible; FreeResourceRadar/1.0; +https://workers.cloudflare.com)";
+    DAY2 = 864e5;
+    getJson = async (url, headers) => JSON.parse(await getText(url, { Accept: "application/json", ...headers }));
+    ENT = { nbsp: " ", quot: '"', apos: "'", lt: "<", gt: ">", amp: "&" };
+    mergeSources = (a, b) => {
+      const out = [...a];
+      for (const x of b) if (!out.some((y) => y.u === x.u)) out.push(x);
+      return out.slice(0, 12);
+    };
+    SKIP_TARGET = /(^|\.)(twitter\.com|x\.com|facebook\.com|weibo\.com|t\.me|telegram\.me|gravatar\.com|creativecommons\.org|feedburner\.com|wordpress\.org|wp\.com|qr\.|github\.com$)/i;
+    GH = { "User-Agent": "Mozilla/5.0 (compatible; FreeResourceRadar/1.0)" };
+    MD_LINK = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
+    GENERIC_LINK = /^(注册链接|注册|链接|官网|官网链接|地址|入口|官方入口|官方来源|官方链接|官方页|官方页面|官方文档|文档|公告|活动公告|活动页|专属链接|点击|访问|前往|link|website|docs|官方|source|源码|github|详情|官方免费层|免费层|试用|限时|限时免费|永久免费|试用 \/ 限时权益|有效|待核实|已失效)$/i;
+    mdPlain = (x) => decodeEntities(x.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(MD_LINK, "$1").replace(/<[^>]+>/g, " ").replace(/[*_`>#]|:[a-z0-9_+-]+:/g, "").replace(/\s+/g, " ")).trim();
+    CJK2 = /[\u4e00-\u9fff]/;
+    containsAny = (text, words) => words.some((w) => text.includes(w));
+    csv = (v) => (Array.isArray(v) ? v : String(v || "").split(",")).map((x) => String(x).trim()).filter(Boolean);
+    DOUBT = /抽奖|开奖|转发|付费|充值|折扣|打折|优惠码|优惠券|半价|首月|首年|低至|特价|促销|秒杀|续费|年付|月付|季付|限量|名额|内测资格|邀请码|aff|推广|广告|招聘|求助|请问|求推荐|有没有|怎么|吗[？?]?$|[？?]$|[$¥￥]\s?\d|\d+(\.\d+)?\s*(元|美元|欧元|rmb|usd)(?![a-z])/i;
+    ZERO_STATS = () => ({ auto: 0, cached: 0, dead: 0, watched: 0, skipped_src: 0, merged: 0, fetched: 0, blocked: 0, block_rule: 0, noise: 0, dup_title: 0, non_zh: 0, hard_signup: 0, too_old: 0, undated: 0, off_topic: 0, candidates: 0, new: 0, trusted: 0, judged: 0, approved: 0, rejected: 0, expired_removed: 0, errors: 0 });
+    aiReadyOf = (s) => s.ai_enabled !== "false" && !!(s.ai_api_key && s.ai_base_url && s.ai_model);
+    RADAR_SKIP = /怎么选|如何选|对比|评测|常见问题|差多少|该不该|是什么|有哪些|哪个好|值得|吗[？?]?\s*$|[？?]\s*$|速率限制|限制详解|使用限制|教程|入门|#shorts|\br\/\w+|套餐\s*[|｜]|pricing|价格/i;
+    DEAD_RE = /活动已结束|活动结束|已结束|已失效|已下架|已领完|已抢光|已售罄|已停止|已关闭注册|停止注册|页面不存在|帖子不存在|主题不存在|内容已删除|已被删除|404 not found|page not found|has ended|giveaway ended|offer expired|no longer available|expired/i;
+    SKIP_CHECK = /(^|\.)(t\.me|telegram\.me|github\.com|raw\.githubusercontent\.com|store\.epicgames\.com|reddit\.com|x\.com|twitter\.com)$/i;
+    STEP_LABEL = { source: "\u6293\u53D6", search: "\u641C\u7D22", radar: "AI \u798F\u5229\u96F7\u8FBE", judge: "\u5224\u5B9A", cleanup: "\u6E05\u7406", mail: "\u63A8\u9001", check: "\u5931\u6548\u68C0\u6D4B", watch: "\u5173\u952E\u8BCD\u63D0\u9192" };
+  }
+});
 
 // src/sources-sync.js
-var FREEBIE_SEEDS_URL = "https://raw.githubusercontent.com/ZiChuanLan/freebie-radar/main/src/server/collectors/index.ts";
-var CJK3 = /[\u4e00-\u9fff]/;
-var EN_HOSTS = ["reddit.com", "itch.io", "isthereanydeal.com", "indiegamebundles.com", "freesteamkeys.com", "gg.deals", "giveawayoftheday.com", "tickcoupon.com", "sharewareonsale.com", "lowendtalk.com", "lowendspirit.com", "lowendbox.com", "news.ycombinator.com"];
-var BLOCKED_HOSTS = ["linux.do", "reddit.com", "deepflood.com", "52pojie.cn", "hostloc.com", "423down.com"];
-var NEWS_HOSTS = ["chinanews.com.cn", "wallstreetcn.com", "qbitai.com", "leiphone.com", "tmtpost.com", "ifanr.com", "36kr.com", "huxiu.com", "cctv.com", "thepaper.cn", "sspai.com", "ithome.com", "cnbeta.com.tw"];
-var ZH_HOSTS = ["linux.do", "nodeseek.com", "nodeloc.com", "deepflood.com", "vpsgo.com", "vpsxb.net", "keylol.com", "free.com.tw", "v2ex.com", "appinn.com", "appinn.net", "ghxi.com", "yxssp.com", "iplaysoft.com", "vpsjxw.com", "laozuo.org", "veidc.com", "vpser.net", "banwagong.net"];
-var CAT_HINT = { vps: "hosting", hosting: "hosting", software: "software", pan: "pan", game: "game", ai: "ai", domain: "domain", cloud: "cloud", dev: "dev", edu: "edu", course: "course", media: "media", design: "design" };
-var hostOf = (u) => {
-  try {
-    return new URL(u).hostname.replace(/^www\./, "").toLowerCase();
-  } catch {
-    return "";
-  }
-};
-var hostIn = (h, list) => list.some((d) => h === d || h.endsWith("." + d));
-var reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function sourceKey(x) {
   const t = x.type || "rss";
   if (t === "rss") {
@@ -2955,6 +3006,7 @@ async function checkSources(current, urls) {
     const fresh = [];
     for (const x of g.list) {
       const k = sourceKey(x);
+      if (x.category === "proxy" || x.mode === "sub" || /梯子|节点|v2ray|clash|proxy|机场/i.test(`${x.name || ""} ${x.repo || ""}`)) continue;
       if (seen.has(k)) {
         if (have.has(k)) existing++;
         continue;
@@ -2972,9 +3024,6 @@ async function checkSources(current, urls) {
   }
   return { groups: out, existing, unsupported, errors };
 }
-var UA2 = { "User-Agent": "Mozilla/5.0 (compatible; free-resource-radar)", Accept: "text/html,application/xml,application/rss+xml,*/*" };
-var SKIP_HOSTS = ["zhihu.com", "bilibili.com", "weixin.qq.com", "qq.com", "baidu.com", "csdn.net", "github.com", "gitee.com", "douyin.com", "weibo.com", "xiaohongshu.com", "toutiao.com", "sohu.com", "163.com", "sina.com.cn", "youtube.com", "google.com", "wikipedia.org", "jianshu.com", "juejin.cn", "cnblogs.com", "smzdm.com", "taobao.com", "jd.com", "apple.com", "microsoft.com"];
-var decode = (s) => String(s || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
 async function getHead(url, limit = 2e5) {
   const r = await fetch(url, { headers: UA2, redirect: "follow", signal: AbortSignal.timeout(1e4) });
   if (!r.ok) throw new Error("HTTP " + r.status);
@@ -2989,11 +3038,6 @@ function feedInfo(xml) {
   const name = decode((/<title[^>]*>([\s\S]*?)<\/title>/i.exec(xml) || [])[1]).slice(0, 40);
   return { count: titles.length, latest: dates.length ? Math.max(...dates) : null, zh, name, sample: titles.slice(0, 3) };
 }
-var ago = (t) => {
-  if (!t) return "\u65E0\u65E5\u671F";
-  const d = Math.floor((Date.now() - t) / 864e5);
-  return d <= 0 ? "\u4ECA\u5929\u66F4\u65B0" : d + " \u5929\u524D\u66F4\u65B0";
-};
 async function probeOne(raw) {
   const line2 = raw.trim();
   if (/^\{/.test(line2)) {
@@ -3014,9 +3058,10 @@ async function probeOne(raw) {
   if (gh && !/^(orgs|topics|search|settings|marketplace)\//.test(gh[1])) {
     const commits = await ghCommits(gh[1]);
     if (!commits.length) throw new Error("\u4ED3\u5E93\u6CA1\u6709\u516C\u5F00\u63D0\u4EA4\u8BB0\u5F55");
-    const subLike = commits.slice(0, 5).filter((c) => /节点|订阅|node|sub|proxy|v2ray|clash/i.test(c.title)).length >= 3;
+    const subLike = commits.slice(0, 5).filter((c) => /节点|v2ray|clash|vless|trojan|机场|proxy/i.test(c.title)).length >= 3;
+    if (subLike) throw new Error("\u8FD9\u662F\u4EE3\u7406\u8282\u70B9\u4ED3\u5E93\uFF0C\u4E0D\u518D\u6536\u5F55");
     return {
-      src: subLike ? { name: gh[1], type: "repo", repo: gh[1], mode: "sub", category: "proxy", trusted: true, subs: [], enabled: true } : { name: `GitHub \xB7 ${gh[1]}`, type: "repo", repo: gh[1], mode: "diff", enabled: true },
+      src: { name: `GitHub \xB7 ${gh[1]}`, type: "repo", repo: gh[1], mode: "diff", enabled: true },
       zh: commits.some((c) => CJK3.test(c.title)),
       count: commits.length,
       latest: commits[0].date,
@@ -3078,28 +3123,39 @@ async function discoverSources(current, keyword, searchFn) {
   if (miss.length) errors.push(`\u8FD9\u4E9B\u7AD9\u6CA1\u627E\u5230\u8BA2\u9605\u5730\u5740\uFF1A${miss.join("\u3001")}`);
   return { groups: items.length ? [{ id: "discover", label: `\u641C\u7D22\u300C${keyword}\u300D\u53D1\u73B0`, items }] : [], existing: items.filter((x) => x.why === "\u5DF2\u6709").length, errors, searched: hosts.length };
 }
+var FREEBIE_SEEDS_URL, CJK3, EN_HOSTS, BLOCKED_HOSTS, NEWS_HOSTS, ZH_HOSTS, CAT_HINT, hostOf, hostIn, reEscape, UA2, SKIP_HOSTS, decode, ago;
+var init_sources_sync = __esm({
+  "src/sources-sync.js"() {
+    init_db();
+    init_crawler();
+    FREEBIE_SEEDS_URL = "https://raw.githubusercontent.com/ZiChuanLan/freebie-radar/main/src/server/collectors/index.ts";
+    CJK3 = /[\u4e00-\u9fff]/;
+    EN_HOSTS = ["reddit.com", "itch.io", "isthereanydeal.com", "indiegamebundles.com", "freesteamkeys.com", "gg.deals", "giveawayoftheday.com", "tickcoupon.com", "sharewareonsale.com", "lowendtalk.com", "lowendspirit.com", "lowendbox.com", "news.ycombinator.com"];
+    BLOCKED_HOSTS = ["linux.do", "reddit.com", "deepflood.com", "52pojie.cn", "hostloc.com", "423down.com"];
+    NEWS_HOSTS = ["chinanews.com.cn", "wallstreetcn.com", "qbitai.com", "leiphone.com", "tmtpost.com", "ifanr.com", "36kr.com", "huxiu.com", "cctv.com", "thepaper.cn", "sspai.com", "ithome.com", "cnbeta.com.tw"];
+    ZH_HOSTS = ["linux.do", "nodeseek.com", "nodeloc.com", "deepflood.com", "vpsgo.com", "vpsxb.net", "keylol.com", "free.com.tw", "v2ex.com", "appinn.com", "appinn.net", "ghxi.com", "yxssp.com", "iplaysoft.com", "vpsjxw.com", "laozuo.org", "veidc.com", "vpser.net", "banwagong.net"];
+    CAT_HINT = { vps: "hosting", hosting: "hosting", software: "software", pan: "pan", game: "game", ai: "ai", domain: "domain", cloud: "cloud", dev: "dev", edu: "edu", course: "course", media: "media", design: "design" };
+    hostOf = (u) => {
+      try {
+        return new URL(u).hostname.replace(/^www\./, "").toLowerCase();
+      } catch {
+        return "";
+      }
+    };
+    hostIn = (h, list) => list.some((d) => h === d || h.endsWith("." + d));
+    reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    UA2 = { "User-Agent": "Mozilla/5.0 (compatible; free-resource-radar)", Accept: "text/html,application/xml,application/rss+xml,*/*" };
+    SKIP_HOSTS = ["zhihu.com", "bilibili.com", "weixin.qq.com", "qq.com", "baidu.com", "csdn.net", "github.com", "gitee.com", "douyin.com", "weibo.com", "xiaohongshu.com", "toutiao.com", "sohu.com", "163.com", "sina.com.cn", "youtube.com", "google.com", "wikipedia.org", "jianshu.com", "juejin.cn", "cnblogs.com", "smzdm.com", "taobao.com", "jd.com", "apple.com", "microsoft.com"];
+    decode = (s) => String(s || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+    ago = (t) => {
+      if (!t) return "\u65E0\u65E5\u671F";
+      const d = Math.floor((Date.now() - t) / 864e5);
+      return d <= 0 ? "\u4ECA\u5929\u66F4\u65B0" : d + " \u5929\u524D\u66F4\u65B0";
+    };
+  }
+});
 
 // src/snap.js
-var HEAD_N = 60;
-var PART = 120;
-var OLD_N = 200;
-var ITEM_COLS = "id, title, url, source, published_at, fetched_at, day, category, name, summary, signup, score, obtain, target, sources, extra, expires_at, up, down, dead";
-var ORDER = "ORDER BY published_at IS NULL, published_at DESC, fetched_at DESC, id";
-var shapeItems = (rows) => foldItems(rows || []).map((it) => {
-  if (it.extra) {
-    try {
-      it.extra = JSON.parse(it.extra);
-    } catch {
-      delete it.extra;
-    }
-  } else delete it.extra;
-  if (it.published_at) delete it.fetched_at;
-  if (it.summary && it.summary.length > 160) it.summary = it.summary.slice(0, 160) + "\u2026";
-  delete it.target;
-  for (const k of ["up", "down", "dead", "expires_at", "signup", "score", "obtain", "name", "summary", "srcs"]) if (it[k] == null || it[k] === 0) delete it[k];
-  return it;
-});
-var pack = (o) => JSON.stringify(o).replace(/</g, "\\u003c");
 function windowOf(st, now = Date.now()) {
   const cutoff = now - (Number(st.max_age_days) || 180) * 864e5;
   const fresh = now - Math.max(1, Number(st.fresh_days) || 15) * 864e5;
@@ -3109,8 +3165,6 @@ function windowOf(st, now = Date.now()) {
 async function ensureSnapTable(env) {
   await env.DB.prepare("CREATE TABLE IF NOT EXISTS snap (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)").run();
 }
-var markDirty = (env) => setMeta(env, "snap_dirty", Date.now()).catch(() => {
-});
 async function readSnap(env, part) {
   const r = await env.DB.prepare("SELECT s.v AS v, m.value AS ver FROM secrets m LEFT JOIN snap s ON s.k = m.value || ':' || ? WHERE m.key = 'meta:snap_ver'").bind(part).first().catch(() => null);
   if (!r) return null;
@@ -3228,9 +3282,43 @@ async function snapStep(env, force = false) {
   await setMeta(env, "snap_build", JSON.stringify({ ver: b.ver, i: b.i, n: b.n, at: b.at }));
   return { building: true, done: false, step: b.i, total: b.n + 2 };
 }
+var HEAD_N, PART, OLD_N, ITEM_COLS, ORDER, shapeItems, pack, markDirty;
+var init_snap = __esm({
+  "src/snap.js"() {
+    init_db();
+    init_fold();
+    init_categories();
+    init_extras();
+    HEAD_N = 60;
+    PART = 120;
+    OLD_N = 200;
+    ITEM_COLS = "id, title, url, source, published_at, fetched_at, day, category, name, summary, signup, score, obtain, target, sources, extra, expires_at, up, down, dead";
+    ORDER = "ORDER BY published_at IS NULL, published_at DESC, fetched_at DESC, id";
+    shapeItems = (rows) => foldItems(rows || []).map((it) => {
+      if (it.extra) {
+        try {
+          it.extra = JSON.parse(it.extra);
+        } catch {
+          delete it.extra;
+        }
+      } else delete it.extra;
+      if (it.published_at) delete it.fetched_at;
+      if (it.summary && it.summary.length > 160) it.summary = it.summary.slice(0, 160) + "\u2026";
+      delete it.target;
+      for (const k of ["up", "down", "dead", "expires_at", "signup", "score", "obtain", "name", "summary", "srcs"]) if (it[k] == null || it[k] === 0) delete it[k];
+      return it;
+    });
+    pack = (o) => JSON.stringify(o).replace(/</g, "\\u003c");
+    markDirty = (env) => setMeta(env, "snap_dirty", Date.now()).catch(() => {
+    });
+  }
+});
 
 // src/admin.html
-var admin_default = `<!doctype html>
+var admin_default;
+var init_admin = __esm({
+  "src/admin.html"() {
+    admin_default = `<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
@@ -3954,7 +4042,7 @@ const BACKENDS = /*__BACKENDS__*/[];
 const GROUPS = /*__GROUPS__*/[];
 const PUSH = /*__PUSH__*/[];
 const CAT = Object.fromEntries(CATS.map((c) => [c.key, c.label]));
-const REC = ['domain', 'hosting', 'cloud', 'ai', 'aideal', 'aitool', 'software', 'dev', 'game', 'edu', 'ainews', 'news', 'proxy'];
+const REC = ['domain', 'hosting', 'cloud', 'ai', 'aideal', 'aitool', 'software', 'dev', 'game', 'edu', 'ainews', 'news'];
 const OB = { free: '\u76F4\u63A5\u767D\u5AD6', conditional: '\u6709\u6761\u4EF6', lottery: '\u62BD\u5956', trial: '\u8BD5\u7528', promo: '\u63A8\u5E7F', paid: '\u9700\u4ED8\u8D39' };
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
@@ -4616,9 +4704,14 @@ init();
 </body>
 </html>
 `;
+  }
+});
 
 // src/public.html
-var public_default = `<!doctype html>
+var public_default;
+var init_public = __esm({
+  "src/public.html"() {
+    public_default = `<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
@@ -5109,15 +5202,6 @@ function render() {
       : '<div class="empty"><b>\u8FD8\u6CA1\u6709\u6570\u636E</b>' + sched(d) + '\uFF08\u5317\u4EAC\u65F6\u95F4\uFF09\u3002\u521A\u90E8\u7F72\u597D\uFF1F\u53BB <a href="/admin">\u7BA1\u7406\u540E\u53F0</a> \u70B9\u300C\u7ACB\u5373\u6293\u53D6\u300D\u3002</div>';
     return;
   }
-  // \u68AF\u5B50\u680F\u76EE\uFF1A\u8BA2\u9605\u5361\u7247\uFF08\u6700\u8FD1\u6709\u66F4\u65B0\u7684\u5728\u524D\uFF09
-  if (state.grp === 'proxy' || (state.cat && catOf({ category: state.cat }).group === 'proxy')) {
-    const subs = all.filter(isSub).sort((a, b) => pubOf(b) - pubOf(a)), rest = all.filter((it) => !isSub(it));
-    state.list = rest;
-    el.innerHTML = '<div class="warn">\u4EE5\u4E0B\u662F GitHub \u4E0A\u81EA\u52A8\u66F4\u65B0\u7684\u516C\u5171\u8282\u70B9\u8BA2\u9605\uFF0C\u4ED3\u5E93\u4E00\u6709\u65B0\u63D0\u4EA4\u8FD9\u91CC\u5C31\u5237\u65B0\uFF1B\u7070\u70B9\u8868\u793A 3 \u5929\u4EE5\u4E0A\u6CA1\u66F4\u65B0\u3002\u516C\u5171\u8282\u70B9\u6765\u8DEF\u4E0D\u660E\u3001\u968F\u65F6\u5931\u6548\uFF0C\u8BF7\u52FF\u7528\u6765\u767B\u5F55\u91CD\u8981\u8D26\u53F7\u6216\u4F20\u8F93\u9690\u79C1\u6570\u636E\u3002</div>' +
-      (subs.length ? '<div class="subs">' + subs.map(subHtml).join('') + '</div>' : '') +
-      (rest.length ? '<div class="dayh"><b>\u76F8\u5173\u5E16\u5B50</b></div><div class="feed">' + rest.map((it) => itemHtml(it, 0)).join('') + '</div>' : '');
-    return;
-  }
   // \u8282\u70B9\u8BA2\u9605\u5361\u7247\u53EA\u5728\u300C\u514D\u8D39\u68AF\u5B50\u300D\u680F\u76EE\u91CC\u663E\u793A\uFF1B\u7591\u4F3C\u5931\u6548\u7684\u6C89\u5230\u6700\u540E
   const feed = all.filter((it) => !isSub(it));
   const now = Date.now();
@@ -5258,10 +5342,14 @@ setInterval(() => { if (!document.hidden) refresh(); }, 5 * 60000);
 </body>
 </html>
 `;
+  }
+});
 
 // src/index.js
-var json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8" } });
-var html = (body, status = 200) => new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
+var index_exports = {};
+__export(index_exports, {
+  default: () => index_default
+});
 function safeEqual(a, b) {
   const x = new TextEncoder().encode(String(a));
   const y = new TextEncoder().encode(String(b));
@@ -5269,10 +5357,6 @@ function safeEqual(a, b) {
   for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] || 0) ^ (y[i] || 0);
   return diff === 0;
 }
-var envToken = (env) => {
-  const t = String(env.ADMIN_TOKEN || "").trim();
-  return t && t !== "change-me" ? t : "";
-};
 async function isAdmin(req, env) {
   const got = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
   if (!got) return false;
@@ -5284,7 +5368,6 @@ function resolveAi(target, body, s) {
   const key = body.api_key && !String(body.api_key).includes("****") ? body.api_key : s.ai_api_key;
   return { baseUrl: body.base_url || s.ai_base_url, apiKey: key, model: body.model || s.ai_model, extra: "{}" };
 }
-var MEMO = /* @__PURE__ */ new Map();
 async function memo(key, ttlMs, fn) {
   const hit = MEMO.get(key);
   if (hit && hit.exp > Date.now()) return hit.v;
@@ -5292,21 +5375,12 @@ async function memo(key, ttlMs, fn) {
   MEMO.set(key, { v, exp: Date.now() + ttlMs });
   return v;
 }
-var clearMemo = () => MEMO.clear();
-var etagOf = (s) => {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i += 7) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  return `W/"${(h >>> 0).toString(36)}-${s.length.toString(36)}"`;
-};
 function cached(req, body, type, extra = {}) {
   const etag = etagOf(body);
   const headers = { "content-type": type, etag, "cache-control": "no-cache", ...extra };
   if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
   return new Response(body, { headers });
 }
-var basic = (env) => memo("basic", 15e3, () => getBasicSettings(env));
-var [PAGE_A, PAGE_B] = public_default.split("/*__BOOT__*/null");
-var STATIC_PAGE = PAGE_A + "null" + PAGE_B;
 async function dataResp(req, url, env, JS) {
   if (url.searchParams.get("old") === "1") return sendSnap(req, await pageData(env, "old"), JS);
   const part = Number(url.searchParams.get("part")) || 0;
@@ -5320,14 +5394,12 @@ async function snapOrLive(env, part) {
   const v = part === "head" ? await liveHead(env) : part === "old" ? await liveOld(env) : await livePart(env, Number(part.split(":")[1]) || 1);
   return { v, tag: "live:" + part + ":" + Math.floor(Date.now() / 6e4) };
 }
-var pageData = (env, part) => memo("snap:" + part, 2e4, () => snapOrLive(env, part));
 function sendSnap(req, d, type, body) {
   const etag = `W/"${d.tag}"`;
   const headers = { "content-type": type, etag, "cache-control": "no-cache" };
   if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
   return new Response(body ?? d.v, { headers });
 }
-var RL = /* @__PURE__ */ new Map();
 function rateOk(key, limit, windowMs = 6e4) {
   if (!limit) return true;
   const now = Date.now();
@@ -5339,8 +5411,6 @@ function rateOk(key, limit, windowMs = 6e4) {
   }
   return ++e.n <= limit;
 }
-var ipOf = (req) => req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "local";
-var FAIL_WINDOW = 15 * 6e4;
 async function failsOf(env, ip) {
   const r = await env.DB.prepare("SELECT n, reset FROM rate WHERE k = ?").bind("login:" + ip).first();
   return r && r.reset > Date.now() ? r.n : 0;
@@ -5350,7 +5420,6 @@ function addFail(env, ip) {
   return env.DB.prepare("INSERT INTO rate (k, n, reset) VALUES (?, 1, ?) ON CONFLICT(k) DO UPDATE SET n = CASE WHEN rate.reset < ? THEN 1 ELSE rate.n + 1 END, reset = CASE WHEN rate.reset < ? THEN excluded.reset ELSE rate.reset END").bind("login:" + ip, now + FAIL_WINDOW, now, now).run().catch(() => {
   });
 }
-var tooMany = () => json({ error: "\u5BC6\u7801\u9519\u8BEF\u6B21\u6570\u592A\u591A\uFF0C\u8BF7 15 \u5206\u949F\u540E\u518D\u8BD5" }, 429);
 async function vote(req, env) {
   const { id, v } = await req.json().catch(() => ({}));
   const val = Number(v);
@@ -5404,7 +5473,6 @@ async function publicItems(env, url) {
   ).bind(...args, limit).all();
   return results || [];
 }
-var xmlEsc = (s) => String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]);
 async function handleAdmin(req, env, url) {
   const p = url.pathname.replace("/api/admin", "");
   const m = req.method;
@@ -5565,8 +5633,6 @@ function setupPage(missing, asJson) {
 <style>body{margin:0;background:#f6f7f9;font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#111318}.b{max-width:560px;margin:10vh auto;background:#fff;border:1px solid #e6e8ec;border-radius:8px;padding:24px 28px}h1{font-size:17px;margin:0 0 6px}p{color:#525c6b;margin:0 0 14px}li{margin-bottom:12px}li span{color:#4b5563;font-size:13px}code{background:#f1f3f6;padding:1px 5px;border-radius:4px}</style>
 <div class="b"><h1>\u90E8\u7F72\u6210\u529F\uFF0C\u8FD8\u5DEE\u4E00\u6B65</h1><p>\u5728 Cloudflare \u63A7\u5236\u53F0\u6253\u5F00\u8FD9\u4E2A Worker\uFF0C\u8865\u4E0A\u4EE5\u4E0B\u7ED1\u5B9A\u540E\u5237\u65B0\u672C\u9875\u3002\u6570\u636E\u8868\u4F1A\u81EA\u52A8\u521B\u5EFA\uFF0C\u7BA1\u7406\u5458\u5BC6\u7801\u5728\u9996\u6B21\u6253\u5F00 /admin \u65F6\u8BBE\u7F6E\u3002</p><ol>${rows}</ol><p>\u5B9A\u65F6\u6293\u53D6\uFF1A\u8BBE\u7F6E \u2192 \u89E6\u53D1\u4E8B\u4EF6 \u2192 \u6DFB\u52A0 Cron\uFF0C\u586B <code>* * * * *</code>\uFF08\u6BCF\u5206\u949F\u4E00\u6B21\uFF0C\u6293\u53D6\u65F6\u95F4\u5728\u540E\u53F0\u8BBE\u7F6E\uFF09\u3002\u7528\u4E00\u952E\u90E8\u7F72\u7684\u8BDD\u5DF2\u81EA\u52A8\u914D\u7F6E\u3002</p></div></html>`, 503);
 }
-var SITE_COOKIE = "frr_site";
-var siteHash = (env) => memo("sitehash", 3e5, () => getSitePassHash(env));
 async function siteGate(req, env, url) {
   const h = await siteHash(env);
   if (!h) return { ok: true };
@@ -5577,29 +5643,6 @@ async function siteGate(req, env, url) {
   if (key && safeEqual(await sha256("frr-site:" + key), h)) return { ok: true };
   return { ok: false, token, hash: h };
 }
-var lockPage = () => `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</title>
-<style>:root{color-scheme:light dark}body{margin:0;min-height:100vh;display:grid;place-items:center;font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:#f6f7f9;color:#111318}
-.b{width:min(340px,90vw);background:#fff;border:1px solid #e6e8ec;border-radius:10px;padding:26px}h1{font-size:16px;margin:0 0 4px}p{margin:0 0 16px;color:#646f80;font-size:13px}
-input{width:100%;box-sizing:border-box;height:38px;border:1px solid #e6e8ec;border-radius:7px;padding:0 12px;font:inherit;background:transparent;color:inherit}button{margin-top:12px;width:100%;height:38px;border:0;border-radius:7px;background:#111318;color:#fff;font:inherit;cursor:pointer}
-.e{color:#b91c1c;font-size:12px;min-height:18px;margin-top:8px}@media(prefers-color-scheme:dark){body{background:#0d0f13;color:#eef0f4}.b{background:#121419;border-color:#252932}input{border-color:#252932}button{background:#eef0f4;color:#0d0f13}}</style></head>
-<body><form class="b" onsubmit="go(event)"><h1>\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</h1><p>\u8BF7\u8F93\u5165\u8BBF\u95EE\u5BC6\u7801</p><input type="password" id="p" autofocus autocomplete="current-password" placeholder="\u8BBF\u95EE\u5BC6\u7801"><button>\u8FDB\u5165</button><div class="e" id="e"></div></form>
-<script>async function go(e){e.preventDefault();const r=await fetch('/api/site-login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:document.getElementById('p').value})});if(r.ok)location.reload();else document.getElementById('e').textContent='\u5BC6\u7801\u4E0D\u5BF9';}</script></body></html>`;
-var index_default = {
-  async fetch(req, env, ctx) {
-    try {
-      return await handleFetch(req, env, ctx);
-    } catch (e) {
-      return errorPage(e, new URL(req.url).pathname);
-    }
-  },
-  async scheduled(event, env, ctx) {
-    try {
-      await handleScheduled(event, env, ctx);
-    } catch (e) {
-      console.error("scheduled failed", e && (e.stack || e.message || e));
-    }
-  }
-};
 function errorPage(e, path) {
   const msg = String(e && (e.stack || e.message) || e).slice(0, 1500);
   console.error("request failed", path, msg);
@@ -5639,7 +5682,7 @@ async function health(env) {
     const r = await env.DB.prepare("SELECT id, started_at, finished_at FROM runs ORDER BY id DESC LIMIT 1").first();
     return { last: r || null };
   });
-  return { ok: Object.values(out).every((x) => x.ok), version: "1.8.2", checks: out };
+  return { ok: Object.values(out).every((x) => x.ok), version: "1.8.4", checks: out };
 }
 async function handleFetch(req, env, ctx) {
   const url = new URL(req.url);
@@ -5846,8 +5889,6 @@ async function autoTick(env, trigger) {
   const plan = await planRun(env, trigger);
   return { idle: false, action: "started", run_id: plan.run_id, steps: plan.steps, message: `\u5DF2\u5F00\u59CB\u65B0\u4E00\u8F6E\u6293\u53D6\uFF0C\u5171 ${plan.steps} \u6B65` };
 }
-var BJ2 = 8 * 36e5;
-var parseHours = (v) => [...new Set(String(v || "").split(/[,，\s]+/).map(Number).filter((h) => Number.isInteger(h) && h >= 0 && h <= 23))].sort((a, b) => a - b);
 function slotHours(start, every) {
   const out = [];
   for (let k = 0; k * every < 24; k++) out.push((start + k * every) % 24);
@@ -5865,7 +5906,6 @@ function nextSlotText(now, hours) {
   const n = hours.find((x) => x > h);
   return n === void 0 ? `\u660E\u5929 ${hours[0]}:00` : `${n}:00`;
 }
-var lastTrigger = 0;
 async function triggerTick(env, trigger) {
   const s = await basic(env);
   const gap = Math.max(5, Number(s.trigger_min_seconds) || 30) * 1e3;
@@ -5889,6 +5929,109 @@ function maybeVisitTick(env, ctx) {
     await triggerTick(env, "visit");
   })().catch((e) => console.error("visit tick failed", e)));
 }
+var json, html, envToken, MEMO, clearMemo, etagOf, basic, PAGE_A, PAGE_B, STATIC_PAGE, pageData, RL, ipOf, FAIL_WINDOW, tooMany, xmlEsc, SITE_COOKIE, siteHash, lockPage, index_default, BJ2, parseHours, lastTrigger;
+var init_index = __esm({
+  "src/index.js"() {
+    init_db();
+    init_ai();
+    init_crawler();
+    init_mailer();
+    init_push();
+    init_extras();
+    init_search();
+    init_sources_sync();
+    init_fold();
+    init_snap();
+    init_categories();
+    init_admin();
+    init_public();
+    json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8" } });
+    html = (body, status = 200) => new Response(body, { status, headers: { "content-type": "text/html; charset=utf-8" } });
+    envToken = (env) => {
+      const t = String(env.ADMIN_TOKEN || "").trim();
+      return t && t !== "change-me" ? t : "";
+    };
+    MEMO = /* @__PURE__ */ new Map();
+    clearMemo = () => MEMO.clear();
+    etagOf = (s) => {
+      let h = 2166136261;
+      for (let i = 0; i < s.length; i += 7) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+      return `W/"${(h >>> 0).toString(36)}-${s.length.toString(36)}"`;
+    };
+    basic = (env) => memo("basic", 15e3, () => getBasicSettings(env));
+    [PAGE_A, PAGE_B] = public_default.split("/*__BOOT__*/null");
+    STATIC_PAGE = PAGE_A + "null" + PAGE_B;
+    pageData = (env, part) => memo("snap:" + part, 2e4, () => snapOrLive(env, part));
+    RL = /* @__PURE__ */ new Map();
+    ipOf = (req) => req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "local";
+    FAIL_WINDOW = 15 * 6e4;
+    tooMany = () => json({ error: "\u5BC6\u7801\u9519\u8BEF\u6B21\u6570\u592A\u591A\uFF0C\u8BF7 15 \u5206\u949F\u540E\u518D\u8BD5" }, 429);
+    xmlEsc = (s) => String(s ?? "").replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&apos;" })[c]);
+    SITE_COOKIE = "frr_site";
+    siteHash = (env) => memo("sitehash", 3e5, () => getSitePassHash(env));
+    lockPage = () => `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</title>
+<style>:root{color-scheme:light dark}body{margin:0;min-height:100vh;display:grid;place-items:center;font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:#f6f7f9;color:#111318}
+.b{width:min(340px,90vw);background:#fff;border:1px solid #e6e8ec;border-radius:10px;padding:26px}h1{font-size:16px;margin:0 0 4px}p{margin:0 0 16px;color:#646f80;font-size:13px}
+input{width:100%;box-sizing:border-box;height:38px;border:1px solid #e6e8ec;border-radius:7px;padding:0 12px;font:inherit;background:transparent;color:inherit}button{margin-top:12px;width:100%;height:38px;border:0;border-radius:7px;background:#111318;color:#fff;font:inherit;cursor:pointer}
+.e{color:#b91c1c;font-size:12px;min-height:18px;margin-top:8px}@media(prefers-color-scheme:dark){body{background:#0d0f13;color:#eef0f4}.b{background:#121419;border-color:#252932}input{border-color:#252932}button{background:#eef0f4;color:#0d0f13}}</style></head>
+<body><form class="b" onsubmit="go(event)"><h1>\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</h1><p>\u8BF7\u8F93\u5165\u8BBF\u95EE\u5BC6\u7801</p><input type="password" id="p" autofocus autocomplete="current-password" placeholder="\u8BBF\u95EE\u5BC6\u7801"><button>\u8FDB\u5165</button><div class="e" id="e"></div></form>
+<script>async function go(e){e.preventDefault();const r=await fetch('/api/site-login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:document.getElementById('p').value})});if(r.ok)location.reload();else document.getElementById('e').textContent='\u5BC6\u7801\u4E0D\u5BF9';}</script></body></html>`;
+    index_default = {
+      async fetch(req, env, ctx) {
+        try {
+          return await handleFetch(req, env, ctx);
+        } catch (e) {
+          return errorPage(e, new URL(req.url).pathname);
+        }
+      },
+      async scheduled(event, env, ctx) {
+        try {
+          await handleScheduled(event, env, ctx);
+        } catch (e) {
+          console.error("scheduled failed", e && (e.stack || e.message || e));
+        }
+      }
+    };
+    BJ2 = 8 * 36e5;
+    parseHours = (v) => [...new Set(String(v || "").split(/[,，\s]+/).map(Number).filter((h) => Number.isInteger(h) && h >= 0 && h <= 23))].sort((a, b) => a - b);
+    lastTrigger = 0;
+  }
+});
+
+// src/entry.js
+var app = null;
+var err = null;
+async function boot() {
+  if (app || err) return;
+  try {
+    app = (await Promise.resolve().then(() => (init_index(), index_exports))).default;
+  } catch (e) {
+    err = e;
+    console.error("\u542F\u52A8\u5931\u8D25", e && (e.stack || e));
+  }
+}
+var txt = (t, e) => new Response(t + "\n\n" + String(e && (e.stack || e.message) || e), { status: 500, headers: { "content-type": "text/plain; charset=utf-8" } });
+var entry_default = {
+  async fetch(req, env, ctx) {
+    if (["/ping", "/__ping"].includes(new URL(req.url).pathname)) return new Response("pong v1.8.4", { headers: { "content-type": "text/plain; charset=utf-8" } });
+    await boot();
+    if (err) return txt("\u7A0B\u5E8F\u52A0\u8F7D\u5931\u8D25\uFF08\u628A\u8FD9\u6BB5\u53D1\u7ED9\u7EF4\u62A4\u8005\uFF09\uFF1A", err);
+    try {
+      return await app.fetch(req, env, ctx);
+    } catch (e) {
+      return txt("\u8BF7\u6C42\u5904\u7406\u5931\u8D25\uFF1A", e);
+    }
+  },
+  async scheduled(event, env, ctx) {
+    await boot();
+    if (err) return;
+    try {
+      await app.scheduled(event, env, ctx);
+    } catch (e) {
+      console.error("scheduled failed", e && (e.stack || e));
+    }
+  }
+};
 export {
-  index_default as default
+  entry_default as default
 };

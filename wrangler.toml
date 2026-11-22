@@ -1,5 +1,5 @@
 name = "free-resource-radar"
-main = "src/index.js"
+main = "src/entry.js"
 compatibility_date = "2025-11-01"
 
 # 每分钟触发一次：平时只查一下有没有待执行的步骤（几乎不耗资源）；

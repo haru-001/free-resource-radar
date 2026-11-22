@@ -164,6 +164,7 @@ export async function checkSources(current, urls) {
     const fresh = [];
     for (const x of g.list) {
       const k = sourceKey(x);
+      if (x.category === 'proxy' || x.mode === 'sub' || /梯子|节点|v2ray|clash|proxy|机场/i.test(`${x.name || ''} ${x.repo || ''}`)) continue;
       if (seen.has(k)) { if (have.has(k)) existing++; continue; }
       seen.add(k);
       const zh = zhOf(x);
@@ -221,9 +222,10 @@ async function probeOne(raw) {
   if (gh && !/^(orgs|topics|search|settings|marketplace)\//.test(gh[1])) {
     const commits = await ghCommits(gh[1]);
     if (!commits.length) throw new Error('仓库没有公开提交记录');
-    const subLike = commits.slice(0, 5).filter((c) => /节点|订阅|node|sub|proxy|v2ray|clash/i.test(c.title)).length >= 3;
+    const subLike = commits.slice(0, 5).filter((c) => /节点|v2ray|clash|vless|trojan|机场|proxy/i.test(c.title)).length >= 3;
+    if (subLike) throw new Error('这是代理节点仓库，不再收录');
     return {
-      src: subLike ? { name: gh[1], type: 'repo', repo: gh[1], mode: 'sub', category: 'proxy', trusted: true, subs: [], enabled: true } : { name: `GitHub · ${gh[1]}`, type: 'repo', repo: gh[1], mode: 'diff', enabled: true },
+      src: { name: `GitHub · ${gh[1]}`, type: 'repo', repo: gh[1], mode: 'diff', enabled: true },
       zh: commits.some((c) => CJK.test(c.title)), count: commits.length, latest: commits[0].date, sample: commits.slice(0, 3).map((c) => c.title.slice(0, 40)),
     };
   }
