@@ -527,22 +527,6 @@ function setData(d) {
   // 收藏里的条目用最新数据刷新（投票数、失效状态）
   for (const it of d.items) if (FAV[it.id]) FAV[it.id] = { ...it, _at: FAV[it.id]._at };
   render();
-  loadParts(d);
-}
-// 首屏只内嵌最新的一部分，其余分块静默加载（每块一次轻量请求）
-async function loadParts(d) {
-  if (!d.parts) return;
-  const seen = new Set(d.items.map((x) => x.id));
-  const max = d.parts > 0 ? d.parts : 50;
-  for (let i = 1; i <= max; i++) {
-    let j;
-    try { const r = await fetch('/api/data?part=' + i); if (!r.ok) break; j = await r.json(); } catch { break; }
-    if (state.data !== d) return; // 期间数据已更新
-    for (const it of j.items || []) if (!seen.has(it.id)) { seen.add(it.id); d.items.push(it); if (FAV[it.id]) FAV[it.id] = { ...it, _at: FAV[it.id]._at }; }
-    if (d.parts < 0 && !j.more) break;
-    if (i % 2 === 0 || i === max) render();
-  }
-  render();
 }
 function go(patch) {
   Object.assign(state, patch, { shown: PAGE });
@@ -628,7 +612,7 @@ async function refresh() {
   try {
     const r = await fetch('/api/data', { cache: 'no-cache' });
     if (r.status === 401) return location.reload();
-    if (r.ok) { const d = await r.json(); if (!state.data || d.ver !== state.data.ver || (d.ver === 'live' && d.last_run !== state.data.last_run)) { state.oldItems = null; setData(d); } }
+    if (r.ok) { const d = await r.json(); if (!state.data || JSON.stringify(d.items.map((x) => x.id + pubOf(x) + (x.up || 0) + (x.dead || 0))) !== JSON.stringify(state.data.items.map((x) => x.id + pubOf(x) + (x.up || 0) + (x.dead || 0))) || d.last_run !== state.data.last_run) { state.oldItems = null; setData(d); } }
   } catch {}
 }
 if (BOOT) setData(BOOT); else refresh();
