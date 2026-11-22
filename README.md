@@ -3,7 +3,7 @@
 
 每天自动帮你找白嫖资源：免费域名、主机 / VPS、云服务、AI 额度、限免软件、开发工具、喜加一游戏、学生福利……分类在后台勾选。只留半年内发布、注册简单的，AI 筛一遍，每 6 小时更新一次，早晚各发一封到你的 QQ 邮箱（可以发给多个邮箱）。跑在 Cloudflare Workers 免费版里，不用服务器。
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR_GITHUB/free-resource-radar)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/haru-001/free-resource-radar)
 
 ## 它能做什么
 
