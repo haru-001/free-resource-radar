@@ -1,4 +1,4 @@
-// 免费资源雷达 · 单文件版（v1.8.1）。在 Cloudflare 控制台新建 Worker 后整份粘贴，绑定 D1（变量名 DB），可选绑定 KV（SECRETS）。
+// 免费资源雷达 · 单文件版（v1.8.2）：可直接粘贴到 Cloudflare 控制台的在线编辑器。需要绑定 D1（DB），KV（SECRETS）可选，并添加 Cron 触发器 * * * * *
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __esm = (fn, res) => function __init() {
@@ -713,7 +713,7 @@ var DEFAULT_SETTINGS = {
   // 每行一个关键词，如 Claude / 域名 / VPS
   link_check: "true",
   // 失效检测：每次抓取后抽查一批链接，打不开或写着已结束的标灰下沉
-  link_check_per_run: "8",
+  link_check_per_run: "5",
   weekly_enabled: "false",
   // 每周精选：每周一（可改）随推送附带本周最值的 10 条
   weekly_weekday: "1",
@@ -2171,7 +2171,7 @@ async function ingest(env, c, src, items, stats, log) {
     return;
   }
   const wantTags = csv(src.tags), skipTags = csv(src.skip_tags);
-  if (items.length > 60) items = items.slice(0, 60);
+  if (items.length > 30) items = items.slice(0, 30);
   if (wantTags.length || skipTags.length) items = items.filter((x) => {
     const t = x.tags || [];
     if (wantTags.length && !t.some((y) => wantTags.includes(y))) {
@@ -2376,7 +2376,7 @@ ${it.raw_text || ""}`;
 }
 async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
   const s = c.s;
-  const perStep = c.aiReady ? Math.min(20, Math.max(1, Number(s.ai_batch_size) || 12)) * 3 : 30;
+  const perStep = c.aiReady ? Math.min(20, Math.max(1, Number(s.ai_batch_size) || 12)) * 3 : 15;
   const cap = c.aiReady ? capOverride || Math.max(1, Number(s.ai_max_items) || 60) : 1e5;
   const room = Math.max(0, cap - judgedSoFar);
   if (!room) {
@@ -3080,9 +3080,9 @@ async function discoverSources(current, keyword, searchFn) {
 }
 
 // src/snap.js
-var HEAD_N = 120;
-var PART = 200;
-var OLD_N = 400;
+var HEAD_N = 60;
+var PART = 120;
+var OLD_N = 200;
 var ITEM_COLS = "id, title, url, source, published_at, fetched_at, day, category, name, summary, signup, score, obtain, target, sources, extra, expires_at, up, down, dead";
 var ORDER = "ORDER BY published_at IS NULL, published_at DESC, fetched_at DESC, id";
 var shapeItems = (rows) => foldItems(rows || []).map((it) => {
@@ -5306,6 +5306,13 @@ function cached(req, body, type, extra = {}) {
 }
 var basic = (env) => memo("basic", 15e3, () => getBasicSettings(env));
 var [PAGE_A, PAGE_B] = public_default.split("/*__BOOT__*/null");
+var STATIC_PAGE = PAGE_A + "null" + PAGE_B;
+async function dataResp(req, url, env, JS) {
+  if (url.searchParams.get("old") === "1") return sendSnap(req, await pageData(env, "old"), JS);
+  const part = Number(url.searchParams.get("part")) || 0;
+  if (part > 0) return sendSnap(req, await pageData(env, "part:" + Math.min(part, 50)), JS);
+  return sendSnap(req, await pageData(env, "head"), JS);
+}
 async function snapOrLive(env, part) {
   const r = await readSnap(env, part);
   if (r && r.v) return { v: r.v, tag: r.ver + ":" + part };
@@ -5559,7 +5566,7 @@ function setupPage(missing, asJson) {
 <div class="b"><h1>\u90E8\u7F72\u6210\u529F\uFF0C\u8FD8\u5DEE\u4E00\u6B65</h1><p>\u5728 Cloudflare \u63A7\u5236\u53F0\u6253\u5F00\u8FD9\u4E2A Worker\uFF0C\u8865\u4E0A\u4EE5\u4E0B\u7ED1\u5B9A\u540E\u5237\u65B0\u672C\u9875\u3002\u6570\u636E\u8868\u4F1A\u81EA\u52A8\u521B\u5EFA\uFF0C\u7BA1\u7406\u5458\u5BC6\u7801\u5728\u9996\u6B21\u6253\u5F00 /admin \u65F6\u8BBE\u7F6E\u3002</p><ol>${rows}</ol><p>\u5B9A\u65F6\u6293\u53D6\uFF1A\u8BBE\u7F6E \u2192 \u89E6\u53D1\u4E8B\u4EF6 \u2192 \u6DFB\u52A0 Cron\uFF0C\u586B <code>* * * * *</code>\uFF08\u6BCF\u5206\u949F\u4E00\u6B21\uFF0C\u6293\u53D6\u65F6\u95F4\u5728\u540E\u53F0\u8BBE\u7F6E\uFF09\u3002\u7528\u4E00\u952E\u90E8\u7F72\u7684\u8BDD\u5DF2\u81EA\u52A8\u914D\u7F6E\u3002</p></div></html>`, 503);
 }
 var SITE_COOKIE = "frr_site";
-var siteHash = (env) => memo("sitehash", 3e4, () => getSitePassHash(env));
+var siteHash = (env) => memo("sitehash", 3e5, () => getSitePassHash(env));
 async function siteGate(req, env, url) {
   const h = await siteHash(env);
   if (!h) return { ok: true };
@@ -5632,7 +5639,7 @@ async function health(env) {
     const r = await env.DB.prepare("SELECT id, started_at, finished_at FROM runs ORDER BY id DESC LIMIT 1").first();
     return { last: r || null };
   });
-  return { ok: Object.values(out).every((x) => x.ok), version: "1.8.1", checks: out };
+  return { ok: Object.values(out).every((x) => x.ok), version: "1.8.2", checks: out };
 }
 async function handleFetch(req, env, ctx) {
   const url = new URL(req.url);
@@ -5669,13 +5676,26 @@ async function handleFetch(req, env, ctx) {
     }
     if (url.pathname === "/api/data") {
       const JS = "application/json; charset=utf-8";
-      if (url.searchParams.get("old") === "1") return sendSnap(req, await pageData(env, "old"), JS);
-      const part = Number(url.searchParams.get("part")) || 0;
-      if (part > 0) return sendSnap(req, await pageData(env, "part:" + Math.min(part, 50)), JS);
-      return sendSnap(req, await pageData(env, "head"), JS);
+      const edge = !await siteHash(env) && typeof caches !== "undefined" && caches.default;
+      if (edge) {
+        const ck = new Request(url.origin + url.pathname + url.search, { method: "GET" });
+        const hit = await caches.default.match(ck).catch(() => null);
+        if (hit) return hit;
+        const res = await dataResp(req, url, env, JS);
+        if (res.status === 200) {
+          const c = res.clone();
+          const h = new Headers(c.headers);
+          h.set("cache-control", "public, max-age=120");
+          ctx.waitUntil(caches.default.put(ck, new Response(c.body, { headers: h })).catch(() => {
+          }));
+        }
+        return res;
+      }
+      return dataResp(req, url, env, JS);
     }
     if (url.pathname === "/" || url.pathname === "/index.html") {
       maybeVisitTick(env, ctx);
+      if (!await siteHash(env)) return new Response(STATIC_PAGE, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" } });
       const d = await pageData(env, "head");
       return sendSnap(req, d, "text/html; charset=utf-8", PAGE_A + d.v + PAGE_B);
     }

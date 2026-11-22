@@ -6,9 +6,9 @@ import { foldItems } from './fold.js';
 import { GROUPS, CAT_MAP, enabledCats } from './categories.js';
 import { weeklyPicks, perksOf, checkinOf } from './extras.js';
 
-export const HEAD_N = 120; // 首屏内嵌的条数
-const PART = 200;          // 之后每块的条数
-const OLD_N = 400;         // 「较早发布」最多给多少条
+export const HEAD_N = 60; // 首屏内嵌的条数
+const PART = 120;          // 之后每块的条数
+const OLD_N = 200;         // 「较早发布」最多给多少条
 export const ITEM_COLS = 'id, title, url, source, published_at, fetched_at, day, category, name, summary, signup, score, obtain, target, sources, extra, expires_at, up, down, dead';
 const ORDER = 'ORDER BY published_at IS NULL, published_at DESC, fetched_at DESC, id';
 

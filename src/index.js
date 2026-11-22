@@ -62,6 +62,13 @@ const basic = (env) => memo('basic', 15000, () => getBasicSettings(env));
 
 // 资源页数据：读定时任务预先生成的快照（snap.js），访问时只读一行 + 拼接字符串，不现算
 const [PAGE_A, PAGE_B] = publicHtml.split('/*__BOOT__*/null');
+const STATIC_PAGE = PAGE_A + 'null' + PAGE_B;
+async function dataResp(req, url, env, JS) {
+  if (url.searchParams.get('old') === '1') return sendSnap(req, await pageData(env, 'old'), JS);
+  const part = Number(url.searchParams.get('part')) || 0;
+  if (part > 0) return sendSnap(req, await pageData(env, 'part:' + Math.min(part, 50)), JS);
+  return sendSnap(req, await pageData(env, 'head'), JS);
+}
 async function snapOrLive(env, part) {
   const r = await readSnap(env, part);
   if (r && r.v) return { v: r.v, tag: r.ver + ':' + part };
@@ -296,7 +303,7 @@ function setupPage(missing, asJson) {
 // ---------- 资源页访问密码 ----------
 // 设置后：资源页、/api/items、/api/stats、/feed.xml 都需要密码。网页登录后写 30 天 Cookie；RSS 用 /feed.xml?key=密码
 const SITE_COOKIE = 'frr_site';
-const siteHash = (env) => memo('sitehash', 30000, () => getSitePassHash(env));
+const siteHash = (env) => memo('sitehash', 300000, () => getSitePassHash(env));
 async function siteGate(req, env, url) {
   const h = await siteHash(env);
   if (!h) return { ok: true };
@@ -346,7 +353,7 @@ async function health(env) {
   await step('settings', async () => { const s = await getBasicSettings(env); return { keys: Object.keys(s).length }; });
   await step('kv', async () => ({ bound: !!env.SECRETS }));
   await step('run', async () => { const r = await env.DB.prepare('SELECT id, started_at, finished_at FROM runs ORDER BY id DESC LIMIT 1').first(); return { last: r || null }; });
-  return { ok: Object.values(out).every((x) => x.ok), version: '1.8.1', checks: out };
+  return { ok: Object.values(out).every((x) => x.ok), version: '1.8.2', checks: out };
 }
 
 async function handleFetch(req, env, ctx) {
@@ -378,14 +385,22 @@ async function handleFetch(req, env, ctx) {
       if (url.pathname === '/api/vote' && req.method === 'POST') { const r = await vote(req, env); ctx.waitUntil(markDirty(env)); return r; }
       if (url.pathname === '/api/data') {
         const JS = 'application/json; charset=utf-8';
-        if (url.searchParams.get('old') === '1') return sendSnap(req, await pageData(env, 'old'), JS);
-        const part = Number(url.searchParams.get('part')) || 0;
-        if (part > 0) return sendSnap(req, await pageData(env, 'part:' + Math.min(part, 50)), JS);
-        return sendSnap(req, await pageData(env, 'head'), JS);
+        // 没设访问密码时走边缘缓存：同一份数据 2 分钟内不再查数据库
+        const edge = !(await siteHash(env)) && typeof caches !== 'undefined' && caches.default;
+        if (edge) {
+          const ck = new Request(url.origin + url.pathname + url.search, { method: 'GET' });
+          const hit = await caches.default.match(ck).catch(() => null);
+          if (hit) return hit;
+          const res = await dataResp(req, url, env, JS);
+          if (res.status === 200) { const c = res.clone(); const h = new Headers(c.headers); h.set('cache-control', 'public, max-age=120'); ctx.waitUntil(caches.default.put(ck, new Response(c.body, { headers: h })).catch(() => {})); }
+          return res;
+        }
+        return dataResp(req, url, env, JS);
       }
       if (url.pathname === '/' || url.pathname === '/index.html') {
         maybeVisitTick(env, ctx);
-        // 首屏数据直接内嵌进页面，打开即显示；其余的页面加载后分块取
+        // 省资源：页面本身是静态的，不查数据库；数据由页面加载后请求 /api/data（有边缘缓存）
+        if (!(await siteHash(env))) return new Response(STATIC_PAGE, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' } });
         const d = await pageData(env, 'head');
         return sendSnap(req, d, 'text/html; charset=utf-8', PAGE_A + d.v + PAGE_B);
       }

@@ -499,7 +499,7 @@ async function ingest(env, c, src, items, stats, log) {
   // 按 feed 的 <category> 标签筛：tags 命中其一才收，skip_tags 命中就丢
   const wantTags = csv(src.tags), skipTags = csv(src.skip_tags);
   // 一步最多处理 60 条（大的 feed 动辄上百条，全处理容易超出免费版 CPU）
-  if (items.length > 60) items = items.slice(0, 60);
+  if (items.length > 30) items = items.slice(0, 30);
   if (wantTags.length || skipTags.length) items = items.filter((x) => { const t = x.tags || []; if (wantTags.length && !t.some((y) => wantTags.includes(y))) { stats.off_topic++; return false; } if (skipTags.some((y) => t.includes(y))) { stats.off_topic++; return false; } return true; });
   let include = null;
   if (src.include) { try { include = new RegExp(src.include, 'i'); } catch { log.push(`! ${src.name}: include 正则无效`); } }
@@ -639,7 +639,7 @@ async function ingest(env, c, src, items, stats, log) {
 /** 判定一批待处理条目。返回是否还有剩余 */
 async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
   const s = c.s;
-  const perStep = c.aiReady ? Math.min(20, Math.max(1, Number(s.ai_batch_size) || 12)) * 3 : 30;
+  const perStep = c.aiReady ? Math.min(20, Math.max(1, Number(s.ai_batch_size) || 12)) * 3 : 15;
   const cap = c.aiReady ? (capOverride || Math.max(1, Number(s.ai_max_items) || 60)) : 100000;
   const room = Math.max(0, cap - judgedSoFar);
   if (!room) { log.push(`– 本次 AI 判定已达上限 ${cap} 条，剩余留到下次`); return false; }

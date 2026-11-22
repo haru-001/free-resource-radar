@@ -190,7 +190,7 @@ export const DEFAULT_SETTINGS = {
   watch_enabled: 'true',   // 关键词提醒：命中就单独推送，不等日报
   watch_keywords: '',      // 每行一个关键词，如 Claude / 域名 / VPS
   link_check: 'true',      // 失效检测：每次抓取后抽查一批链接，打不开或写着已结束的标灰下沉
-  link_check_per_run: '8',
+  link_check_per_run: '5',
   weekly_enabled: 'false', // 每周精选：每周一（可改）随推送附带本周最值的 10 条
   weekly_weekday: '1',     // 0 = 周日，1 = 周一 …
   vote_hide: '3',          // 「不值」比「值」多这么多票就自动隐藏（0 = 不隐藏）
