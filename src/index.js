@@ -7,6 +7,7 @@ import { weeklyPicks, perksOf, checkinOf } from './extras.js';
 import { BACKENDS, BACKEND_MAP, runBackend, searchForDiscovery } from './search.js';
 import { checkSources, probeInputs, discoverSources } from './sources-sync.js';
 import { foldItems } from './fold.js';
+import { readSnap, liveHead, livePart, liveOld, markDirty, snapStep } from './snap.js';
 import { CATEGORIES, CAT_MAP, GROUPS, enabledCats } from './categories.js';
 import adminHtml from './admin.html';
 import publicHtml from './public.html';
@@ -59,54 +60,29 @@ function cached(req, body, type, extra = {}) {
 }
 const basic = (env) => memo('basic', 15000, () => getBasicSettings(env));
 
-// 资源页数据：默认只给近 fresh_days 天的（首屏更小、更快）；「较早发布」展开时再用 ?old=1 取
-const ITEM_COLS = 'id, title, url, source, published_at, fetched_at, day, category, name, summary, signup, score, obtain, target, sources, extra, expires_at, up, down, dead';
-const shapeItems = (rows) => foldItems(rows || []).map((it) => {
-  if (it.extra) { try { it.extra = JSON.parse(it.extra); } catch { delete it.extra; } } else delete it.extra;
-  if (it.published_at) delete it.fetched_at;
-  if (it.summary && it.summary.length > 200) it.summary = it.summary.slice(0, 200) + '…';
-  for (const k of ['up', 'down', 'dead', 'expires_at', 'signup', 'score', 'obtain', 'name', 'summary']) if (it[k] == null || it[k] === 0) delete it[k];
-  return it;
-});
-async function publicData(env, old = false) {
-  const st = await basic(env);
-  const ttl = Math.max(0, Number(st.public_cache_seconds) || 0) * 1000;
-  return memo(old ? 'data-old' : 'data', ttl, async () => {
-    const now = Date.now();
-    const cutoff = now - (Number(st.max_age_days) || 180) * 86400000;
-    const freshDays = Math.max(1, Number(st.fresh_days) || 15);
-    const fresh = now - freshDays * 86400000;
-    // 截止时间已过一天以上的不再展示
-    const live = `status = 'approved' AND (expires_at IS NULL OR expires_at > ${now - 86400000})`;
-    if (old) {
-      const { results } = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND published_at >= ? AND published_at < ? ORDER BY published_at DESC LIMIT 1500`).bind(cutoff, fresh).all();
-      return JSON.stringify({ items: shapeItems(results) });
-    }
-    const [items, last, oldN] = await Promise.all([
-      // 按发布时间倒序（没有发布时间的按收录时间）
-      env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ORDER BY published_at IS NULL, published_at DESC, fetched_at DESC LIMIT 1200`).bind(fresh).all(),
-      env.DB.prepare("SELECT MAX(finished_at) AS t FROM runs WHERE trigger != 'mail'").first(),
-      env.DB.prepare(`SELECT COUNT(*) AS n FROM items WHERE ${live} AND published_at >= ? AND published_at < ?`).bind(cutoff, fresh).first(),
-    ]);
-    const list = shapeItems(items.results);
-    const data = {
-      today: dayOf(now),
-      retention_days: Number(st.retention_days) || 15,
-      run_hour: Number(st.run_hour) || 0,
-      every: Math.min(24, Math.max(1, Number(st.crawl_every_hours) || 24)),
-      last_run: last?.t || null,
-      fresh_days: freshDays,
-      old_count: oldN?.n || 0,
-      groups: GROUPS,
-      categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color, group: CAT_MAP[k].group, info: !!CAT_MAP[k].info })),
-      weekly: weeklyPicks(list, now).map((x) => x.id),
-      perks: perksOf(st),
-      checkin: checkinOf(st),
-      vote: true,
-      items: list,
-    };
-    return JSON.stringify(data);
-  });
+// 资源页数据：读定时任务预先生成的快照（snap.js），访问时只读一行 + 拼接字符串，不现算
+const [PAGE_A, PAGE_B] = publicHtml.split('/*__BOOT__*/null');
+const STATIC_PAGE = PAGE_A + 'null' + PAGE_B;
+async function dataResp(req, url, env, JS) {
+  if (url.searchParams.get('old') === '1') return sendSnap(req, await pageData(env, 'old'), JS);
+  const part = Number(url.searchParams.get('part')) || 0;
+  if (part > 0) return sendSnap(req, await pageData(env, 'part:' + Math.min(part, 50)), JS);
+  return sendSnap(req, await pageData(env, 'head'), JS);
+}
+async function snapOrLive(env, part) {
+  const r = await readSnap(env, part);
+  if (r && r.v) return { v: r.v, tag: r.ver + ':' + part };
+  // 还没有快照（刚部署或刚升级）：现算一个限量版本，并标记需要生成
+  markDirty(env);
+  const v = part === 'head' ? await liveHead(env) : part === 'old' ? await liveOld(env) : await livePart(env, Number(part.split(':')[1]) || 1);
+  return { v, tag: 'live:' + part + ':' + Math.floor(Date.now() / 60000) };
+}
+const pageData = (env, part) => memo('snap:' + part, 20000, () => snapOrLive(env, part));
+function sendSnap(req, d, type, body) {
+  const etag = `W/"${d.tag}"`;
+  const headers = { 'content-type': type, etag, 'cache-control': 'no-cache' };
+  if (req.headers.get('if-none-match') === etag) return new Response(null, { status: 304, headers });
+  return new Response(body ?? d.v, { headers });
 }
 
 // ---------- 频率限制：公开接口按 IP 每分钟限次（单个实例内存计数，够挡住脚本乱刷）；登录失败计数存 D1 ----------
@@ -180,6 +156,8 @@ async function handleAdmin(req, env, url) {
   const m = req.method;
   const body = m === 'GET' || m === 'DELETE' ? {} : await req.json().catch(() => ({}));
 
+  // 生成资源页快照（后台「立即抓取」结束后由浏览器逐步调用，每次一步）
+  if (p === '/snap' && m === 'POST') { const r = await snapStep(env, !!body.force); clearMemo(); return json(r || { done: true, idle: true }); }
   if (p === '/settings' && m === 'GET') return json(settingsForAdmin(await getSettings(env)));
   if (p === '/settings' && m === 'PUT') {
     try { await saveSettings(env, body); } catch (e) { return json({ error: `保存失败：${e.message}` }, 400); }
@@ -325,7 +303,7 @@ function setupPage(missing, asJson) {
 // ---------- 资源页访问密码 ----------
 // 设置后：资源页、/api/items、/api/stats、/feed.xml 都需要密码。网页登录后写 30 天 Cookie；RSS 用 /feed.xml?key=密码
 const SITE_COOKIE = 'frr_site';
-const siteHash = (env) => memo('sitehash', 30000, () => getSitePassHash(env));
+const siteHash = (env) => memo('sitehash', 300000, () => getSitePassHash(env));
 async function siteGate(req, env, url) {
   const h = await siteHash(env);
   if (!h) return { ok: true };
@@ -346,9 +324,43 @@ input{width:100%;box-sizing:border-box;height:38px;border:1px solid #e6e8ec;bord
 
 export default {
   async fetch(req, env, ctx) {
+    // 最外层兜底：任何异常都返回带原因的页面，而不是 Cloudflare 的 1101
+    try { return await handleFetch(req, env, ctx); } catch (e) { return errorPage(e, new URL(req.url).pathname); }
+  },
+  async scheduled(event, env, ctx) {
+    try { await handleScheduled(event, env, ctx); } catch (e) { console.error('scheduled failed', e && (e.stack || e.message || e)); }
+  },
+};
+
+function errorPage(e, path) {
+  const msg = String((e && (e.stack || e.message)) || e).slice(0, 1500);
+  console.error('request failed', path, msg);
+  if (path.startsWith('/api/')) return json({ error: msg }, 500);
+  const quota = /limit|exceed|quota|too many/i.test(msg);
+  return html(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>暂时打不开 · 免费资源雷达</title>
+<style>body{margin:0;background:#f6f7f9;font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#111318}.b{max-width:640px;margin:10vh auto;background:#fff;border:1px solid #e6e8ec;border-radius:8px;padding:24px 28px}h1{font-size:17px;margin:0 0 6px}p{color:#525c6b}pre{background:#f1f3f6;padding:10px;border-radius:6px;white-space:pre-wrap;word-break:break-all;font-size:12px}</style>
+<div class="b"><h1>页面暂时打不开</h1><p>${quota ? '看起来是 Cloudflare 免费额度（D1 读写次数或请求数）今天用完了，北京时间 08:00 重置。' : '程序出错了，把下面这段发给维护者即可定位。'}</p><pre>${msg.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[c])}</pre><p>诊断：打开 <a href="/api/health">/api/health</a> 查看各项检查。</p></div></html>`, 500);
+}
+
+// 自检：逐项检查数据库、表结构、快照、设置，哪一项坏了一眼能看出来
+async function health(env) {
+  const out = {};
+  const step = async (k, fn) => { const t = Date.now(); try { out[k] = { ok: true, ms: Date.now() - t, ...(await fn()) }; out[k].ms = Date.now() - t; } catch (e) { out[k] = { ok: false, error: String((e && e.message) || e).slice(0, 300) }; } };
+  await step('d1', async () => ({ v: (await env.DB.prepare('SELECT 1 AS x').first())?.x }));
+  await step('schema', async () => { await ensureSchema(env); return {}; });
+  await step('items', async () => ({ n: (await env.DB.prepare("SELECT COUNT(*) AS n FROM items WHERE status = 'approved'").first())?.n }));
+  await step('snapshot', async () => { const r = await readSnap(env, 'head'); return { ver: r?.ver || null, bytes: r?.v ? r.v.length : 0 }; });
+  await step('settings', async () => { const s = await getBasicSettings(env); return { keys: Object.keys(s).length }; });
+  await step('kv', async () => ({ bound: !!env.SECRETS }));
+  await step('run', async () => { const r = await env.DB.prepare('SELECT id, started_at, finished_at FROM runs ORDER BY id DESC LIMIT 1').first(); return { last: r || null }; });
+  return { ok: Object.values(out).every((x) => x.ok), version: '1.8.2', checks: out };
+}
+
+async function handleFetch(req, env, ctx) {
     const url = new URL(req.url);
     const missing = setupMissing(env);
     if (missing.length) return setupPage(missing, url.pathname.startsWith('/api/'));
+    if (url.pathname === '/api/health') return json(await health(env));
     try {
       await ensureSchema(env);
       const ip = ipOf(req);
@@ -370,14 +382,27 @@ export default {
         const g = await siteGate(req, env, url);
         if (!g.ok) return url.pathname.startsWith('/api/') || url.pathname === '/feed.xml' ? json({ error: '需要访问密码' }, 401) : html(lockPage(), 401);
       }
-      if (url.pathname === '/api/vote' && req.method === 'POST') { const r = await vote(req, env); clearMemo(); return r; }
-      if (url.pathname === '/api/data' && url.searchParams.get('old') === '1') return cached(req, await publicData(env, true), 'application/json; charset=utf-8');
-      if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/api/data') {
+      if (url.pathname === '/api/vote' && req.method === 'POST') { const r = await vote(req, env); ctx.waitUntil(markDirty(env)); return r; }
+      if (url.pathname === '/api/data') {
+        const JS = 'application/json; charset=utf-8';
+        // 没设访问密码时走边缘缓存：同一份数据 2 分钟内不再查数据库
+        const edge = !(await siteHash(env)) && typeof caches !== 'undefined' && caches.default;
+        if (edge) {
+          const ck = new Request(url.origin + url.pathname + url.search, { method: 'GET' });
+          const hit = await caches.default.match(ck).catch(() => null);
+          if (hit) return hit;
+          const res = await dataResp(req, url, env, JS);
+          if (res.status === 200) { const c = res.clone(); const h = new Headers(c.headers); h.set('cache-control', 'public, max-age=120'); ctx.waitUntil(caches.default.put(ck, new Response(c.body, { headers: h })).catch(() => {})); }
+          return res;
+        }
+        return dataResp(req, url, env, JS);
+      }
+      if (url.pathname === '/' || url.pathname === '/index.html') {
         maybeVisitTick(env, ctx);
-        const data = await publicData(env);
-        if (url.pathname === '/api/data') return cached(req, data, 'application/json; charset=utf-8');
-        // 首屏数据直接内嵌进页面，打开即显示，不用再等接口
-        return cached(req, publicHtml.replace('/*__BOOT__*/null', data.replace(/</g, '\\u003c')), 'text/html; charset=utf-8');
+        // 省资源：页面本身是静态的，不查数据库；数据由页面加载后请求 /api/data（有边缘缓存）
+        if (!(await siteHash(env))) return new Response(STATIC_PAGE, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' } });
+        const d = await pageData(env, 'head');
+        return sendSnap(req, d, 'text/html; charset=utf-8', PAGE_A + d.v + PAGE_B);
       }
       // 触发地址：给 cron-job.org、UptimeRobot 等外部定时服务用，或者自己访问一下手动推进
       if (url.pathname === '/api/cron') {
@@ -427,7 +452,7 @@ export default {
         const maxFails = Number((await basic(env)).login_max_fails) || 10;
         if ((await failsOf(env, ip)) >= maxFails) return tooMany();
         if (!(await isAdmin(req, env))) { if (req.headers.get('authorization')) await addFail(env, ip); return json({ error: '未授权' }, 401); }
-        if (req.method !== 'GET') clearMemo(); // 后台有改动，公开数据缓存立即失效（本实例）
+        if (req.method !== 'GET' && url.pathname !== '/api/admin/snap') { clearMemo(); ctx.waitUntil(markDirty(env)); } // 后台有改动：本实例缓存失效，快照稍后重新生成
         if (url.pathname === '/api/admin/password' && req.method === 'POST') {
           if (envToken(env)) return json({ error: '当前使用环境变量 ADMIN_TOKEN，请在 Cloudflare 控制台修改' }, 400);
           const { password } = await req.json().catch(() => ({}));
@@ -444,25 +469,39 @@ export default {
       }
       return json({ error: 'Not found' }, 404);
     } catch (e) {
-      return json({ error: e.message || String(e) }, 500);
+      return errorPage(e, url.pathname);
     }
-  },
+}
 
-  // 定时任务每分钟触发一次：有进行中的抓取就执行下一步；到了每天的抓取时间就新建一次抓取（最后一步自动推送）
-  async scheduled(event, env, ctx) {
+// 定时任务每分钟触发一次：有进行中的抓取就执行下一步；到了抓取时间就新建一次抓取
+async function handleScheduled(event, env, ctx) {
     const missing = setupMissing(env);
     if (missing.length) { console.error('部署未完成，缺少绑定：' + missing.map((x) => x[0]).join(', ')); return; }
     await ensureSchema(env);
     ctx.waitUntil(autoTick(env, 'cron').catch((e) => console.error('scheduled failed', e)));
-  },
-};
+}
 
 // 推进一次：有进行中的抓取就执行下一步；没有且到了每天的抓取时间（今天还没跑过）就新建一次
+// 资源页快照：正在生成就接着生成；数据有变化时，空闲立即生成，抓取中每 10 分钟插一轮（每次只做一步）
+async function snapDue(env, idle) {
+  const [b, dirty, at, ver] = await Promise.all(['snap_build', 'snap_dirty', 'snap_at', 'snap_ver'].map((k) => getMeta(env, k)));
+  if (b || !ver) return true;
+  if (!(Number(dirty) > Number(at))) return idle && Date.now() - Number(at) > 6 * 3600000;
+  return idle || Date.now() - Number(at) > 10 * 60000;
+}
 async function autoTick(env, trigger) {
+  if (await snapDue(env, false)) {
+    const sr = await snapStep(env);
+    if (sr) { clearMemo(); return { idle: false, action: 'snap', message: `资源页快照 ${sr.step} / ${sr.total}`, ...sr }; }
+  }
   const s = await getSettings(env);
   const steps = Math.min(50, Math.max(1, Number(s.steps_per_tick) || 1));
   const r = await tick(env, steps);
-  if (!r.idle) { clearMemo(); return { ...r, action: 'step' }; }
+  if (!r.idle) { await markDirty(env); clearMemo(); return { ...r, action: 'step' }; }
+  if (await snapDue(env, true)) {
+    const sr = await snapStep(env);
+    if (sr) { clearMemo(); return { idle: true, action: 'snap', message: `资源页快照 ${sr.step} / ${sr.total}`, ...sr }; }
+  }
   const now = Date.now();
   // 抓取：从 run_hour 起每隔 crawl_every_hours 小时一次
   const every = Math.min(24, Math.max(1, Number(s.crawl_every_hours) || 24));
@@ -492,10 +531,9 @@ async function autoTick(env, trigger) {
     }
     return { idle: true, action: 'wait', message: '这一轮已经抓取过了，下一轮：' + nextSlotText(now, slotHours(Number(s.run_hour) || 0, every)) };
   }
+  // 只建好这一轮的步骤，第一步留到下一分钟执行（建步骤本身也要耗 CPU）
   const plan = await planRun(env, trigger);
-  const r2 = await tick(env, steps);
-  clearMemo();
-  return { ...r2, action: 'started', run_id: plan.run_id, steps: plan.steps };
+  return { idle: false, action: 'started', run_id: plan.run_id, steps: plan.steps, message: `已开始新一轮抓取，共 ${plan.steps} 步` };
 }
 
 // ---- 时间点（北京时间） ----

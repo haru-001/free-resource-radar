@@ -1,4 +1,4 @@
-// 免费资源雷达 · 单文件版（v1.8.0）。在 Cloudflare 控制台新建 Worker 后整份粘贴，绑定 D1（变量名 DB），可选绑定 KV（SECRETS）。
+// 免费资源雷达 · 单文件版（v1.8.2）：可直接粘贴到 Cloudflare 控制台的在线编辑器。需要绑定 D1（DB），KV（SECRETS）可选，并添加 Cron 触发器 * * * * *
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __esm = (fn, res) => function __init() {
@@ -713,7 +713,7 @@ var DEFAULT_SETTINGS = {
   // 每行一个关键词，如 Claude / 域名 / VPS
   link_check: "true",
   // 失效检测：每次抓取后抽查一批链接，打不开或写着已结束的标灰下沉
-  link_check_per_run: "12",
+  link_check_per_run: "5",
   weekly_enabled: "false",
   // 每周精选：每周一（可改）随推送附带本周最值的 10 条
   weekly_weekday: "1",
@@ -744,8 +744,14 @@ var SECRET_KEYS = ["ai_api_key", "mail_api_key", "smtp_pass", "telegram_bot_toke
 var KV_KEYS = ["ai_base_url", "ai_api_key", "mail_api_key", "smtp_user", "smtp_pass", "telegram_bot_token", "telegram_chat_id", ...SEARCH_KEYS, ...PUSH_KEYS];
 var kvName = (k) => `cfg:${k}`;
 var schemaReady = false;
+var SCHEMA_VER = "1.8.1";
 async function ensureSchema(env) {
   if (schemaReady) return;
+  const cur = await env.DB.prepare("SELECT value FROM secrets WHERE key = 'meta:schema'").first().catch(() => null);
+  if (cur?.value === SCHEMA_VER) {
+    schemaReady = true;
+    return;
+  }
   await env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, title TEXT NOT NULL, url TEXT NOT NULL, source TEXT, raw_text TEXT, published_at INTEGER, fetched_at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', category TEXT, name TEXT, summary TEXT, signup TEXT, score INTEGER, judged_by TEXT, judged_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0)`),
@@ -754,7 +760,7 @@ async function ensureSchema(env) {
     env.DB.prepare("CREATE TABLE IF NOT EXISTS runs (id INTEGER PRIMARY KEY AUTOINCREMENT, trigger TEXT, started_at INTEGER, finished_at INTEGER, stats TEXT, log TEXT)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS secrets (key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
     // 一次抓取拆成的步骤（每个数据源 / 判定批次 / 推送各一步），定时任务每分钟执行一步
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL, seq INTEGER NOT NULL, kind TEXT NOT NULL, payload TEXT, status TEXT NOT NULL DEFAULT 'pending', claimed_at INTEGER)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL, seq INTEGER NOT NULL, kind TEXT NOT NULL, payload TEXT, status TEXT NOT NULL DEFAULT 'pending', claimed_at INTEGER, tries INTEGER NOT NULL DEFAULT 0)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_jobs_run ON jobs(run_id, status, seq)"),
     // 去重记忆：条目 15 天后会清理，但“见过”的记录保留更久，避免旧帖被重新抓取、重复推送
     env.DB.prepare("CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, fp TEXT, seen_at INTEGER NOT NULL)"),
@@ -764,7 +770,9 @@ async function ensureSchema(env) {
     env.DB.prepare("CREATE TABLE IF NOT EXISTS votes (id TEXT NOT NULL, voter TEXT NOT NULL, v INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (id, voter))"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS src_health (name TEXT NOT NULL, day TEXT NOT NULL, fetched INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0, last_at INTEGER, last_err TEXT, PRIMARY KEY (name, day))"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS verdicts (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)"),
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS rate (k TEXT PRIMARY KEY, n INTEGER NOT NULL, reset INTEGER NOT NULL)")
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS rate (k TEXT PRIMARY KEY, n INTEGER NOT NULL, reset INTEGER NOT NULL)"),
+    // v1.8.1：资源页快照（分块预先生成，访问时直接读）
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS snap (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)")
   ]);
   const cols = new Set(((await env.DB.prepare("PRAGMA table_info(items)").all()).results || []).map((r) => r.name));
   const add = [["obtain", "TEXT"], ["fp", "TEXT"], ["day", "TEXT"], ["cats", "TEXT"], ["hint", "TEXT"], ["target", "TEXT"], ["sources", "TEXT"], ["extra", "TEXT"], ["expires_at", "INTEGER"], ["up", "INTEGER NOT NULL DEFAULT 0"], ["down", "INTEGER NOT NULL DEFAULT 0"], ["dead", "INTEGER NOT NULL DEFAULT 0"], ["checked_at", "INTEGER"]].filter(([c]) => !cols.has(c));
@@ -774,10 +782,16 @@ async function ensureSchema(env) {
     } catch {
     }
   }
-  const jcols = add.length || !cols.size ? new Set(((await env.DB.prepare("PRAGMA table_info(jobs)").all()).results || []).map((r) => r.name)) : /* @__PURE__ */ new Set(["claimed_at"]);
+  const jcols = new Set(((await env.DB.prepare("PRAGMA table_info(jobs)").all()).results || []).map((r) => r.name));
   if (!jcols.has("claimed_at")) {
     try {
       await env.DB.prepare("ALTER TABLE jobs ADD COLUMN claimed_at INTEGER").run();
+    } catch {
+    }
+  }
+  if (!jcols.has("tries")) {
+    try {
+      await env.DB.prepare("ALTER TABLE jobs ADD COLUMN tries INTEGER NOT NULL DEFAULT 0").run();
     } catch {
     }
   }
@@ -792,6 +806,7 @@ async function ensureSchema(env) {
     ].map((q) => env.DB.prepare(q))).catch(() => {
     });
   }
+  await env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('meta:schema', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(SCHEMA_VER).run();
   schemaReady = true;
 }
 async function getSettings(env) {
@@ -800,12 +815,7 @@ async function getSettings(env) {
   for (const r of results || []) if (r.key in DEFAULT_SETTINGS) s[r.key] = r.value;
   const sec = await env.DB.prepare("SELECT key, value FROM secrets").all();
   for (const r of sec.results || []) if (KV_KEYS.includes(r.key)) s[r.key] = r.value;
-  if (env.SECRETS) {
-    const vals = await Promise.all(KV_KEYS.map((k) => env.SECRETS.get(kvName(k))));
-    KV_KEYS.forEach((k, i) => {
-      if (vals[i] !== null) s[k] = vals[i];
-    });
-  }
+  if (env.SECRETS) Object.assign(s, await kvAll(env));
   return s;
 }
 function maskSecret(v) {
@@ -818,9 +828,31 @@ function settingsForAdmin(s) {
   for (const k of SECRET_KEYS) out[k] = maskSecret(s[k]);
   return out;
 }
+var KV_ALL = "cfg:__all";
+var kvMemo = null;
+async function kvAll(env) {
+  if (kvMemo && kvMemo.exp > Date.now()) return kvMemo.v;
+  let v = null;
+  try {
+    v = JSON.parse(await env.SECRETS.get(KV_ALL) || "null");
+  } catch {
+  }
+  if (!v) {
+    const vals = await Promise.all(KV_KEYS.map((k) => env.SECRETS.get(kvName(k))));
+    v = {};
+    KV_KEYS.forEach((k, i) => {
+      if (vals[i] !== null) v[k] = vals[i];
+    });
+    await env.SECRETS.put(KV_ALL, JSON.stringify(v)).catch(() => {
+    });
+  }
+  kvMemo = { v, exp: Date.now() + 6e4 };
+  return v;
+}
 async function saveSettings(env, patch) {
   const stmts = [];
   const kvWrites = [];
+  const kvPatch = {};
   for (const [k, v] of Object.entries(patch || {})) {
     if (!(k in DEFAULT_SETTINGS)) continue;
     let val = typeof v === "boolean" ? String(v) : String(v ?? "");
@@ -829,6 +861,7 @@ async function saveSettings(env, patch) {
     if (KV_KEYS.includes(k)) {
       stmts.push(env.DB.prepare("DELETE FROM settings WHERE key = ?").bind(k));
       if (env.SECRETS) {
+        kvPatch[k] = val;
         kvWrites.push(env.SECRETS.put(kvName(k), val));
         stmts.push(env.DB.prepare("DELETE FROM secrets WHERE key = ?").bind(k));
       } else {
@@ -839,6 +872,12 @@ async function saveSettings(env, patch) {
     stmts.push(
       env.DB.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(k, val)
     );
+  }
+  if (Object.keys(kvPatch).length) {
+    kvMemo = null;
+    const all = { ...await kvAll(env), ...kvPatch };
+    kvWrites.push(env.SECRETS.put(KV_ALL, JSON.stringify(all)));
+    kvMemo = { v: all, exp: Date.now() + 6e4 };
   }
   await Promise.all(kvWrites);
   if (stmts.length) await env.DB.batch(stmts);
@@ -2132,6 +2171,7 @@ async function ingest(env, c, src, items, stats, log) {
     return;
   }
   const wantTags = csv(src.tags), skipTags = csv(src.skip_tags);
+  if (items.length > 30) items = items.slice(0, 30);
   if (wantTags.length || skipTags.length) items = items.filter((x) => {
     const t = x.tags || [];
     if (wantTags.length && !t.some((y) => wantTags.includes(y))) {
@@ -2336,7 +2376,7 @@ ${it.raw_text || ""}`;
 }
 async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
   const s = c.s;
-  const perStep = c.aiReady ? Math.min(20, Math.max(1, Number(s.ai_batch_size) || 12)) * 3 : 40;
+  const perStep = c.aiReady ? Math.min(20, Math.max(1, Number(s.ai_batch_size) || 12)) * 3 : 15;
   const cap = c.aiReady ? capOverride || Math.max(1, Number(s.ai_max_items) || 60) : 1e5;
   const room = Math.max(0, cap - judgedSoFar);
   if (!room) {
@@ -2584,10 +2624,10 @@ async function planRun(env, trigger = "cron", opts = {}) {
   } else {
     const ready = BACKENDS.filter((b) => backendReady(s, b)).map((b) => b.id);
     const perBackend = Math.max(1, Number(s.search_max_queries) || 8);
-    const group = Math.max(1, Math.min(2, Math.floor(40 / perBackend)));
+    const group = 1;
     for (let i = 0; i < ready.length; i += group) steps.push(["search", { engines: ready.slice(i, i + group) }]);
     const cats = enabledCats(s);
-    if (s.aifree_radar !== "false" && ready.length && (cats.includes("ai") || cats.includes("aideal"))) steps.push(["radar", { engines: ready.slice(0, 2) }]);
+    if (s.aifree_radar !== "false" && ready.length && (cats.includes("ai") || cats.includes("aideal"))) for (const id of ready.slice(0, 2)) steps.push(["radar", { engines: [id] }]);
     steps.push(["judge", {}], ["cleanup", {}], ["check", {}], ["watch", {}]);
   }
   if (!aiReady) log.push("\u672A\u914D\u7F6E AI\uFF0C\u4F7F\u7528\u5173\u952E\u8BCD\u5224\u5B9A");
@@ -2690,7 +2730,15 @@ async function tick(env, maxSteps = 1) {
   let busy = false;
   for (let n = 0; n < maxSteps; n++) {
     const t = Date.now();
-    await env.DB.prepare("UPDATE jobs SET status = 'pending' WHERE run_id = ? AND status = 'running' AND claimed_at < ?").bind(run.id, t - 5 * 6e4).run();
+    const stuck = await env.DB.prepare("UPDATE jobs SET status = CASE WHEN tries >= 1 THEN 'done' ELSE 'pending' END, tries = tries + 1 WHERE run_id = ? AND status = 'running' AND claimed_at < ? RETURNING kind, status, payload").bind(run.id, t - 4 * 6e4).all();
+    for (const j of stuck.results || []) if (j.status === "done") {
+      let nm = "";
+      try {
+        nm = JSON.parse(j.payload || "{}").src?.name || "";
+      } catch {
+      }
+      log.push(`\u2717 ${STEP_LABEL[j.kind] || j.kind}${nm ? "\uFF1A" + nm : ""} \u4E24\u6B21\u6CA1\u8DD1\u5B8C\uFF08\u53EF\u80FD\u8D85\u51FA CPU \u9650\u5236\uFF09\uFF0C\u5DF2\u8DF3\u8FC7`);
+    }
     const job = await env.DB.prepare(
       `UPDATE jobs SET status = 'running', claimed_at = ?1
        WHERE id = (SELECT id FROM jobs WHERE run_id = ?2 AND status = 'pending' ORDER BY seq LIMIT 1)
@@ -3029,6 +3077,156 @@ async function discoverSources(current, keyword, searchFn) {
   res.forEach((r, i) => r.status === "fulfilled" ? items.push(toCandidate(r.value, have)) : miss.push(hosts[i].h));
   if (miss.length) errors.push(`\u8FD9\u4E9B\u7AD9\u6CA1\u627E\u5230\u8BA2\u9605\u5730\u5740\uFF1A${miss.join("\u3001")}`);
   return { groups: items.length ? [{ id: "discover", label: `\u641C\u7D22\u300C${keyword}\u300D\u53D1\u73B0`, items }] : [], existing: items.filter((x) => x.why === "\u5DF2\u6709").length, errors, searched: hosts.length };
+}
+
+// src/snap.js
+var HEAD_N = 60;
+var PART = 120;
+var OLD_N = 200;
+var ITEM_COLS = "id, title, url, source, published_at, fetched_at, day, category, name, summary, signup, score, obtain, target, sources, extra, expires_at, up, down, dead";
+var ORDER = "ORDER BY published_at IS NULL, published_at DESC, fetched_at DESC, id";
+var shapeItems = (rows) => foldItems(rows || []).map((it) => {
+  if (it.extra) {
+    try {
+      it.extra = JSON.parse(it.extra);
+    } catch {
+      delete it.extra;
+    }
+  } else delete it.extra;
+  if (it.published_at) delete it.fetched_at;
+  if (it.summary && it.summary.length > 160) it.summary = it.summary.slice(0, 160) + "\u2026";
+  delete it.target;
+  for (const k of ["up", "down", "dead", "expires_at", "signup", "score", "obtain", "name", "summary", "srcs"]) if (it[k] == null || it[k] === 0) delete it[k];
+  return it;
+});
+var pack = (o) => JSON.stringify(o).replace(/</g, "\\u003c");
+function windowOf(st, now = Date.now()) {
+  const cutoff = now - (Number(st.max_age_days) || 180) * 864e5;
+  const fresh = now - Math.max(1, Number(st.fresh_days) || 15) * 864e5;
+  const live = `status = 'approved' AND (expires_at IS NULL OR expires_at > ${now - 864e5})`;
+  return { cutoff, fresh, live };
+}
+async function ensureSnapTable(env) {
+  await env.DB.prepare("CREATE TABLE IF NOT EXISTS snap (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)").run();
+}
+var markDirty = (env) => setMeta(env, "snap_dirty", Date.now()).catch(() => {
+});
+async function readSnap(env, part) {
+  const r = await env.DB.prepare("SELECT s.v AS v, m.value AS ver FROM secrets m LEFT JOIN snap s ON s.k = m.value || ':' || ? WHERE m.key = 'meta:snap_ver'").bind(part).first().catch(() => null);
+  if (!r) return null;
+  return r.v ? r : { ver: r.ver, v: part === "head" ? null : '{"items":[]}' };
+}
+async function headMeta(env, st, now) {
+  const { cutoff, fresh, live } = windowOf(st, now);
+  const [last, oldN, total, wk] = await Promise.all([
+    env.DB.prepare("SELECT MAX(finished_at) AS t FROM runs WHERE trigger != 'mail'").first(),
+    env.DB.prepare(`SELECT COUNT(*) AS n FROM items WHERE ${live} AND published_at >= ? AND published_at < ?`).bind(cutoff, fresh).first(),
+    env.DB.prepare(`SELECT COUNT(*) AS n FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?)`).bind(fresh).first(),
+    // 本周精选只看近 7 天、分最高的一批
+    env.DB.prepare(`SELECT id, title, name, category, score, up, down, obtain, expires_at, dead, extra, published_at, fetched_at, sources FROM items WHERE ${live} AND COALESCE(published_at, fetched_at) >= ? ORDER BY score DESC LIMIT 150`).bind(now - 7 * 864e5).all()
+  ]);
+  const wl = (wk.results || []).map((it) => {
+    if (it.extra) {
+      try {
+        it.extra = JSON.parse(it.extra);
+      } catch {
+        it.extra = null;
+      }
+    }
+    try {
+      it.srcs = it.sources ? JSON.parse(it.sources) : [];
+    } catch {
+      it.srcs = [];
+    }
+    return it;
+  });
+  return {
+    today: dayOf(now),
+    retention_days: Number(st.retention_days) || 15,
+    run_hour: Number(st.run_hour) || 0,
+    every: Math.min(24, Math.max(1, Number(st.crawl_every_hours) || 24)),
+    last_run: last?.t || null,
+    fresh_days: Math.max(1, Number(st.fresh_days) || 15),
+    old_count: oldN?.n || 0,
+    total: total?.n || 0,
+    groups: GROUPS,
+    categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color, group: CAT_MAP[k].group, info: !!CAT_MAP[k].info })),
+    weekly: weeklyPicks(wl, now).map((x) => x.id),
+    perks: perksOf(st),
+    checkin: checkinOf(st),
+    vote: true
+  };
+}
+async function liveHead(env) {
+  const st = await getBasicSettings(env);
+  const now = Date.now();
+  const { fresh, live } = windowOf(st, now);
+  const [meta, rows] = await Promise.all([
+    headMeta(env, st, now),
+    env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ${ORDER} LIMIT ${HEAD_N}`).bind(fresh).all()
+  ]);
+  const items = shapeItems(rows.results);
+  return pack({ ...meta, ver: "live", parts: meta.total > HEAD_N ? -1 : 0, items });
+}
+async function livePart(env, i) {
+  const st = await getBasicSettings(env);
+  const { fresh, live } = windowOf(st);
+  const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ${ORDER} LIMIT ${PART} OFFSET ?`).bind(fresh, HEAD_N + (i - 1) * PART).all();
+  const items = shapeItems(rows.results);
+  return pack({ items, more: items.length >= PART });
+}
+async function liveOld(env) {
+  const st = await getBasicSettings(env);
+  const { cutoff, fresh, live } = windowOf(st);
+  const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND published_at >= ? AND published_at < ? ORDER BY published_at DESC LIMIT ${OLD_N}`).bind(cutoff, fresh).all();
+  return pack({ items: shapeItems(rows.results) });
+}
+async function snapStep(env, force = false) {
+  await ensureSnapTable(env);
+  let b = null;
+  try {
+    b = JSON.parse(await getMeta(env, "snap_build") || "null");
+  } catch {
+  }
+  const now = Date.now();
+  if (b && now - b.at > 30 * 6e4) b = null;
+  if (!b) {
+    const dirty = Number(await getMeta(env, "snap_dirty")) || 0;
+    const built = Number(await getMeta(env, "snap_at")) || 0;
+    const ver = await getMeta(env, "snap_ver");
+    if (!force && ver && dirty <= built && now - built < 6 * 36e5) return null;
+    b = { ver: now.toString(36), i: 0, n: 0, at: now };
+  }
+  const st = await getBasicSettings(env);
+  const { cutoff, fresh, live } = windowOf(st, b.at);
+  const key = (p) => `${b.ver}:${p}`;
+  const put = (p, v) => env.DB.prepare("INSERT INTO snap (k, v, at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, at = excluded.at").bind(key(p), v, now).run();
+  if (b.i === 0) {
+    const [meta, rows] = await Promise.all([
+      headMeta(env, st, b.at),
+      env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ${ORDER} LIMIT ${HEAD_N}`).bind(fresh).all()
+    ]);
+    b.n = Math.max(0, Math.ceil((meta.total - HEAD_N) / PART));
+    b.meta = true;
+    await put("head", pack({ ...meta, ver: b.ver, parts: b.n, items: shapeItems(rows.results) }));
+    b.i = 1;
+  } else if (b.i <= b.n) {
+    const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ${ORDER} LIMIT ${PART} OFFSET ?`).bind(fresh, HEAD_N + (b.i - 1) * PART).all();
+    await put("part:" + b.i, pack({ items: shapeItems(rows.results) }));
+    b.i++;
+  } else {
+    const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND published_at >= ? AND published_at < ? ORDER BY published_at DESC LIMIT ${OLD_N}`).bind(cutoff, fresh).all();
+    await put("old", pack({ items: shapeItems(rows.results) }));
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('meta:snap_ver', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(b.ver),
+      env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('meta:snap_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(String(b.at)),
+      env.DB.prepare("DELETE FROM secrets WHERE key = 'meta:snap_build'"),
+      env.DB.prepare("DELETE FROM snap WHERE k NOT LIKE ?").bind(b.ver + ":%")
+    ]);
+    return { building: false, done: true, step: b.n + 2, total: b.n + 2 };
+  }
+  await setMeta(env, "snap_build", JSON.stringify({ ver: b.ver, i: b.i, n: b.n, at: b.at }));
+  return { building: true, done: false, step: b.i, total: b.n + 2 };
 }
 
 // src/admin.html
@@ -4329,6 +4527,8 @@ function runSteps(btn, endpoint, label, doing) {
     out.textContent = '\u6293\u5230 ' + s.fetched + ' \xB7 \u5019\u9009 ' + s.candidates + ' \xB7 \u65B0\u589E ' + s.new + '\uFF08\u4E13\u6E90\u76F4\u901A ' + (s.trusted || 0) + '\uFF09\xB7 \u5224\u5B9A ' + s.judged + '\uFF08\u81EA\u52A8\u5B9A ' + (s.auto || 0) + '\uFF0C\u7EC6\u5BA1 ' + Math.max(0, s.judged - (s.auto || 0) - (s.cached || 0)) + '\uFF0C\u590D\u7528 ' + (s.cached || 0) + '\uFF09\xB7 \u901A\u8FC7 ' + s.approved + ' \xB7 \u5408\u5E76 ' + (s.merged || 0) + ' \xB7 \u7591\u4F3C\u5931\u6548 ' + (s.dead || 0) + ' \xB7 \u5173\u952E\u8BCD\u63D0\u9192 ' + (s.watched || 0) + ' \xB7 \u9519\u8BEF ' + s.errors +
       '\\n\u8FC7\u6EE4\uFF1A\u8D85\u671F ' + s.too_old + ' \xB7 \u65E0\u65E5\u671F ' + s.undated + ' \xB7 \u975E\u4E2D\u6587 ' + (s.non_zh || 0) + ' \xB7 \u4E0D\u76F8\u5173 ' + s.off_topic + ' \xB7 \u566A\u97F3 ' + s.noise + ' \xB7 \u5C4F\u853D ' + (s.block_rule + s.blocked) + ' \xB7 \u91CD\u590D\u6807\u9898 ' + s.dup_title + '\\n\\n' + lines.join('\\n');
     toast($('#runTitle').textContent, 4000, 'ok');
+    // \u5237\u65B0\u8D44\u6E90\u9875\u5FEB\u7167\uFF08\u5206\u51E0\u6B65\uFF0C\u6BCF\u6B65\u4E00\u6B21\u8BF7\u6C42\uFF0C\u514D\u5F97\u8D85\u51FA\u514D\u8D39\u7248 CPU \u9650\u5236\uFF09
+    for (let i = 0; i < 30; i++) { const q = await api('/api/admin/snap', { method: 'POST', body: '{"force":' + (i === 0) + '}' }).catch(() => null); if (!q || q.done) break; }
     loadItems(CUR);
     if (Object.keys(HEALTH).length || location.hash === '#collect') loadHealth();
   });
@@ -4947,6 +5147,22 @@ function setData(d) {
   // \u6536\u85CF\u91CC\u7684\u6761\u76EE\u7528\u6700\u65B0\u6570\u636E\u5237\u65B0\uFF08\u6295\u7968\u6570\u3001\u5931\u6548\u72B6\u6001\uFF09
   for (const it of d.items) if (FAV[it.id]) FAV[it.id] = { ...it, _at: FAV[it.id]._at };
   render();
+  loadParts(d);
+}
+// \u9996\u5C4F\u53EA\u5185\u5D4C\u6700\u65B0\u7684\u4E00\u90E8\u5206\uFF0C\u5176\u4F59\u5206\u5757\u9759\u9ED8\u52A0\u8F7D\uFF08\u6BCF\u5757\u4E00\u6B21\u8F7B\u91CF\u8BF7\u6C42\uFF09
+async function loadParts(d) {
+  if (!d.parts) return;
+  const seen = new Set(d.items.map((x) => x.id));
+  const max = d.parts > 0 ? d.parts : 50;
+  for (let i = 1; i <= max; i++) {
+    let j;
+    try { const r = await fetch('/api/data?part=' + i); if (!r.ok) break; j = await r.json(); } catch { break; }
+    if (state.data !== d) return; // \u671F\u95F4\u6570\u636E\u5DF2\u66F4\u65B0
+    for (const it of j.items || []) if (!seen.has(it.id)) { seen.add(it.id); d.items.push(it); if (FAV[it.id]) FAV[it.id] = { ...it, _at: FAV[it.id]._at }; }
+    if (d.parts < 0 && !j.more) break;
+    if (i % 2 === 0 || i === max) render();
+  }
+  render();
 }
 function go(patch) {
   Object.assign(state, patch, { shown: PAGE });
@@ -5032,7 +5248,7 @@ async function refresh() {
   try {
     const r = await fetch('/api/data', { cache: 'no-cache' });
     if (r.status === 401) return location.reload();
-    if (r.ok) { const d = await r.json(); if (!state.data || JSON.stringify(d.items.map((x) => x.id + pubOf(x) + (x.up || 0) + (x.dead || 0))) !== JSON.stringify(state.data.items.map((x) => x.id + pubOf(x) + (x.up || 0) + (x.dead || 0))) || d.last_run !== state.data.last_run) { state.oldItems = null; setData(d); } }
+    if (r.ok) { const d = await r.json(); if (!state.data || d.ver !== state.data.ver || (d.ver === 'live' && d.last_run !== state.data.last_run)) { state.oldItems = null; setData(d); } }
   } catch {}
 }
 if (BOOT) setData(BOOT); else refresh();
@@ -5089,58 +5305,27 @@ function cached(req, body, type, extra = {}) {
   return new Response(body, { headers });
 }
 var basic = (env) => memo("basic", 15e3, () => getBasicSettings(env));
-var ITEM_COLS = "id, title, url, source, published_at, fetched_at, day, category, name, summary, signup, score, obtain, target, sources, extra, expires_at, up, down, dead";
-var shapeItems = (rows) => foldItems(rows || []).map((it) => {
-  if (it.extra) {
-    try {
-      it.extra = JSON.parse(it.extra);
-    } catch {
-      delete it.extra;
-    }
-  } else delete it.extra;
-  if (it.published_at) delete it.fetched_at;
-  if (it.summary && it.summary.length > 200) it.summary = it.summary.slice(0, 200) + "\u2026";
-  for (const k of ["up", "down", "dead", "expires_at", "signup", "score", "obtain", "name", "summary"]) if (it[k] == null || it[k] === 0) delete it[k];
-  return it;
-});
-async function publicData(env, old = false) {
-  const st = await basic(env);
-  const ttl = Math.max(0, Number(st.public_cache_seconds) || 0) * 1e3;
-  return memo(old ? "data-old" : "data", ttl, async () => {
-    const now = Date.now();
-    const cutoff = now - (Number(st.max_age_days) || 180) * 864e5;
-    const freshDays = Math.max(1, Number(st.fresh_days) || 15);
-    const fresh = now - freshDays * 864e5;
-    const live = `status = 'approved' AND (expires_at IS NULL OR expires_at > ${now - 864e5})`;
-    if (old) {
-      const { results } = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND published_at >= ? AND published_at < ? ORDER BY published_at DESC LIMIT 1500`).bind(cutoff, fresh).all();
-      return JSON.stringify({ items: shapeItems(results) });
-    }
-    const [items, last, oldN] = await Promise.all([
-      // 按发布时间倒序（没有发布时间的按收录时间）
-      env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ORDER BY published_at IS NULL, published_at DESC, fetched_at DESC LIMIT 1200`).bind(fresh).all(),
-      env.DB.prepare("SELECT MAX(finished_at) AS t FROM runs WHERE trigger != 'mail'").first(),
-      env.DB.prepare(`SELECT COUNT(*) AS n FROM items WHERE ${live} AND published_at >= ? AND published_at < ?`).bind(cutoff, fresh).first()
-    ]);
-    const list = shapeItems(items.results);
-    const data = {
-      today: dayOf(now),
-      retention_days: Number(st.retention_days) || 15,
-      run_hour: Number(st.run_hour) || 0,
-      every: Math.min(24, Math.max(1, Number(st.crawl_every_hours) || 24)),
-      last_run: last?.t || null,
-      fresh_days: freshDays,
-      old_count: oldN?.n || 0,
-      groups: GROUPS,
-      categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color, group: CAT_MAP[k].group, info: !!CAT_MAP[k].info })),
-      weekly: weeklyPicks(list, now).map((x) => x.id),
-      perks: perksOf(st),
-      checkin: checkinOf(st),
-      vote: true,
-      items: list
-    };
-    return JSON.stringify(data);
-  });
+var [PAGE_A, PAGE_B] = public_default.split("/*__BOOT__*/null");
+var STATIC_PAGE = PAGE_A + "null" + PAGE_B;
+async function dataResp(req, url, env, JS) {
+  if (url.searchParams.get("old") === "1") return sendSnap(req, await pageData(env, "old"), JS);
+  const part = Number(url.searchParams.get("part")) || 0;
+  if (part > 0) return sendSnap(req, await pageData(env, "part:" + Math.min(part, 50)), JS);
+  return sendSnap(req, await pageData(env, "head"), JS);
+}
+async function snapOrLive(env, part) {
+  const r = await readSnap(env, part);
+  if (r && r.v) return { v: r.v, tag: r.ver + ":" + part };
+  markDirty(env);
+  const v = part === "head" ? await liveHead(env) : part === "old" ? await liveOld(env) : await livePart(env, Number(part.split(":")[1]) || 1);
+  return { v, tag: "live:" + part + ":" + Math.floor(Date.now() / 6e4) };
+}
+var pageData = (env, part) => memo("snap:" + part, 2e4, () => snapOrLive(env, part));
+function sendSnap(req, d, type, body) {
+  const etag = `W/"${d.tag}"`;
+  const headers = { "content-type": type, etag, "cache-control": "no-cache" };
+  if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
+  return new Response(body ?? d.v, { headers });
 }
 var RL = /* @__PURE__ */ new Map();
 function rateOk(key, limit, windowMs = 6e4) {
@@ -5224,6 +5409,11 @@ async function handleAdmin(req, env, url) {
   const p = url.pathname.replace("/api/admin", "");
   const m = req.method;
   const body = m === "GET" || m === "DELETE" ? {} : await req.json().catch(() => ({}));
+  if (p === "/snap" && m === "POST") {
+    const r = await snapStep(env, !!body.force);
+    clearMemo();
+    return json(r || { done: true, idle: true });
+  }
   if (p === "/settings" && m === "GET") return json(settingsForAdmin(await getSettings(env)));
   if (p === "/settings" && m === "PUT") {
     try {
@@ -5376,7 +5566,7 @@ function setupPage(missing, asJson) {
 <div class="b"><h1>\u90E8\u7F72\u6210\u529F\uFF0C\u8FD8\u5DEE\u4E00\u6B65</h1><p>\u5728 Cloudflare \u63A7\u5236\u53F0\u6253\u5F00\u8FD9\u4E2A Worker\uFF0C\u8865\u4E0A\u4EE5\u4E0B\u7ED1\u5B9A\u540E\u5237\u65B0\u672C\u9875\u3002\u6570\u636E\u8868\u4F1A\u81EA\u52A8\u521B\u5EFA\uFF0C\u7BA1\u7406\u5458\u5BC6\u7801\u5728\u9996\u6B21\u6253\u5F00 /admin \u65F6\u8BBE\u7F6E\u3002</p><ol>${rows}</ol><p>\u5B9A\u65F6\u6293\u53D6\uFF1A\u8BBE\u7F6E \u2192 \u89E6\u53D1\u4E8B\u4EF6 \u2192 \u6DFB\u52A0 Cron\uFF0C\u586B <code>* * * * *</code>\uFF08\u6BCF\u5206\u949F\u4E00\u6B21\uFF0C\u6293\u53D6\u65F6\u95F4\u5728\u540E\u53F0\u8BBE\u7F6E\uFF09\u3002\u7528\u4E00\u952E\u90E8\u7F72\u7684\u8BDD\u5DF2\u81EA\u52A8\u914D\u7F6E\u3002</p></div></html>`, 503);
 }
 var SITE_COOKIE = "frr_site";
-var siteHash = (env) => memo("sitehash", 3e4, () => getSitePassHash(env));
+var siteHash = (env) => memo("sitehash", 3e5, () => getSitePassHash(env));
 async function siteGate(req, env, url) {
   const h = await siteHash(env);
   if (!h) return { ok: true };
@@ -5396,129 +5586,226 @@ input{width:100%;box-sizing:border-box;height:38px;border:1px solid #e6e8ec;bord
 <script>async function go(e){e.preventDefault();const r=await fetch('/api/site-login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:document.getElementById('p').value})});if(r.ok)location.reload();else document.getElementById('e').textContent='\u5BC6\u7801\u4E0D\u5BF9';}</script></body></html>`;
 var index_default = {
   async fetch(req, env, ctx) {
-    const url = new URL(req.url);
-    const missing = setupMissing(env);
-    if (missing.length) return setupPage(missing, url.pathname.startsWith("/api/"));
     try {
-      await ensureSchema(env);
-      const ip = ipOf(req);
-      if (url.pathname === "/api/site-login" && req.method === "POST") {
-        const h = await getSitePassHash(env);
-        const { password } = await req.json().catch(() => ({}));
-        if (!h) return json({ ok: true });
-        if (await failsOf(env, ip) >= (Number((await basic(env)).login_max_fails) || 10)) return tooMany();
-        if (!password || !safeEqual(await sha256("frr-site:" + password), h)) {
-          await addFail(env, ip);
-          return json({ error: "\u5BC6\u7801\u9519\u8BEF" }, 401);
-        }
-        const token = await sha256("cookie:" + h);
-        return new Response('{"ok":true}', { headers: { "content-type": "application/json", "set-cookie": `${SITE_COOKIE}=${token}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax` } });
-      }
-      if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/admin/") && url.pathname !== "/api/cron") {
-        const lim = Number((await basic(env)).api_rate_per_min);
-        if (!rateOk("api:" + ip, Number.isFinite(lim) ? lim : 120) || url.pathname === "/api/vote" && !rateOk("vote:" + ip, 30)) return json({ error: "\u8BF7\u6C42\u592A\u9891\u7E41\uFF0C\u7A0D\u540E\u518D\u8BD5" }, 429);
-      }
-      if (["/", "/index.html", "/api/items", "/api/stats", "/feed.xml", "/api/data", "/api/vote"].includes(url.pathname)) {
-        const g = await siteGate(req, env, url);
-        if (!g.ok) return url.pathname.startsWith("/api/") || url.pathname === "/feed.xml" ? json({ error: "\u9700\u8981\u8BBF\u95EE\u5BC6\u7801" }, 401) : html(lockPage(), 401);
-      }
-      if (url.pathname === "/api/vote" && req.method === "POST") {
-        const r = await vote(req, env);
-        clearMemo();
-        return r;
-      }
-      if (url.pathname === "/api/data" && url.searchParams.get("old") === "1") return cached(req, await publicData(env, true), "application/json; charset=utf-8");
-      if (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/api/data") {
-        maybeVisitTick(env, ctx);
-        const data = await publicData(env);
-        if (url.pathname === "/api/data") return cached(req, data, "application/json; charset=utf-8");
-        return cached(req, public_default.replace("/*__BOOT__*/null", data.replace(/</g, "\\u003c")), "text/html; charset=utf-8");
-      }
-      if (url.pathname === "/api/cron") {
-        const key = url.searchParams.get("key") || req.headers.get("x-cron-key") || "";
-        if (!key || !safeEqual(key, await memo("cronkey", 6e4, () => getCronKey(env)))) return json({ error: "\u89E6\u53D1\u5BC6\u94A5\u4E0D\u5BF9" }, 403);
-        return json(await triggerTick(env, "url"));
-      }
-      if (url.pathname === "/admin" || url.pathname === "/admin/") return html(admin_default.replace("/*__CATS__*/[]", JSON.stringify(CATEGORIES.map(({ key, label, color, kw, group, info }) => ({ key, label, color, group, info: !!info, kw: kw.slice(0, 6) })))).replace("/*__GROUPS__*/[]", JSON.stringify(GROUPS)).replace("/*__PUSH__*/[]", JSON.stringify(PUSH_CHANNELS.map(({ id, name, key, secret, hint }) => ({ id, name, key, secret, hint })))).replace("/*__BACKENDS__*/[]", JSON.stringify(BACKENDS.map(({ id, name, keyless, free, signup, note, zh }) => ({ id, name, keyless, free, signup, note, zh })))));
-      if (url.pathname === "/api/items") return json(await publicItems(env, url));
-      if (url.pathname === "/api/stats") {
-        const st = await basic(env);
-        const cutoff = Date.now() - (Number(st.max_age_days) || 180) * 864e5;
-        const base = "FROM items WHERE status = 'approved' AND (published_at IS NULL OR published_at >= ?)";
-        const [cats, obs, last, days] = await Promise.all([
-          env.DB.prepare(`SELECT category AS k, COUNT(*) AS n ${base} GROUP BY category`).bind(cutoff).all(),
-          env.DB.prepare(`SELECT obtain AS k, COUNT(*) AS n ${base} GROUP BY obtain`).bind(cutoff).all(),
-          env.DB.prepare("SELECT MAX(finished_at) AS t FROM runs WHERE trigger != 'mail'").first(),
-          env.DB.prepare(`SELECT day AS d, COUNT(*) AS n ${base} AND day IS NOT NULL GROUP BY day ORDER BY day DESC LIMIT 31`).bind(cutoff).all()
-        ]);
-        const out = { all: 0, last_run: last?.t || null, categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color })), today: dayOf(Date.now()), retention_days: Number(st.retention_days) || 15, days: (days.results || []).map((r) => ({ day: r.d, n: r.n })) };
-        for (const r of cats.results || []) {
-          out[r.k || "other"] = r.n;
-          out.all += r.n;
-        }
-        for (const r of obs.results || []) if (r.k) out[r.k] = r.n;
-        return json(out);
-      }
-      if (url.pathname === "/feed.xml") {
-        const st = await basic(env);
-        const items = await memo("feed", Math.max(0, Number(st.public_cache_seconds) || 0) * 1e3, () => publicItems(env, new URL(url.origin + "/?limit=50")));
-        const body = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</title><link>${xmlEsc(url.origin)}</link><description>\u6BCF\u65E5\u81EA\u52A8\u6293\u53D6\u5E76\u7ECF AI \u7B5B\u9009</description>${items.map((it) => `<item><title>${xmlEsc(it.name || it.title)}</title><link>${xmlEsc(it.url)}</link><guid isPermaLink="false">${it.id}</guid>${it.published_at ? `<pubDate>${new Date(it.published_at).toUTCString()}</pubDate>` : ""}<description>${xmlEsc([it.summary, it.signup && "\u6CE8\u518C\uFF1A" + it.signup].filter(Boolean).join(" | "))}</description></item>`).join("")}</channel></rss>`;
-        return cached(req, body, "application/rss+xml; charset=utf-8");
-      }
-      if (url.pathname.startsWith("/api/admin/")) {
-        if (url.pathname === "/api/admin/status") {
-          return json({ initialized: !!envToken(env) || !!await getAdminHash(env), env_token: !!envToken(env), storage: storageMode(env), site_locked: !!await getSitePassHash(env) });
-        }
-        if (url.pathname === "/api/admin/setup" && req.method === "POST") {
-          if (envToken(env) || await getAdminHash(env)) return json({ error: "\u5DF2\u7ECF\u8BBE\u7F6E\u8FC7\u7BA1\u7406\u5458\u5BC6\u7801" }, 409);
-          const { password } = await req.json().catch(() => ({}));
-          if (!password || String(password).length < 8) return json({ error: "\u5BC6\u7801\u81F3\u5C11 8 \u4F4D" }, 400);
-          await setAdminHash(env, String(password));
-          return json({ ok: true });
-        }
-        const maxFails = Number((await basic(env)).login_max_fails) || 10;
-        if (await failsOf(env, ip) >= maxFails) return tooMany();
-        if (!await isAdmin(req, env)) {
-          if (req.headers.get("authorization")) await addFail(env, ip);
-          return json({ error: "\u672A\u6388\u6743" }, 401);
-        }
-        if (req.method !== "GET") clearMemo();
-        if (url.pathname === "/api/admin/password" && req.method === "POST") {
-          if (envToken(env)) return json({ error: "\u5F53\u524D\u4F7F\u7528\u73AF\u5883\u53D8\u91CF ADMIN_TOKEN\uFF0C\u8BF7\u5728 Cloudflare \u63A7\u5236\u53F0\u4FEE\u6539" }, 400);
-          const { password } = await req.json().catch(() => ({}));
-          if (!password || String(password).length < 8) return json({ error: "\u5BC6\u7801\u81F3\u5C11 8 \u4F4D" }, 400);
-          await setAdminHash(env, String(password));
-          return json({ ok: true });
-        }
-        if (url.pathname === "/api/admin/settings" && req.method === "GET" && !/^(localhost|127\.|\[::1\])/.test(url.hostname)) {
-          const cur = await getSettings(env);
-          if (!cur.mail_site_url) await saveSettings(env, { mail_site_url: url.origin });
-        }
-        return await handleAdmin(req, env, url);
-      }
-      return json({ error: "Not found" }, 404);
+      return await handleFetch(req, env, ctx);
     } catch (e) {
-      return json({ error: e.message || String(e) }, 500);
+      return errorPage(e, new URL(req.url).pathname);
     }
   },
-  // 定时任务每分钟触发一次：有进行中的抓取就执行下一步；到了每天的抓取时间就新建一次抓取（最后一步自动推送）
   async scheduled(event, env, ctx) {
-    const missing = setupMissing(env);
-    if (missing.length) {
-      console.error("\u90E8\u7F72\u672A\u5B8C\u6210\uFF0C\u7F3A\u5C11\u7ED1\u5B9A\uFF1A" + missing.map((x) => x[0]).join(", "));
-      return;
+    try {
+      await handleScheduled(event, env, ctx);
+    } catch (e) {
+      console.error("scheduled failed", e && (e.stack || e.message || e));
     }
-    await ensureSchema(env);
-    ctx.waitUntil(autoTick(env, "cron").catch((e) => console.error("scheduled failed", e)));
   }
 };
+function errorPage(e, path) {
+  const msg = String(e && (e.stack || e.message) || e).slice(0, 1500);
+  console.error("request failed", path, msg);
+  if (path.startsWith("/api/")) return json({ error: msg }, 500);
+  const quota = /limit|exceed|quota|too many/i.test(msg);
+  return html(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>\u6682\u65F6\u6253\u4E0D\u5F00 \xB7 \u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</title>
+<style>body{margin:0;background:#f6f7f9;font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#111318}.b{max-width:640px;margin:10vh auto;background:#fff;border:1px solid #e6e8ec;border-radius:8px;padding:24px 28px}h1{font-size:17px;margin:0 0 6px}p{color:#525c6b}pre{background:#f1f3f6;padding:10px;border-radius:6px;white-space:pre-wrap;word-break:break-all;font-size:12px}</style>
+<div class="b"><h1>\u9875\u9762\u6682\u65F6\u6253\u4E0D\u5F00</h1><p>${quota ? "\u770B\u8D77\u6765\u662F Cloudflare \u514D\u8D39\u989D\u5EA6\uFF08D1 \u8BFB\u5199\u6B21\u6570\u6216\u8BF7\u6C42\u6570\uFF09\u4ECA\u5929\u7528\u5B8C\u4E86\uFF0C\u5317\u4EAC\u65F6\u95F4 08:00 \u91CD\u7F6E\u3002" : "\u7A0B\u5E8F\u51FA\u9519\u4E86\uFF0C\u628A\u4E0B\u9762\u8FD9\u6BB5\u53D1\u7ED9\u7EF4\u62A4\u8005\u5373\u53EF\u5B9A\u4F4D\u3002"}</p><pre>${msg.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c])}</pre><p>\u8BCA\u65AD\uFF1A\u6253\u5F00 <a href="/api/health">/api/health</a> \u67E5\u770B\u5404\u9879\u68C0\u67E5\u3002</p></div></html>`, 500);
+}
+async function health(env) {
+  const out = {};
+  const step = async (k, fn) => {
+    const t = Date.now();
+    try {
+      out[k] = { ok: true, ms: Date.now() - t, ...await fn() };
+      out[k].ms = Date.now() - t;
+    } catch (e) {
+      out[k] = { ok: false, error: String(e && e.message || e).slice(0, 300) };
+    }
+  };
+  await step("d1", async () => ({ v: (await env.DB.prepare("SELECT 1 AS x").first())?.x }));
+  await step("schema", async () => {
+    await ensureSchema(env);
+    return {};
+  });
+  await step("items", async () => ({ n: (await env.DB.prepare("SELECT COUNT(*) AS n FROM items WHERE status = 'approved'").first())?.n }));
+  await step("snapshot", async () => {
+    const r = await readSnap(env, "head");
+    return { ver: r?.ver || null, bytes: r?.v ? r.v.length : 0 };
+  });
+  await step("settings", async () => {
+    const s = await getBasicSettings(env);
+    return { keys: Object.keys(s).length };
+  });
+  await step("kv", async () => ({ bound: !!env.SECRETS }));
+  await step("run", async () => {
+    const r = await env.DB.prepare("SELECT id, started_at, finished_at FROM runs ORDER BY id DESC LIMIT 1").first();
+    return { last: r || null };
+  });
+  return { ok: Object.values(out).every((x) => x.ok), version: "1.8.2", checks: out };
+}
+async function handleFetch(req, env, ctx) {
+  const url = new URL(req.url);
+  const missing = setupMissing(env);
+  if (missing.length) return setupPage(missing, url.pathname.startsWith("/api/"));
+  if (url.pathname === "/api/health") return json(await health(env));
+  try {
+    await ensureSchema(env);
+    const ip = ipOf(req);
+    if (url.pathname === "/api/site-login" && req.method === "POST") {
+      const h = await getSitePassHash(env);
+      const { password } = await req.json().catch(() => ({}));
+      if (!h) return json({ ok: true });
+      if (await failsOf(env, ip) >= (Number((await basic(env)).login_max_fails) || 10)) return tooMany();
+      if (!password || !safeEqual(await sha256("frr-site:" + password), h)) {
+        await addFail(env, ip);
+        return json({ error: "\u5BC6\u7801\u9519\u8BEF" }, 401);
+      }
+      const token = await sha256("cookie:" + h);
+      return new Response('{"ok":true}', { headers: { "content-type": "application/json", "set-cookie": `${SITE_COOKIE}=${token}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax` } });
+    }
+    if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/admin/") && url.pathname !== "/api/cron") {
+      const lim = Number((await basic(env)).api_rate_per_min);
+      if (!rateOk("api:" + ip, Number.isFinite(lim) ? lim : 120) || url.pathname === "/api/vote" && !rateOk("vote:" + ip, 30)) return json({ error: "\u8BF7\u6C42\u592A\u9891\u7E41\uFF0C\u7A0D\u540E\u518D\u8BD5" }, 429);
+    }
+    if (["/", "/index.html", "/api/items", "/api/stats", "/feed.xml", "/api/data", "/api/vote"].includes(url.pathname)) {
+      const g = await siteGate(req, env, url);
+      if (!g.ok) return url.pathname.startsWith("/api/") || url.pathname === "/feed.xml" ? json({ error: "\u9700\u8981\u8BBF\u95EE\u5BC6\u7801" }, 401) : html(lockPage(), 401);
+    }
+    if (url.pathname === "/api/vote" && req.method === "POST") {
+      const r = await vote(req, env);
+      ctx.waitUntil(markDirty(env));
+      return r;
+    }
+    if (url.pathname === "/api/data") {
+      const JS = "application/json; charset=utf-8";
+      const edge = !await siteHash(env) && typeof caches !== "undefined" && caches.default;
+      if (edge) {
+        const ck = new Request(url.origin + url.pathname + url.search, { method: "GET" });
+        const hit = await caches.default.match(ck).catch(() => null);
+        if (hit) return hit;
+        const res = await dataResp(req, url, env, JS);
+        if (res.status === 200) {
+          const c = res.clone();
+          const h = new Headers(c.headers);
+          h.set("cache-control", "public, max-age=120");
+          ctx.waitUntil(caches.default.put(ck, new Response(c.body, { headers: h })).catch(() => {
+          }));
+        }
+        return res;
+      }
+      return dataResp(req, url, env, JS);
+    }
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      maybeVisitTick(env, ctx);
+      if (!await siteHash(env)) return new Response(STATIC_PAGE, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" } });
+      const d = await pageData(env, "head");
+      return sendSnap(req, d, "text/html; charset=utf-8", PAGE_A + d.v + PAGE_B);
+    }
+    if (url.pathname === "/api/cron") {
+      const key = url.searchParams.get("key") || req.headers.get("x-cron-key") || "";
+      if (!key || !safeEqual(key, await memo("cronkey", 6e4, () => getCronKey(env)))) return json({ error: "\u89E6\u53D1\u5BC6\u94A5\u4E0D\u5BF9" }, 403);
+      return json(await triggerTick(env, "url"));
+    }
+    if (url.pathname === "/admin" || url.pathname === "/admin/") return html(admin_default.replace("/*__CATS__*/[]", JSON.stringify(CATEGORIES.map(({ key, label, color, kw, group, info }) => ({ key, label, color, group, info: !!info, kw: kw.slice(0, 6) })))).replace("/*__GROUPS__*/[]", JSON.stringify(GROUPS)).replace("/*__PUSH__*/[]", JSON.stringify(PUSH_CHANNELS.map(({ id, name, key, secret, hint }) => ({ id, name, key, secret, hint })))).replace("/*__BACKENDS__*/[]", JSON.stringify(BACKENDS.map(({ id, name, keyless, free, signup, note, zh }) => ({ id, name, keyless, free, signup, note, zh })))));
+    if (url.pathname === "/api/items") return json(await publicItems(env, url));
+    if (url.pathname === "/api/stats") {
+      const st = await basic(env);
+      const cutoff = Date.now() - (Number(st.max_age_days) || 180) * 864e5;
+      const base = "FROM items WHERE status = 'approved' AND (published_at IS NULL OR published_at >= ?)";
+      const [cats, obs, last, days] = await Promise.all([
+        env.DB.prepare(`SELECT category AS k, COUNT(*) AS n ${base} GROUP BY category`).bind(cutoff).all(),
+        env.DB.prepare(`SELECT obtain AS k, COUNT(*) AS n ${base} GROUP BY obtain`).bind(cutoff).all(),
+        env.DB.prepare("SELECT MAX(finished_at) AS t FROM runs WHERE trigger != 'mail'").first(),
+        env.DB.prepare(`SELECT day AS d, COUNT(*) AS n ${base} AND day IS NOT NULL GROUP BY day ORDER BY day DESC LIMIT 31`).bind(cutoff).all()
+      ]);
+      const out = { all: 0, last_run: last?.t || null, categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color })), today: dayOf(Date.now()), retention_days: Number(st.retention_days) || 15, days: (days.results || []).map((r) => ({ day: r.d, n: r.n })) };
+      for (const r of cats.results || []) {
+        out[r.k || "other"] = r.n;
+        out.all += r.n;
+      }
+      for (const r of obs.results || []) if (r.k) out[r.k] = r.n;
+      return json(out);
+    }
+    if (url.pathname === "/feed.xml") {
+      const st = await basic(env);
+      const items = await memo("feed", Math.max(0, Number(st.public_cache_seconds) || 0) * 1e3, () => publicItems(env, new URL(url.origin + "/?limit=50")));
+      const body = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</title><link>${xmlEsc(url.origin)}</link><description>\u6BCF\u65E5\u81EA\u52A8\u6293\u53D6\u5E76\u7ECF AI \u7B5B\u9009</description>${items.map((it) => `<item><title>${xmlEsc(it.name || it.title)}</title><link>${xmlEsc(it.url)}</link><guid isPermaLink="false">${it.id}</guid>${it.published_at ? `<pubDate>${new Date(it.published_at).toUTCString()}</pubDate>` : ""}<description>${xmlEsc([it.summary, it.signup && "\u6CE8\u518C\uFF1A" + it.signup].filter(Boolean).join(" | "))}</description></item>`).join("")}</channel></rss>`;
+      return cached(req, body, "application/rss+xml; charset=utf-8");
+    }
+    if (url.pathname.startsWith("/api/admin/")) {
+      if (url.pathname === "/api/admin/status") {
+        return json({ initialized: !!envToken(env) || !!await getAdminHash(env), env_token: !!envToken(env), storage: storageMode(env), site_locked: !!await getSitePassHash(env) });
+      }
+      if (url.pathname === "/api/admin/setup" && req.method === "POST") {
+        if (envToken(env) || await getAdminHash(env)) return json({ error: "\u5DF2\u7ECF\u8BBE\u7F6E\u8FC7\u7BA1\u7406\u5458\u5BC6\u7801" }, 409);
+        const { password } = await req.json().catch(() => ({}));
+        if (!password || String(password).length < 8) return json({ error: "\u5BC6\u7801\u81F3\u5C11 8 \u4F4D" }, 400);
+        await setAdminHash(env, String(password));
+        return json({ ok: true });
+      }
+      const maxFails = Number((await basic(env)).login_max_fails) || 10;
+      if (await failsOf(env, ip) >= maxFails) return tooMany();
+      if (!await isAdmin(req, env)) {
+        if (req.headers.get("authorization")) await addFail(env, ip);
+        return json({ error: "\u672A\u6388\u6743" }, 401);
+      }
+      if (req.method !== "GET" && url.pathname !== "/api/admin/snap") {
+        clearMemo();
+        ctx.waitUntil(markDirty(env));
+      }
+      if (url.pathname === "/api/admin/password" && req.method === "POST") {
+        if (envToken(env)) return json({ error: "\u5F53\u524D\u4F7F\u7528\u73AF\u5883\u53D8\u91CF ADMIN_TOKEN\uFF0C\u8BF7\u5728 Cloudflare \u63A7\u5236\u53F0\u4FEE\u6539" }, 400);
+        const { password } = await req.json().catch(() => ({}));
+        if (!password || String(password).length < 8) return json({ error: "\u5BC6\u7801\u81F3\u5C11 8 \u4F4D" }, 400);
+        await setAdminHash(env, String(password));
+        return json({ ok: true });
+      }
+      if (url.pathname === "/api/admin/settings" && req.method === "GET" && !/^(localhost|127\.|\[::1\])/.test(url.hostname)) {
+        const cur = await getSettings(env);
+        if (!cur.mail_site_url) await saveSettings(env, { mail_site_url: url.origin });
+      }
+      return await handleAdmin(req, env, url);
+    }
+    return json({ error: "Not found" }, 404);
+  } catch (e) {
+    return errorPage(e, url.pathname);
+  }
+}
+async function handleScheduled(event, env, ctx) {
+  const missing = setupMissing(env);
+  if (missing.length) {
+    console.error("\u90E8\u7F72\u672A\u5B8C\u6210\uFF0C\u7F3A\u5C11\u7ED1\u5B9A\uFF1A" + missing.map((x) => x[0]).join(", "));
+    return;
+  }
+  await ensureSchema(env);
+  ctx.waitUntil(autoTick(env, "cron").catch((e) => console.error("scheduled failed", e)));
+}
+async function snapDue(env, idle) {
+  const [b, dirty, at, ver] = await Promise.all(["snap_build", "snap_dirty", "snap_at", "snap_ver"].map((k) => getMeta(env, k)));
+  if (b || !ver) return true;
+  if (!(Number(dirty) > Number(at))) return idle && Date.now() - Number(at) > 6 * 36e5;
+  return idle || Date.now() - Number(at) > 10 * 6e4;
+}
 async function autoTick(env, trigger) {
+  if (await snapDue(env, false)) {
+    const sr = await snapStep(env);
+    if (sr) {
+      clearMemo();
+      return { idle: false, action: "snap", message: `\u8D44\u6E90\u9875\u5FEB\u7167 ${sr.step} / ${sr.total}`, ...sr };
+    }
+  }
   const s = await getSettings(env);
   const steps = Math.min(50, Math.max(1, Number(s.steps_per_tick) || 1));
   const r = await tick(env, steps);
   if (!r.idle) {
+    await markDirty(env);
     clearMemo();
     return { ...r, action: "step" };
+  }
+  if (await snapDue(env, true)) {
+    const sr = await snapStep(env);
+    if (sr) {
+      clearMemo();
+      return { idle: true, action: "snap", message: `\u8D44\u6E90\u9875\u5FEB\u7167 ${sr.step} / ${sr.total}`, ...sr };
+    }
   }
   const now = Date.now();
   const every = Math.min(24, Math.max(1, Number(s.crawl_every_hours) || 24));
@@ -5533,8 +5820,8 @@ async function autoTick(env, trigger) {
       const t0 = Date.now();
       let line2;
       try {
-        const r3 = await sendDigest(env, { label });
-        line2 = r3.skipped ? `\u2013 ${label}\u8DF3\u8FC7\uFF1A${r3.skipped}` : `\u2713 ${label}\u5DF2\u63A8\u9001 ${r3.sent} \u6761\uFF08${r3.providers.join(" + ")}\uFF09\u2192 ${r3.to.join(", ")}${r3.errors.length ? "\n\u2717 " + r3.errors.join("\n\u2717 ") : ""}`;
+        const r2 = await sendDigest(env, { label });
+        line2 = r2.skipped ? `\u2013 ${label}\u8DF3\u8FC7\uFF1A${r2.skipped}` : `\u2713 ${label}\u5DF2\u63A8\u9001 ${r2.sent} \u6761\uFF08${r2.providers.join(" + ")}\uFF09\u2192 ${r2.to.join(", ")}${r2.errors.length ? "\n\u2717 " + r2.errors.join("\n\u2717 ") : ""}`;
       } catch (e) {
         line2 = `\u2717 ${label}\u63A8\u9001\u5931\u8D25\uFF1A${e.message}`;
       }
@@ -5557,9 +5844,7 @@ async function autoTick(env, trigger) {
     return { idle: true, action: "wait", message: "\u8FD9\u4E00\u8F6E\u5DF2\u7ECF\u6293\u53D6\u8FC7\u4E86\uFF0C\u4E0B\u4E00\u8F6E\uFF1A" + nextSlotText(now, slotHours(Number(s.run_hour) || 0, every)) };
   }
   const plan = await planRun(env, trigger);
-  const r2 = await tick(env, steps);
-  clearMemo();
-  return { ...r2, action: "started", run_id: plan.run_id, steps: plan.steps };
+  return { idle: false, action: "started", run_id: plan.run_id, steps: plan.steps, message: `\u5DF2\u5F00\u59CB\u65B0\u4E00\u8F6E\u6293\u53D6\uFF0C\u5171 ${plan.steps} \u6B65` };
 }
 var BJ2 = 8 * 36e5;
 var parseHours = (v) => [...new Set(String(v || "").split(/[,，\s]+/).map(Number).filter((h) => Number.isInteger(h) && h >= 0 && h <= 23))].sort((a, b) => a - b);

@@ -190,7 +190,7 @@ export const DEFAULT_SETTINGS = {
   watch_enabled: 'true',   // 关键词提醒：命中就单独推送，不等日报
   watch_keywords: '',      // 每行一个关键词，如 Claude / 域名 / VPS
   link_check: 'true',      // 失效检测：每次抓取后抽查一批链接，打不开或写着已结束的标灰下沉
-  link_check_per_run: '12',
+  link_check_per_run: '5',
   weekly_enabled: 'false', // 每周精选：每周一（可改）随推送附带本周最值的 10 条
   weekly_weekday: '1',     // 0 = 周日，1 = 周一 …
   vote_hide: '3',          // 「不值」比「值」多这么多票就自动隐藏（0 = 不隐藏）
@@ -215,8 +215,12 @@ export const KV_KEYS = ['ai_base_url', 'ai_api_key', 'mail_api_key', 'smtp_user'
 const kvName = (k) => `cfg:${k}`;
 
 let schemaReady = false;
+const SCHEMA_VER = '1.8.1';
 export async function ensureSchema(env) {
   if (schemaReady) return;
+  // 已经是当前版本就跳过建表（冷启动只查一次）
+  const cur = await env.DB.prepare("SELECT value FROM secrets WHERE key = 'meta:schema'").first().catch(() => null);
+  if (cur?.value === SCHEMA_VER) { schemaReady = true; return; }
   await env.DB.batch([
     env.DB.prepare('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, title TEXT NOT NULL, url TEXT NOT NULL, source TEXT, raw_text TEXT, published_at INTEGER, fetched_at INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'pending', category TEXT, name TEXT, summary TEXT, signup TEXT, score INTEGER, judged_by TEXT, judged_at INTEGER, attempts INTEGER NOT NULL DEFAULT 0)`),
@@ -225,7 +229,7 @@ export async function ensureSchema(env) {
     env.DB.prepare('CREATE TABLE IF NOT EXISTS runs (id INTEGER PRIMARY KEY AUTOINCREMENT, trigger TEXT, started_at INTEGER, finished_at INTEGER, stats TEXT, log TEXT)'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS secrets (key TEXT PRIMARY KEY, value TEXT NOT NULL)'),
     // 一次抓取拆成的步骤（每个数据源 / 判定批次 / 推送各一步），定时任务每分钟执行一步
-    env.DB.prepare("CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL, seq INTEGER NOT NULL, kind TEXT NOT NULL, payload TEXT, status TEXT NOT NULL DEFAULT 'pending', claimed_at INTEGER)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS jobs (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NOT NULL, seq INTEGER NOT NULL, kind TEXT NOT NULL, payload TEXT, status TEXT NOT NULL DEFAULT 'pending', claimed_at INTEGER, tries INTEGER NOT NULL DEFAULT 0)"),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_jobs_run ON jobs(run_id, status, seq)'),
     // 去重记忆：条目 15 天后会清理，但“见过”的记录保留更久，避免旧帖被重新抓取、重复推送
     env.DB.prepare('CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, fp TEXT, seen_at INTEGER NOT NULL)'),
@@ -236,13 +240,16 @@ export async function ensureSchema(env) {
     env.DB.prepare('CREATE TABLE IF NOT EXISTS src_health (name TEXT NOT NULL, day TEXT NOT NULL, fetched INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0, last_at INTEGER, last_err TEXT, PRIMARY KEY (name, day))'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS verdicts (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS rate (k TEXT PRIMARY KEY, n INTEGER NOT NULL, reset INTEGER NOT NULL)'),
+    // v1.8.1：资源页快照（分块预先生成，访问时直接读）
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS snap (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)'),
   ]);
   // 增量迁移：只补缺的列（先查表结构，免得每次冷启动都跑一串 ALTER，D1 免费版每次调用有查询次数限制）
   const cols = new Set(((await env.DB.prepare('PRAGMA table_info(items)').all()).results || []).map((r) => r.name));
   const add = [['obtain', 'TEXT'], ['fp', 'TEXT'], ['day', 'TEXT'], ['cats', 'TEXT'], ['hint', 'TEXT'], ['target', 'TEXT'], ['sources', 'TEXT'], ['extra', 'TEXT'], ['expires_at', 'INTEGER'], ['up', 'INTEGER NOT NULL DEFAULT 0'], ['down', 'INTEGER NOT NULL DEFAULT 0'], ['dead', 'INTEGER NOT NULL DEFAULT 0'], ['checked_at', 'INTEGER']].filter(([c]) => !cols.has(c));
   for (const [c, t] of add) { try { await env.DB.prepare(`ALTER TABLE items ADD COLUMN ${c} ${t}`).run(); } catch {} }
-  const jcols = add.length || !cols.size ? new Set(((await env.DB.prepare('PRAGMA table_info(jobs)').all()).results || []).map((r) => r.name)) : new Set(['claimed_at']);
+  const jcols = new Set(((await env.DB.prepare('PRAGMA table_info(jobs)').all()).results || []).map((r) => r.name));
   if (!jcols.has('claimed_at')) { try { await env.DB.prepare('ALTER TABLE jobs ADD COLUMN claimed_at INTEGER').run(); } catch {} }
+  if (!jcols.has('tries')) { try { await env.DB.prepare('ALTER TABLE jobs ADD COLUMN tries INTEGER NOT NULL DEFAULT 0').run(); } catch {} }
   if (add.length) {
     await env.DB.batch([
       'CREATE INDEX IF NOT EXISTS idx_items_target ON items(target)',
@@ -253,6 +260,7 @@ export async function ensureSchema(env) {
       'CREATE INDEX IF NOT EXISTS idx_health_name ON src_health(name, last_at)',
     ].map((q) => env.DB.prepare(q))).catch(() => {});
   }
+  await env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('meta:schema', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(SCHEMA_VER).run();
   schemaReady = true;
 }
 
@@ -262,10 +270,7 @@ export async function getSettings(env) {
   for (const r of results || []) if (r.key in DEFAULT_SETTINGS) s[r.key] = r.value;
   const sec = await env.DB.prepare('SELECT key, value FROM secrets').all();
   for (const r of sec.results || []) if (KV_KEYS.includes(r.key)) s[r.key] = r.value;
-  if (env.SECRETS) {
-    const vals = await Promise.all(KV_KEYS.map((k) => env.SECRETS.get(kvName(k))));
-    KV_KEYS.forEach((k, i) => { if (vals[i] !== null) s[k] = vals[i]; });
-  }
+  if (env.SECRETS) Object.assign(s, await kvAll(env));
   return s;
 }
 
@@ -282,9 +287,26 @@ export function settingsForAdmin(s) {
   return out;
 }
 
+// KV 免费版每天只有 10 万次读：所有密钥合成一个 cfg:__all 读一次（旧版逐个存的会自动合并一次）
+const KV_ALL = 'cfg:__all';
+let kvMemo = null;
+async function kvAll(env) {
+  if (kvMemo && kvMemo.exp > Date.now()) return kvMemo.v;
+  let v = null;
+  try { v = JSON.parse((await env.SECRETS.get(KV_ALL)) || 'null'); } catch {}
+  if (!v) {
+    const vals = await Promise.all(KV_KEYS.map((k) => env.SECRETS.get(kvName(k))));
+    v = {};
+    KV_KEYS.forEach((k, i) => { if (vals[i] !== null) v[k] = vals[i]; });
+    await env.SECRETS.put(KV_ALL, JSON.stringify(v)).catch(() => {});
+  }
+  kvMemo = { v, exp: Date.now() + 60000 };
+  return v;
+}
 export async function saveSettings(env, patch) {
   const stmts = [];
   const kvWrites = [];
+  const kvPatch = {};
   for (const [k, v] of Object.entries(patch || {})) {
     if (!(k in DEFAULT_SETTINGS)) continue;
     let val = typeof v === 'boolean' ? String(v) : String(v ?? '');
@@ -293,6 +315,7 @@ export async function saveSettings(env, patch) {
     if (KV_KEYS.includes(k)) {
       stmts.push(env.DB.prepare('DELETE FROM settings WHERE key = ?').bind(k)); // 清掉旧版本存在普通设置里的值
       if (env.SECRETS) {
+        kvPatch[k] = val;
         kvWrites.push(env.SECRETS.put(kvName(k), val));
         stmts.push(env.DB.prepare('DELETE FROM secrets WHERE key = ?').bind(k));
       } else {
@@ -303,6 +326,12 @@ export async function saveSettings(env, patch) {
     stmts.push(
       env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').bind(k, val)
     );
+  }
+  if (Object.keys(kvPatch).length) {
+    kvMemo = null;
+    const all = { ...(await kvAll(env)), ...kvPatch };
+    kvWrites.push(env.SECRETS.put(KV_ALL, JSON.stringify(all)));
+    kvMemo = { v: all, exp: Date.now() + 60000 };
   }
   await Promise.all(kvWrites);
   if (stmts.length) await env.DB.batch(stmts);
