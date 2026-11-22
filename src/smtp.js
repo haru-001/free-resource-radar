@@ -1,6 +1,6 @@
-// 极简 SMTP 客户端（Cloudflare Workers TCP Sockets）
+// 极简 SMTP 客户端（Node.js TCP / TLS）
 // 支持 465（SSL 直连）与 587（STARTTLS），AUTH LOGIN。QQ 邮箱：smtp.qq.com:465 + 授权码
-import { connect } from 'cloudflare:sockets';
+import { connect } from './sockets.js';
 
 const enc = new TextEncoder();
 const b64 = (str) => {
@@ -66,7 +66,7 @@ export async function smtpSend(o) {
   const secure = o.secure || (port === 465 ? 'ssl' : 'starttls');
   const socket = connect({ hostname: o.host, port }, { secureTransport: secure === 'ssl' ? 'on' : 'starttls', allowHalfOpen: false });
   const c = new Conn(socket);
-  const helo = 'radar.workers.dev';
+  const helo = 'radar.vercel.app';
   try {
     await c.reply([220], '握手');
     await c.cmd(`EHLO ${helo}`, [250], 'EHLO');

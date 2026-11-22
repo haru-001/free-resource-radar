@@ -428,7 +428,7 @@
                 <button class="btn" onclick="hitCron(this)">访问一次</button>
                 <button class="btn" onclick="resetCronKey(this)">换密钥</button>
               </div>
-              <div class="hint" style="margin-top:6px">Cloudflare 自带的每分钟定时已经够用。想多一层保险，可以把这个地址填到 <a href="https://cron-job.org" target="_blank" rel="noopener">cron-job.org</a> 或 <a href="https://uptimerobot.com" target="_blank" rel="noopener">UptimeRobot</a>，设成每 1–5 分钟访问一次。<span id="cronLast"></span></div>
+              <div class="hint" style="margin-top:6px">Vercel 免费版的自带定时一天只跑一次，<b>请务必</b>把这个地址填到 <a href="https://cron-job.org" target="_blank" rel="noopener">cron-job.org</a>（免费）或 <a href="https://uptimerobot.com" target="_blank" rel="noopener">UptimeRobot</a>，设成每 10 分钟访问一次。每次访问会连续推进最多约 45 秒，没到抓取时间就什么都不做。<span id="cronLast"></span></div>
             </div>
             <div class="grid3">
               <div><label class="f">触发最小间隔（秒）</label><input type="number" data-key="trigger_min_seconds" min="5" /></div>
@@ -533,7 +533,7 @@
           <header><h2>邮件日报</h2><label class="sw"><input type="checkbox" data-key="mail_enabled" />启用</label></header>
           <div class="body">
             <div class="grid2">
-              <div><label class="f">发送方式</label><select data-key="mail_provider" onchange="applyShow()"><option value="smtp">SMTP（默认 QQ 邮箱）</option><option value="resend">Resend</option><option value="brevo">Brevo</option><option value="cloudflare">Cloudflare Email Routing</option></select></div>
+              <div><label class="f">发送方式</label><select data-key="mail_provider" onchange="applyShow()"><option value="smtp">SMTP（默认 QQ 邮箱）</option><option value="resend">Resend</option><option value="brevo">Brevo</option></select></div>
               <div><label class="f">每天几点推送（北京时间）</label><input type="text" data-key="mail_hours" placeholder="9,21" /></div>
             </div>
             <div class="pills" id="mailHourPills" style="margin-top:-8px"></div>
@@ -562,7 +562,6 @@
               <div><label class="f">API Key</label><input type="password" data-key="mail_api_key" autocomplete="off" /></div>
               <div><label class="f">发件地址（需已验证域名）</label><input type="text" data-key="mail_from" /></div>
             </div>
-            <div data-show="mail_provider=cloudflare" class="hint">需要取消 wrangler.toml 中 [[send_email]] 的注释，发件域名开启 Email Routing，收件人在 Email Routing 中验证。</div>
             <div class="grid3">
               <div><label class="f">发件人名称</label><input type="text" data-key="mail_from_name" /></div>
               <div><label class="f">标题</label><input type="text" data-key="mail_subject" /></div>
@@ -613,7 +612,7 @@
               <label class="sw"><input type="checkbox" data-key="mail_send_empty" />没有新内容也推</label>
             </div>
             <div><label class="f">推送哪些分类（都不勾 = 与收集的相同）</label><div class="cgrps" data-csv="mail_categories" id="mailCatBox"></div></div>
-            <div><label class="f">资源页地址（邮件底部“查看全部”，首次登录后台时自动填写）</label><input type="text" data-key="mail_site_url" placeholder="https://xxx.workers.dev" /></div>
+            <div><label class="f">资源页地址（邮件底部“查看全部”，首次登录后台时自动填写）</label><input type="text" data-key="mail_site_url" placeholder="https://xxx.vercel.app" /></div>
             <div class="row"><button class="btn pri" onclick="pushAction('send', null, this)">立即推送日报</button><span class="hint">到了推送时间按启用的渠道自动推送。</span></div>
           </div>
         </div>
@@ -656,7 +655,7 @@
         <div class="section">
           <header><h2>管理员密码</h2></header>
           <div class="body">
-            <div id="pwEnvNote" class="hint" style="display:none">当前使用 Cloudflare 环境变量 ADMIN_TOKEN 登录，请在控制台「设置 → 变量和机密」修改。</div>
+            <div id="pwEnvNote" class="hint" style="display:none">当前使用环境变量 ADMIN_TOKEN 登录，请在 Vercel 项目「Settings → Environment Variables」修改，然后重新部署。</div>
             <div id="pwForm" class="row">
               <input class="grow" type="password" id="newPw" placeholder="新密码（至少 8 位）" />
               <button class="btn" onclick="changePw(this)">修改密码</button>
@@ -1368,9 +1367,9 @@ async function init() {
   if (!$('#catBox').children.length) { renderCats(); renderBackends(); renderPush(); }
   route();
   STATUS = await fetch('/api/admin/status').then((r) => r.json()).catch(() => STATUS);
-  const where = STATUS.storage === 'kv' ? 'Cloudflare KV' : 'D1 独立的 secrets 表';
+  const where = '数据库里独立的 secrets 表';
   $$('.storageNote').forEach((el) => (el.textContent = ' Key 等敏感信息保存在 ' + where + '，后台只显示打码值。'));
-  $('#storageInfo').textContent = '资源与设置：D1 数据库。敏感信息：' + where + (STATUS.storage === 'kv' ? '' : '（如需改存 KV，给 Worker 绑定一个变量名为 SECRETS 的 KV 命名空间，再保存一次设置）') + '。';
+  $('#storageInfo').textContent = '资源与设置：Turso 数据库。敏感信息：' + where + '。';
   $('#pwEnvNote').style.display = STATUS.env_token ? '' : 'none';
   $('#pwForm').style.display = STATUS.env_token ? 'none' : '';
   siteLockLabel();

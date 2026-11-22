@@ -289,7 +289,7 @@ async function handleAdmin(req, env, url) {
 // ---------- 部署自检：绑定缺失时给出中文指引，而不是报错 ----------
 function setupMissing(env) {
   const m = [];
-  if (!env.DB || typeof env.DB.prepare !== 'function') m.push(['DB', 'D1 数据库', 'Worker → 绑定 → 添加绑定 → D1 数据库，变量名填 DB，选择（或新建）一个数据库']);
+  if (!env.DB || typeof env.DB.prepare !== 'function') m.push(['TURSO_DATABASE_URL / TURSO_AUTH_TOKEN', 'Turso 数据库', 'Vercel 项目 → Storage → 添加 Turso（免费），连接到本项目后会自动写入这两个环境变量；也可以在 turso.tech 建库后手动填到 Settings → Environment Variables']);
   return m;
 }
 function setupPage(missing, asJson) {
@@ -297,7 +297,7 @@ function setupPage(missing, asJson) {
   const rows = missing.map(([k, n, how]) => `<li><b>${k}</b>（${n}）<br><span>${how}</span></li>`).join('');
   return html(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>还差一步 · 免费资源雷达</title>
 <style>body{margin:0;background:#f6f7f9;font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#111318}.b{max-width:560px;margin:10vh auto;background:#fff;border:1px solid #e6e8ec;border-radius:8px;padding:24px 28px}h1{font-size:17px;margin:0 0 6px}p{color:#525c6b;margin:0 0 14px}li{margin-bottom:12px}li span{color:#4b5563;font-size:13px}code{background:#f1f3f6;padding:1px 5px;border-radius:4px}</style>
-<div class="b"><h1>部署成功，还差一步</h1><p>在 Cloudflare 控制台打开这个 Worker，补上以下绑定后刷新本页。数据表会自动创建，管理员密码在首次打开 /admin 时设置。</p><ol>${rows}</ol><p>定时抓取：设置 → 触发事件 → 添加 Cron，填 <code>* * * * *</code>（每分钟一次，抓取时间在后台设置）。用一键部署的话已自动配置。</p></div></html>`, 503);
+<div class="b"><h1>部署成功，还差一步</h1><p>在 Vercel 控制台补上以下环境变量，然后到 Deployments 里点 Redeploy（环境变量要重新部署才生效）。数据表会自动创建，管理员密码在首次打开 /admin 时设置。</p><ol>${rows}</ol><p>定时抓取：后台「采集与分类 → 定时与触发」里复制触发地址，填到 cron-job.org，每 10 分钟访问一次。</p></div></html>`, 503);
 }
 
 // ---------- 资源页访问密码 ----------
@@ -339,21 +339,20 @@ function errorPage(e, path) {
   const quota = /limit|exceed|quota|too many/i.test(msg);
   return html(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>暂时打不开 · 免费资源雷达</title>
 <style>body{margin:0;background:#f6f7f9;font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#111318}.b{max-width:640px;margin:10vh auto;background:#fff;border:1px solid #e6e8ec;border-radius:8px;padding:24px 28px}h1{font-size:17px;margin:0 0 6px}p{color:#525c6b}pre{background:#f1f3f6;padding:10px;border-radius:6px;white-space:pre-wrap;word-break:break-all;font-size:12px}</style>
-<div class="b"><h1>页面暂时打不开</h1><p>${quota ? '看起来是 Cloudflare 免费额度（D1 读写次数或请求数）今天用完了，北京时间 08:00 重置。' : '程序出错了，把下面这段发给维护者即可定位。'}</p><pre>${msg.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[c])}</pre><p>诊断：打开 <a href="/api/health">/api/health</a> 查看各项检查。</p></div></html>`, 500);
+<div class="b"><h1>页面暂时打不开</h1><p>${quota ? '看起来是免费额度（Turso 读写次数或 Vercel 调用次数）用完了，稍后再试。' : '程序出错了，把下面这段发给维护者即可定位。'}</p><pre>${msg.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' })[c])}</pre><p>诊断：打开 <a href="/api/health">/api/health</a> 查看各项检查。</p></div></html>`, 500);
 }
 
 // 自检：逐项检查数据库、表结构、快照、设置，哪一项坏了一眼能看出来
 async function health(env) {
   const out = {};
   const step = async (k, fn) => { const t = Date.now(); try { out[k] = { ok: true, ms: Date.now() - t, ...(await fn()) }; out[k].ms = Date.now() - t; } catch (e) { out[k] = { ok: false, error: String((e && e.message) || e).slice(0, 300) }; } };
-  await step('d1', async () => ({ v: (await env.DB.prepare('SELECT 1 AS x').first())?.x }));
+  await step('db', async () => ({ v: (await env.DB.prepare('SELECT 1 AS x').first())?.x }));
   await step('schema', async () => { await ensureSchema(env); return {}; });
   await step('items', async () => ({ n: (await env.DB.prepare("SELECT COUNT(*) AS n FROM items WHERE status = 'approved'").first())?.n }));
   await step('snapshot', async () => { const r = await readSnap(env, 'head'); return { ver: r?.ver || null, bytes: r?.v ? r.v.length : 0 }; });
   await step('settings', async () => { const s = await getBasicSettings(env); return { keys: Object.keys(s).length }; });
-  await step('kv', async () => ({ bound: !!env.SECRETS }));
   await step('run', async () => { const r = await env.DB.prepare('SELECT id, started_at, finished_at FROM runs ORDER BY id DESC LIMIT 1').first(); return { last: r || null }; });
-  return { ok: Object.values(out).every((x) => x.ok), version: '1.8.4', checks: out };
+  return { ok: Object.values(out).every((x) => x.ok), version: '2.0.0', checks: out };
 }
 
 async function handleFetch(req, env, ctx) {
@@ -454,7 +453,7 @@ async function handleFetch(req, env, ctx) {
         if (!(await isAdmin(req, env))) { if (req.headers.get('authorization')) await addFail(env, ip); return json({ error: '未授权' }, 401); }
         if (req.method !== 'GET' && url.pathname !== '/api/admin/snap') { clearMemo(); ctx.waitUntil(markDirty(env)); } // 后台有改动：本实例缓存失效，快照稍后重新生成
         if (url.pathname === '/api/admin/password' && req.method === 'POST') {
-          if (envToken(env)) return json({ error: '当前使用环境变量 ADMIN_TOKEN，请在 Cloudflare 控制台修改' }, 400);
+          if (envToken(env)) return json({ error: '当前使用环境变量 ADMIN_TOKEN，请在 Vercel 的 Environment Variables 里修改' }, 400);
           const { password } = await req.json().catch(() => ({}));
           if (!password || String(password).length < 8) return json({ error: '密码至少 8 位' }, 400);
           await setAdminHash(env, String(password));
@@ -550,6 +549,23 @@ function latestSlot(now, hours) {
 }
 function nextSlotText(now, hours) { const h = new Date(now + BJ).getUTCHours(); const n = hours.find((x) => x > h); return n === undefined ? `明天 ${hours[0]}:00` : `${n}:00`; }
 
+// 连续推进：Vercel 上没有 10ms CPU 限制，一次触发就把能做的步骤尽量做完（留出余量，剩下的下次触发接着做）
+export async function drainTick(env, trigger, budget = Number(env.TICK_BUDGET_MS) || 45000) {
+  const t0 = Date.now();
+  let r, n = 0;
+  do {
+    r = await autoTick(env, trigger);
+    n++;
+    if (r.action === 'wait' || (r.idle && !['snap', 'mail'].includes(r.action))) break;
+  } while (Date.now() - t0 < budget && n < 400);
+  return { ...r, ticks: n };
+}
+export async function cronTick(env) {
+  if (setupMissing(env).length) return { ok: false, error: '缺少数据库环境变量' };
+  await ensureSchema(env);
+  return drainTick(env, 'cron');
+}
+
 // 触发地址 / 访问触发：有最小间隔，间隔内直接返回，防止被频繁访问拖垮
 let lastTrigger = 0;
 async function triggerTick(env, trigger) {
@@ -561,8 +577,8 @@ async function triggerTick(env, trigger) {
   if (now - last < gap) { lastTrigger = last; return { ok: true, throttled: true, retry_after: Math.ceil((gap - (now - last)) / 1000) }; }
   lastTrigger = now;
   await setMeta(env, 'trigger_last', now);
-  const r = await autoTick(env, trigger);
-  return { ok: true, action: r.action, message: r.message, current: r.current, done: r.done, left: r.left, total: r.total, run_id: r.run_id };
+  const r = await drainTick(env, trigger);
+  return { ok: true, ticks: r.ticks, action: r.action, message: r.message, current: r.current, done: r.done, left: r.left, total: r.total, run_id: r.run_id };
 }
 function maybeVisitTick(env, ctx) {
   if (Date.now() - lastTrigger < 5000) return;

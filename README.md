@@ -1,9 +1,8 @@
-<!-- 发布前把下方按钮链接里的 YOUR_GITHUB 换成你的 GitHub 用户名，仓库需为公开 -->
 # 免费资源雷达
 
-每天自动帮你找白嫖资源：免费域名、主机 / VPS、云服务、AI 额度、限免软件、开发工具、喜加一游戏、学生福利……分类在后台勾选。只留半年内发布、注册简单的，AI 筛一遍，每 6 小时更新一次，早晚各发一封到你的 QQ 邮箱（可以发给多个邮箱）。跑在 Cloudflare Workers 免费版里，不用服务器。
+每天自动帮你找白嫖资源：免费域名、主机 / VPS、云服务、AI 额度、限免软件、开发工具、喜加一游戏、学生福利……分类在后台勾选。只留半年内发布、注册简单的，AI 筛一遍，每 6 小时更新一次，早晚各发一封到你的 QQ 邮箱（可以发给多个邮箱）。跑在 Vercel 免费版里，数据库用 Turso 免费版，不用服务器。
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR_GITHUB/free-resource-radar)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fharu-001%2Ffree-resource-radar&project-name=free-resource-radar&repository-name=free-resource-radar&env=ADMIN_TOKEN&envDescription=%E5%90%8E%E5%8F%B0%20%2Fadmin%20%E7%9A%84%E7%99%BB%E5%BD%95%E5%AF%86%E7%A0%81%EF%BC%8C%E8%AF%B7%E5%A1%AB%E4%B8%80%E4%B8%B2%E8%87%B3%E5%B0%91%208%20%E4%BD%8D%E7%9A%84%E9%95%BF%E5%AF%86%E7%A0%81&stores=%5B%7B%22type%22%3A%22integration%22%2C%22integrationSlug%22%3A%22tursocloud%22%2C%22productSlug%22%3A%22database%22%7D%5D)
 
 ## 它能做什么
 
@@ -23,7 +22,7 @@
 - **过滤**：半年以上丢弃 → 屏蔽站点 → 求助 / 吐槽类标题 → 关键词与正则屏蔽 → 跨来源去重 → AI 判定
 - **AI 判定**：任意 OpenAI 兼容接口，后台填地址和 Key，一键拉取模型列表。输出分类、获取方式（直接白嫖 / 有条件 / 试用 / 抽奖 / 推广 / 付费）、注册要求和简介
 - **智能审核，省 AI 额度**：默认只把拿不准的交给 AI。标题写明免费、归得进分类、没有价格 / 抽奖 / 推广字样的自动通过；提问帖和明确付费的自动拒绝。想每条都过 AI，后台「审核方式」改成严格
-- **推送**：邮件日报（默认 QQ 邮箱，也支持 Resend / Brevo / Cloudflare Email Routing）、Telegram、企业微信、钉钉、飞书、Server 酱、PushPlus、Bark 和通用 Webhook；可选每周精选
+- **推送**：邮件日报（默认 QQ 邮箱，也支持 Resend / Brevo）、Telegram、企业微信、钉钉、飞书、Server 酱、PushPlus、Bark 和通用 Webhook；可选每周精选
 - **按发布时间排序**：首页按发布日期分组，最新的在最前；发布超过 15 天的单独折叠在最后（天数可调），邮件里也单独成组。默认保留 15 天，自动清理
 - **只要中文**：默认过滤纯英文内容（标题和正文都没有中文就丢弃），可在后台关闭
 - **访问密码（可选）**：资源页和 RSS 可以加密码，不想公开就设一个
@@ -33,31 +32,29 @@
 
 ## 一键部署（推荐）
 
-1. 点上方 **Deploy to Cloudflare** 按钮，登录 Cloudflare，按提示连接 GitHub 账号
-2. 部署页面会列出要创建的资源，**全部保持默认**：
-   - D1 数据库 `DB`：存资源、设置（自动创建）
-   - KV 命名空间 `SECRETS`：存 Key、邮箱授权码等敏感信息（自动创建）
-   - 密钥 `ADMIN_TOKEN`：后台登录密码，**改成你自己的一串长密码**
-3. 点「创建并部署」，等一两分钟
-4. 打开部署好的地址，后面加 `/admin`，用刚设的密码登录
-5. 在后台填好下面「第一次使用」里的几项，完事
+1. 点上方 **Deploy with Vercel** 按钮，用 GitHub 账号登录 Vercel
+2. 按页面提示操作：
+   - 给新仓库起名（默认 `free-resource-radar`），Vercel 会把代码复制一份到你的 GitHub
+   - **Turso 数据库**：页面会让你添加 Turso（免费版），点 Add / Create 建一个库，地区选离你近的（如 Tokyo、Singapore）。连接后会自动写入 `TURSO_DATABASE_URL` 和 `TURSO_AUTH_TOKEN`
+   - **ADMIN_TOKEN**：后台登录密码，填一串至少 8 位的长密码
+3. 点 Deploy，等一分钟左右
+4. 打开 `你的地址/api/health`，看到 `"ok": true` 就说明数据库连上了
+5. 打开 `你的地址/admin`，用刚设的密码登录，按下面「第一次使用」填好几项
+6. **设置定时**（必做，见下面「定时与触发」）：后台复制触发地址，填到 cron-job.org，每 10 分钟一次
 
-数据表首次访问时自动创建；定时任务也已随部署配好，不用手动加。
+数据表首次访问时自动创建。之后更新：在你 GitHub 上的那个仓库里同步新代码，Vercel 会自动重新部署；数据都在 Turso 里，更新代码不会丢数据和设置。
 
-之后更新：在 Cloudflare 自动为你创建的那个仓库里同步新代码，会自动重新部署。数据都在 D1 里，更新代码不会丢数据和设置。
+## 手动部署
 
-## 手动部署（不想连 GitHub）
+已经有 Vercel 项目、或者一键部署没加上数据库时：
 
-适合只想在 Cloudflare 控制台里点几下的情况，只需要一个 D1 数据库。
+1. 在 GitHub 上 Fork 本仓库，Vercel → Add New → Project → 导入你 Fork 的仓库，Framework Preset 选 **Other**，其余保持默认，Deploy
+2. 项目 → **Storage** → Create Database → 选 **Turso** → 建好后 Connect Project 连到这个项目（会自动加上 `TURSO_DATABASE_URL`、`TURSO_AUTH_TOKEN`）。也可以在 [turso.tech](https://turso.tech) 自己建库，把地址和 Token 手动填到环境变量里
+3. 项目 → Settings → **Environment Variables** → 添加 `ADMIN_TOKEN`（后台密码）
+4. Deployments → 最新一次部署右边的 ⋯ → **Redeploy**（环境变量改完都要重新部署才生效）
+5. 打开 `你的地址/api/health` 检查，再去 `/admin`
 
-1. [Cloudflare 控制台](https://dash.cloudflare.com/) → 存储和数据库 → D1 SQL 数据库 → 创建，名字随意
-2. Workers 和 Pages → 创建 → 从 Hello World 开始，名字填 `free-resource-radar` → 部署
-3. 点「编辑代码」，清空编辑器里的 `worker.js`，粘贴本项目 [`dist/worker.js`](dist/worker.js) 的全部内容 → 部署
-4. Worker → 绑定 → 添加绑定 → D1 数据库，变量名填 `DB`，选第 1 步建的库
-5. 设置 → 触发事件 → 添加 Cron 触发器，填 `* * * * *`（每分钟一次，原因见「重点提示」）
-6. 打开 `你的地址/admin`，首次进入会让你设置管理员密码
-
-之后更新：重新粘贴新版 `dist/worker.js` 再部署，绑定和数据都会保留。
+> 首页显示「部署成功，还差一步」：说明没读到数据库环境变量，按页面提示补上后 Redeploy。
 
 ## 第一次使用
 
@@ -71,7 +68,7 @@
 
 ## 重点提示
 
-> **密码**：一键部署时请把 `ADMIN_TOKEN` 改成自己的密码；如果保留默认的 `change-me`，会视为未设置。手动部署没设 `ADMIN_TOKEN` 时，**第一个打开 /admin 的人**可以设定密码，所以部署完请立刻去设置。
+> **密码**：请设置环境变量 `ADMIN_TOKEN`；填 `change-me` 会视为未设置。没设 `ADMIN_TOKEN` 时，**第一个打开 /admin 的人**可以设定密码，所以部署完请立刻去设置。
 
 > **资源页访问密码**：默认公开。后台「账号与安全」可以设访问密码，设置后打开资源页要先输入，RSS 地址改为 `/feed.xml?key=访问密码`。
 
@@ -83,19 +80,19 @@
 
 > **默认只要中文**：纯英文内容默认过滤，所以 LowEndTalk、Hacker News、GitHub 这类英文源默认关闭。Epic、GamerPower、OpenRouter、SharewareOnSale 这几个白嫖专源带中文简介，照常收录。想要英文资源：后台「采集与分类」关掉「过滤纯英文内容」，再在数据源里打开对应的源。
 
-> **部分来源会被拦**：Reddit、LINUX DO 屏蔽 Cloudflare 的服务器 IP，默认关闭。
+> **部分来源会被拦**：Reddit、LINUX DO 屏蔽机房 IP，默认关闭。
 
-> **为什么定时任务是每分钟一次**：Workers 免费版每次调用只有 10ms CPU、最多 50 个外部请求，一口气抓完所有来源会超限被掐断。所以每次抓取被拆成一步一步（每个数据源、每批 AI 判定、清理、推送各一步），每分钟执行一步，十几二十分钟跑完。没有任务时每次调用只查一下数据库，几乎不耗资源。抓取频率在后台「采集与分类」里改（默认北京 09:00 起每 6 小时）；付费版可以把「每次触发执行几步」调大。
+> **为什么要用 cron-job.org**：Vercel 免费版自带的定时任务一天只能跑一次（已配好每天 09:00 北京时间兜底），满足不了每 6 小时抓取、早晚两次推送。所以主力是外部定时服务每 10 分钟访问一次触发地址：每次访问最多连续干约 45 秒，没到时间就直接返回，几乎不耗额度。一轮抓取通常一两次访问就跑完。
 
-> **资源页为什么不会被访问拖垮**：资源页的数据由定时任务提前分块生成（快照），打开页面时只读一行数据拼进页面，不在访问时现算；首屏内嵌最新 120 条，其余每 200 条一块在后台加载。数据有变化时，空闲的那一分钟会重新生成快照，抓取进行中则每 10 分钟插一轮。某一步如果连续两次没跑完（比如超出 CPU 被掐断），会自动跳过并记在运行记录里，不会卡住整轮抓取。密钥在 KV 里合成一条读取，省 KV 的每日读取次数。
+> **资源页为什么不会被访问拖垮**：资源页的数据由定时任务提前分块生成（快照），打开页面时只读一行数据拼进页面，不在访问时现算；首屏内嵌最新 120 条，其余每 200 条一块在后台加载。数据有变化时，空闲的那一分钟会重新生成快照，抓取进行中则每 10 分钟插一轮。某一步如果连续两次没跑完（比如超时被掐断），会自动跳过并记在运行记录里，不会卡住整轮抓取。
 
-> **免费额度**：每分钟一次的定时任务一天 1440 次，远低于免费版每天 10 万次请求；D1 免费版 5GB，个人使用绰绰有余。AI 调用按你自己的接口计费，每次最多判定 60 条（可调）。
+> **免费额度**：每 10 分钟一次的触发一天 144 次，远低于 Vercel 免费版的调用额度；Turso 免费版有 5GB 存储和每月数亿次行读取，个人使用绰绰有余。Vercel 免费版（Hobby）仅限个人非商业用途。AI 调用按你自己的接口计费，每次最多判定 60 条（可调）。
 
 > **没配 AI 也能用**：会用关键词判定，结果粗一些；GitHub、HN 讨论类这些噪音大的源会自动跳过，配好 AI 后自动启用。
 
-> **敏感信息存放**：绑定了 KV（`SECRETS`）时存 KV，没绑定时存 D1 里单独的 `secrets` 表；后台始终只显示打码值。
+> **敏感信息存放**：AI Key、邮箱授权码等存在数据库里单独的 `secrets` 表；后台始终只显示打码值。
 
-> **出问题先看首页**：缺少必需的绑定时，首页会直接显示中文提示，告诉你还差哪一步。抓取和推送的详细日志在后台「运行记录」。
+> **出问题先看首页和 `/api/health`**：缺少数据库环境变量时，首页会直接显示中文提示，告诉你还差哪一步。抓取和推送的详细日志在后台「运行记录」。
 
 ## QQ 邮箱日报（默认）
 
@@ -138,18 +135,22 @@
 
 ## 定时与触发
 
-`wrangler.toml` 中 `crons = ["* * * * *"]`：每分钟检查一次，按后台「采集与分类 → 定时与触发」的设置执行：
+外部定时服务每 10 分钟访问一次触发地址，按后台「采集与分类 → 定时与触发」的设置执行：
 
-- **抓取**：默认从北京 09:00 起每 6 小时一次（09:00、15:00、21:00、03:00），每次拆成十几步，每分钟一步，约 15–20 分钟跑完。可改成每 2 / 3 / 4 / 8 / 12 小时或每天一次
+- **抓取**：默认从北京 09:00 起每 6 小时一次（09:00、15:00、21:00、03:00），一般一两次触发就能跑完。可改成每 2 / 3 / 4 / 8 / 12 小时或每天一次
 - **推送**：默认每天 09:00、21:00 两次。到点时如果正在抓取，会等抓完再推；每次只推上次之后新通过的资源，没有新内容不发。超过推送时间 3 小时还没发出就跳过这一次
 - **多个收件人**：后台「推送」里逐个添加，最多 10 个；默认每人单独一封，互相看不到地址
 
-**触发地址**（后台「采集与分类 → 定时与触发」里复制）：`https://你的域名/api/cron?key=触发密钥`。访问一次就推进一步，到点了会自动开始当天的抓取。用法：
+**触发地址**（后台「采集与分类 → 定时与触发」里复制）：`https://你的域名/api/cron?key=触发密钥`。设置方法：
 
-- 想多一层保险：填到 [cron-job.org](https://cron-job.org) 或 [UptimeRobot](https://uptimerobot.com)，每 1–5 分钟访问一次
-- 没开 Cloudflare 定时也能用：外部服务每分钟访问，效果一样
+1. 注册 [cron-job.org](https://cron-job.org)（免费），Create cronjob
+2. URL 填触发地址，Execution schedule 选 Every 10 minutes，保存
+3. 回后台「运行记录」，下一个抓取时间点之后应该能看到新的记录
+
+- 每次访问最多连续推进约 45 秒（剩下的下次接着做），到点了会自动开始抓取和推送
 - 有最小间隔（默认 30 秒），间隔内的请求直接返回、不执行；密钥可以在后台一键更换
-- 可选「有人打开资源页时顺带推进一步」，默认关闭
+- 也可以用 [UptimeRobot](https://uptimerobot.com) 等任何能定时访问网址的服务
+- `vercel.json` 里还配了一个每天一次的 Vercel 定时任务（`/api/vercel-cron`，北京时间 09:00）作兜底；想校验来源，可以加环境变量 `CRON_SECRET`
 
 **缓存**：资源页数据默认缓存 60 秒（后台可改，0 为不缓存），缓存期内打开页面不查数据库；页面带 ETag，没变化时浏览器直接用本地副本。后台有改动会立即刷新缓存。
 
@@ -192,20 +193,23 @@ GitHub 仓库（`repo`）的用法：
 - `GET /api/items?category=ai|game|…&obtain=free|conditional&day=2026-11-21&q=关键词&limit=100`
 - `GET /api/stats` 各频道计数、按日期计数、最近更新时间
 - `GET /feed.xml`
-- `GET /api/cron?key=触发密钥` 推进一步抓取（见上文）
+- `GET /api/cron?key=触发密钥` 推进抓取（见上文）
+- `GET /api/health` 自检：数据库、表结构、快照、设置
 - 设置了访问密码时，资源页相关接口需要 Cookie（网页登录后自动带上）或 `?key=访问密码`
 - `/api/admin/*` 需 `Authorization: Bearer <管理员密码>`
 
 ## 本地开发
 
+代码在 `src/`，部署用的是打包好的单文件 `api/index.js`（Vercel 直接用它，不需要构建步骤）。改完 `src/` 记得重新打包再提交：
+
 ```bash
 npm install
-cp .dev.vars.example .dev.vars        # 填 ADMIN_TOKEN
-npm run dev                           # 访问 http://localhost:8787
-curl "http://localhost:8787/__scheduled?cron=0+1+*+*+*"   # 手动触发定时任务
-npm run deploy                        # 命令行部署，D1 和 KV 会自动创建
-npm run build:single                  # 改完源码后重新生成 dist/worker.js
+cp .env.example .env.local            # 填 Turso 地址、Token 和 ADMIN_TOKEN
+npm run bundle                        # 重新生成 api/index.js
+npx vercel dev                        # 本地运行，访问 http://localhost:3000
 ```
+
+目录说明：`api/index.js` 打包产物（Vercel 函数）、`src/vercel.js` 入口、`src/turso.js` 数据库适配（Turso HTTP 接口，无依赖）、`src/sockets.js` SMTP 用的 TCP/TLS 连接、`vercel.json` 路由与定时、`public/` 静态文件。
 
 ## 致谢
 

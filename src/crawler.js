@@ -9,7 +9,7 @@ import { isProxyTopic, isNoiseTitle, guessObtain, compileBlockRules, matchBlock,
 import { guessVendor, guessPerk, radarQueries } from './extras.js';
 import { deliver } from './mailer.js';
 
-const UA = 'Mozilla/5.0 (compatible; FreeResourceRadar/1.0; +https://workers.cloudflare.com)';
+const UA = 'Mozilla/5.0 (compatible; FreeResourceRadar/1.0; +https://github.com/haru-001/free-resource-radar)';
 const DAY = 86400000;
 
 // maxBytes：只读前 N 字节就断开（RSS 最新的条目在最前面），大 feed 不必整份下载解码，省 CPU

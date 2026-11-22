@@ -1,4 +1,4 @@
-// 免费资源雷达 · 单文件版（v1.8.4）
+// 免费资源雷达 v2.0.0 · 由 npm run bundle 从 src/ 生成，请改 src/ 后重新生成
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __esm = (fn, res) => function __init() {
@@ -18,24 +18,24 @@ function mailCats(s) {
   const list = String(s.mail_categories || "").split(/[,\s]+/).filter((k) => CAT_MAP[k]);
   return list.length ? list : enabledCats(s);
 }
-function kwHit(text, w) {
+function kwHit(text2, w) {
   if (/^[a-z0-9.\- ]{1,4}$/.test(w)) {
     let re = reCache.get(w);
     if (!re) {
       re = new RegExp(`(^|[^a-z0-9])${w.replace(/[.\-]/g, "\\$&")}($|[^a-z0-9])`);
       reCache.set(w, re);
     }
-    return re.test(text);
+    return re.test(text2);
   }
-  return text.includes(w);
+  return text2.includes(w);
 }
 function compileWords(words) {
   const esc2 = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const parts = [...new Set(words.filter(Boolean))].map((w) => /^[a-z0-9.\- ]{1,4}$/.test(w) ? `(?:^|[^a-z0-9])${esc2(w)}(?:$|[^a-z0-9])` : esc2(w));
   return parts.length ? new RegExp(parts.join("|")) : null;
 }
-function guessCategory(text, enabled) {
-  const t = String(text || "").toLowerCase();
+function guessCategory(text2, enabled) {
+  const t = String(text2 || "").toLowerCase();
   let best = null, bestN = 0;
   for (const k of enabled) {
     if (CAT_MAP[k]?.need && !CAT_MAP[k].need.test(t)) continue;
@@ -245,9 +245,9 @@ function weeklyPicks(items, now = Date.now(), n = 10) {
   }
   return out;
 }
-function parseRows(text, keys) {
+function parseRows(text2, keys) {
   const out = [];
-  for (const raw of String(text || "").split(/\r?\n/)) {
+  for (const raw of String(text2 || "").split(/\r?\n/)) {
     const l = raw.trim();
     if (!l || l.startsWith("#")) continue;
     const parts = l.split(/\s*[|｜]\s*/);
@@ -270,8 +270,8 @@ function parseRows(text, keys) {
   }
   return out;
 }
-function guessVendor(text) {
-  const t = String(text || "").replace(/^(【[^】]*】|\[[^\]]*\]|额度变化\s*·\s*)+/, "").trim().slice(0, 400);
+function guessVendor(text2) {
+  const t = String(text2 || "").replace(/^(【[^】]*】|\[[^\]]*\]|额度变化\s*·\s*)+/, "").trim().slice(0, 400);
   let best = null, at = Infinity;
   for (const [n, re] of VENDORS) {
     const m = re.exec(t);
@@ -284,8 +284,8 @@ function guessVendor(text) {
   if (head && (best === null || at > head[1].length + 2) && !/^(AI|API|LLM|GPT|Free|The|New|Pro)$/i.test(head[1])) return head[1];
   return best;
 }
-function guessPerk(text) {
-  const t = String(text || "").slice(0, 600);
+function guessPerk(text2) {
+  const t = String(text2 || "").slice(0, 600);
   for (const [n, re] of PERKS_TYPE) if (re.test(t)) return n;
   return null;
 }
@@ -541,8 +541,8 @@ async function getCronKey(env, regenerate = false) {
   }
   return k;
 }
-async function sha256(text) {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(text)));
+async function sha256(text2) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(text2)));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 async function getAdminHash(env) {
@@ -837,7 +837,7 @@ var init_db = __esm({
     SCHEMA_VER = "1.8.4";
     KV_ALL = "cfg:__all";
     kvMemo = null;
-    lines = (txt2) => String(txt2 || "").split(/\r?\n|,/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+    lines = (txt) => String(txt || "").split(/\r?\n|,/).map((x) => x.trim().toLowerCase()).filter(Boolean);
     storageMode = (env) => env.SECRETS && typeof env.SECRETS.get === "function" ? "kv" : "d1";
   }
 });
@@ -851,9 +851,9 @@ async function listModels(baseUrl, apiKey) {
     headers: { Authorization: `Bearer ${apiKey}` },
     signal: AbortSignal.timeout(2e4)
   });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`\u83B7\u53D6\u6A21\u578B\u5931\u8D25 HTTP ${r.status}: ${text.slice(0, 200)}`);
-  const j = JSON.parse(text);
+  const text2 = await r.text();
+  if (!r.ok) throw new Error(`\u83B7\u53D6\u6A21\u578B\u5931\u8D25 HTTP ${r.status}: ${text2.slice(0, 200)}`);
+  const j = JSON.parse(text2);
   const arr = j.data || j.models || (Array.isArray(j) ? j : []);
   return arr.map((m) => typeof m === "string" ? m : m.id || m.name).filter(Boolean).sort();
 }
@@ -866,16 +866,16 @@ async function chat({ baseUrl, apiKey, model, messages, extra = {}, temperature 
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(timeout)
   });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`AI HTTP ${r.status}: ${text.slice(0, 300)}`);
-  const j = JSON.parse(text);
+  const text2 = await r.text();
+  if (!r.ok) throw new Error(`AI HTTP ${r.status}: ${text2.slice(0, 300)}`);
+  const j = JSON.parse(text2);
   const msg = j.choices?.[0]?.message || {};
   let content = msg.content;
   if (Array.isArray(content)) content = content.map((c) => c.text || "").join("");
   return String(content || "");
 }
-function extractJson(text) {
-  let t = String(text || "").trim();
+function extractJson(text2) {
+  let t = String(text2 || "").trim();
   t = t.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
   const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) t = fence[1].trim();
@@ -966,18 +966,95 @@ var init_fold = __esm({
   }
 });
 
+// src/sockets.js
+import net from "node:net";
+import tls from "node:tls";
+function wrap(sock, hostname) {
+  let ctrl = null, closed = false;
+  const onData = (d) => {
+    try {
+      ctrl && ctrl.enqueue(new Uint8Array(d));
+    } catch {
+    }
+  };
+  const onEnd = () => {
+    if (!closed) {
+      closed = true;
+      try {
+        ctrl && ctrl.close();
+      } catch {
+      }
+    }
+  };
+  const onErr = (e) => {
+    if (!closed) {
+      closed = true;
+      try {
+        ctrl && ctrl.error(e);
+      } catch {
+      }
+    }
+  };
+  sock.on("data", onData);
+  sock.on("end", onEnd);
+  sock.on("close", onEnd);
+  sock.on("error", onErr);
+  const readable = new ReadableStream({ start(c) {
+    ctrl = c;
+  } });
+  const writable = new WritableStream({
+    write(chunk) {
+      return new Promise((res, rej) => sock.write(chunk, (e) => e ? rej(e) : res()));
+    }
+  });
+  return {
+    readable,
+    writable,
+    startTls() {
+      sock.removeListener("data", onData);
+      sock.removeListener("end", onEnd);
+      sock.removeListener("close", onEnd);
+      sock.removeListener("error", onErr);
+      closed = true;
+      const t = tls.connect({ socket: sock, servername: hostname });
+      t.setTimeout(3e4, () => t.destroy(new Error("SMTP \u8FDE\u63A5\u8D85\u65F6")));
+      return wrap(t, hostname);
+    },
+    async close() {
+      try {
+        sock.end();
+      } catch {
+      }
+      setTimeout(() => {
+        try {
+          sock.destroy();
+        } catch {
+        }
+      }, 500).unref?.();
+    }
+  };
+}
+function connect({ hostname, port }, opts = {}) {
+  const sock = opts.secureTransport === "on" ? tls.connect({ host: hostname, port, servername: hostname }) : net.connect({ host: hostname, port });
+  sock.setTimeout(3e4, () => sock.destroy(new Error("SMTP \u8FDE\u63A5\u8D85\u65F6")));
+  return wrap(sock, hostname);
+}
+var init_sockets = __esm({
+  "src/sockets.js"() {
+  }
+});
+
 // src/smtp.js
 var smtp_exports = {};
 __export(smtp_exports, {
   smtpSend: () => smtpSend
 });
-import { connect } from "cloudflare:sockets";
 async function smtpSend(o) {
   const port = Number(o.port) || 465;
   const secure = o.secure || (port === 465 ? "ssl" : "starttls");
   const socket = connect({ hostname: o.host, port }, { secureTransport: secure === "ssl" ? "on" : "starttls", allowHalfOpen: false });
   const c = new Conn(socket);
-  const helo = "radar.workers.dev";
+  const helo = "radar.vercel.app";
   try {
     await c.reply([220], "\u63E1\u624B");
     await c.cmd(`EHLO ${helo}`, [250], "EHLO");
@@ -1010,6 +1087,7 @@ async function smtpSend(o) {
 var enc, b64, Conn;
 var init_smtp = __esm({
   "src/smtp.js"() {
+    init_sockets();
     enc = new TextEncoder();
     b64 = (str) => {
       const bytes = enc.encode(str);
@@ -1139,18 +1217,18 @@ ${list.map((it) => `
 ${body}
 <tr><td style="padding:18px 24px;font-family:${font};font-size:12px;color:#9ca3af;line-height:1.6;">
   ${siteUrl ? `<a href="${esc(siteUrl)}" target="_blank" style="color:#312e81;text-decoration:none;">\u67E5\u770B\u5168\u90E8\u8D44\u6E90 \u2192</a>&nbsp;\xB7&nbsp;<a href="${esc(siteUrl)}/feed.xml" target="_blank" style="color:#9ca3af;">RSS</a><br>` : ""}
-  \u7531 Cloudflare Workers \u81EA\u52A8\u6293\u53D6\u5E76\u7ECF AI \u7B5B\u9009\uFF0C\u4F7F\u7528\u524D\u8BF7\u81EA\u884C\u786E\u8BA4\u670D\u52A1\u6761\u6B3E\u3002
+  \u7531\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE\u81EA\u52A8\u6293\u53D6\u5E76\u7ECF AI \u7B5B\u9009\uFF0C\u4F7F\u7528\u524D\u8BF7\u81EA\u884C\u786E\u8BA4\u670D\u52A1\u6761\u6B3E\u3002
 </td></tr>
 </table></td></tr></table></body></html>`;
-  const text = [`${s.mail_subject} \xB7 ${dateStr} \xB7 \u5171 ${items.length} \u6761`, ""].concat(items.length ? [...Object.keys(CAT2), oldKey, "_flat"].filter((c) => groups[c]).flatMap((c) => [
+  const text2 = [`${s.mail_subject} \xB7 ${dateStr} \xB7 \u5171 ${items.length} \u6761`, ""].concat(items.length ? [...Object.keys(CAT2), oldKey, "_flat"].filter((c) => groups[c]).flatMap((c) => [
     c === "_flat" ? "" : `\u3010${CAT2[c] || c}\u3011`,
     ...groups[c].map((it, i) => `${i + 1}. ${it.name || it.title}
    ${it.url}${it.summary ? "\n   " + it.summary : ""}${it.signup ? "\n   \u6CE8\u518C\uFF1A" + it.signup : ""}`),
     ""
   ]) : ["\u4ECA\u5929\u6CA1\u6709\u65B0\u7684\u8D44\u6E90\u3002"]).concat(siteUrl ? [`\u67E5\u770B\u5168\u90E8\uFF1A${siteUrl}`] : []).join("\n");
-  return { html: html2, text };
+  return { html: html2, text: text2 };
 }
-function buildMime({ fromName, from, to, subject, html: html2, text }) {
+function buildMime({ fromName, from, to, subject, html: html2, text: text2 }) {
   const toList = Array.isArray(to) ? to : [to];
   const boundary = "b_" + crypto.randomUUID().replace(/-/g, "");
   const domain = from.split("@")[1] || "localhost";
@@ -1167,7 +1245,7 @@ function buildMime({ fromName, from, to, subject, html: html2, text }) {
     "Content-Type: text/plain; charset=UTF-8",
     "Content-Transfer-Encoding: base64",
     "",
-    wrap76(b642(text)),
+    wrap76(b642(text2)),
     `--${boundary}`,
     "Content-Type: text/html; charset=UTF-8",
     "Content-Transfer-Encoding: base64",
@@ -1193,14 +1271,14 @@ async function sendMail(env, s, msg) {
   if (!ok.length) throw new Error(failed.join("\uFF1B"));
   return { provider: s.mail_provider || "smtp", to: ok, failed };
 }
-async function sendMailTo(env, s, { subject, html: html2, text }, to) {
+async function sendMailTo(env, s, { subject, html: html2, text: text2 }, to) {
   const provider = s.mail_provider || "smtp";
   const fromName = s.mail_from_name || "\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE";
   if (provider === "smtp") {
     if (!s.smtp_user || !s.smtp_pass) throw new Error("\u672A\u586B\u5199 SMTP \u8D26\u53F7\u6216\u6388\u6743\u7801");
     const from = s.mail_from || s.smtp_user;
     const { smtpSend: smtpSend2 } = await Promise.resolve().then(() => (init_smtp(), smtp_exports));
-    const raw = buildMime({ fromName, from, to, subject, html: html2, text });
+    const raw = buildMime({ fromName, from, to, subject, html: html2, text: text2 });
     await smtpSend2({ host: s.smtp_host || "smtp.qq.com", port: s.smtp_port || 465, secure: s.smtp_secure || "ssl", user: s.smtp_user, pass: s.smtp_pass, from, to, raw });
     return { provider, to };
   }
@@ -1210,7 +1288,7 @@ async function sendMailTo(env, s, { subject, html: html2, text }, to) {
     const r = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${s.mail_api_key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: `${fromName} <${s.mail_from}>`, to, subject, html: html2, text })
+      body: JSON.stringify({ from: `${fromName} <${s.mail_from}>`, to, subject, html: html2, text: text2 })
     });
     if (!r.ok) throw new Error(`Resend HTTP ${r.status}: ${(await r.text()).slice(0, 300)}`);
     return { provider, to };
@@ -1220,20 +1298,12 @@ async function sendMailTo(env, s, { subject, html: html2, text }, to) {
     const r = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: { "api-key": s.mail_api_key, "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ sender: { name: fromName, email: s.mail_from }, to: to.map((email) => ({ email })), subject, htmlContent: html2, textContent: text })
+      body: JSON.stringify({ sender: { name: fromName, email: s.mail_from }, to: to.map((email) => ({ email })), subject, htmlContent: html2, textContent: text2 })
     });
     if (!r.ok) throw new Error(`Brevo HTTP ${r.status}: ${(await r.text()).slice(0, 300)}`);
     return { provider, to };
   }
-  if (provider === "cloudflare") {
-    if (!env.MAILER) throw new Error("\u672A\u7ED1\u5B9A send_email\uFF08MAILER\uFF09\uFF0C\u8BF7\u5728 wrangler.toml \u4E2D\u5F00\u542F\u5E76\u914D\u7F6E Email Routing");
-    const { EmailMessage } = await import("cloudflare:email");
-    for (const addr of to) {
-      const raw = buildMime({ fromName, from: s.mail_from, to: addr, subject, html: html2, text });
-      await env.MAILER.send(new EmailMessage(s.mail_from, addr, raw));
-    }
-    return { provider, to };
-  }
+  if (provider === "cloudflare") throw new Error("Vercel \u7248\u4E0D\u652F\u6301 Cloudflare Email\uFF0C\u8BF7\u5728\u540E\u53F0\u628A\u53D1\u9001\u65B9\u5F0F\u6539\u6210 SMTP\u3001Resend \u6216 Brevo");
   throw new Error(`\u672A\u77E5\u7684\u90AE\u4EF6\u670D\u52A1\uFF1A${provider}`);
 }
 async function previewDigest(env) {
@@ -1259,11 +1329,11 @@ ${tgEsc(it.summary)}` : ""}${tags ? `
     } else cur += "\n\n" + b;
   }
   msgs.push(cur);
-  for (const text of msgs) {
+  for (const text2 of msgs) {
     const r = await fetch(`https://api.telegram.org/bot${s.telegram_bot_token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: s.telegram_chat_id, text, parse_mode: "HTML", disable_web_page_preview: true })
+      body: JSON.stringify({ chat_id: s.telegram_chat_id, text: text2, parse_mode: "HTML", disable_web_page_preview: true })
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.ok) throw new Error(`Telegram \u53D1\u9001\u5931\u8D25\uFF1A${j.description || r.status}`);
@@ -1386,9 +1456,9 @@ async function postJson(url, headers, body, name) {
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(3e4)
   });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`${name} HTTP ${r.status}: ${text.slice(0, 200)}`);
-  return JSON.parse(text);
+  const text2 = await r.text();
+  if (!r.ok) throw new Error(`${name} HTTP ${r.status}: ${text2.slice(0, 200)}`);
+  return JSON.parse(text2);
 }
 async function runQueries(queries, fn, name, concurrency = 4) {
   const settled = [];
@@ -1522,9 +1592,9 @@ var init_search = __esm({
           const qs = new URLSearchParams({ q: query, count: String(Math.min(20, Number(s.search_max_results) || 10)), freshness: fresh });
           if (CJK.test(query)) qs.set("search_lang", "zh-hans");
           const r = await fetch(`https://api.search.brave.com/res/v1/web/search?${qs}`, { headers: { "X-Subscription-Token": s.brave_api_key, Accept: "application/json" }, signal: AbortSignal.timeout(3e4) });
-          const text = await r.text();
-          if (!r.ok) throw new Error(`Brave HTTP ${r.status}: ${text.slice(0, 200)}`);
-          const j = JSON.parse(text);
+          const text2 = await r.text();
+          if (!r.ok) throw new Error(`Brave HTTP ${r.status}: ${text2.slice(0, 200)}`);
+          const j = JSON.parse(text2);
           return (j.web?.results || []).map((x) => pick({ title: x.title, url: x.url, raw_text: [x.description, ...x.extra_snippets || []].join(" ").replace(/<[^>]+>/g, "") }));
         }
       },
@@ -1556,8 +1626,8 @@ var init_search = __esm({
           const range = days <= 1 ? "OneDay" : days <= 7 ? "OneWeek" : days <= 31 ? "OneMonth" : "OneYear";
           const body = { Query: query.slice(0, 100), SearchType: "web", Count: Math.min(50, Number(s.search_max_results) || 10), TimeRange: range, Filter: { NeedUrl: true }, QueryControl: { QueryRewrite: false } };
           const j = await postJson("https://open.feedcoopapi.com/search_api/web_search", { Authorization: `Bearer ${s.volc_api_key}` }, body, "\u706B\u5C71\u5F15\u64CE");
-          const err2 = j.ResponseMetadata?.Error;
-          if (err2) throw new Error(`\u706B\u5C71\u5F15\u64CE ${err2.Code || ""}: ${String(err2.Message || "").slice(0, 100)}`);
+          const err = j.ResponseMetadata?.Error;
+          if (err) throw new Error(`\u706B\u5C71\u5F15\u64CE ${err.Code || ""}: ${String(err.Message || "").slice(0, 100)}`);
           return (j.Result?.WebResults || []).map((r) => pick({ title: r.Title, url: r.Url, published_at: parseTime(r.PublishTime), raw_text: r.Summary || r.Snippet }));
         }
       }
@@ -1568,8 +1638,8 @@ var init_search = __esm({
 });
 
 // src/rules.js
-function isProxyTopic(text) {
-  return PROXY_TOPIC.test(String(text || ""));
+function isProxyTopic(text2) {
+  return PROXY_TOPIC.test(String(text2 || ""));
 }
 function isNoiseTitle(title) {
   const t = String(title || "");
@@ -1585,9 +1655,9 @@ function guessObtain(title, summary = "") {
   if (/回帖|盖楼|转发|关注.*领取|邀请|拉新|实名|绑卡|下单|首单|充值|发帖|签到.*领|分享.*得|credit\s*card|phone\s*verif/i.test(t)) return "conditional";
   return "free";
 }
-function compileBlockRules(text) {
+function compileBlockRules(text2) {
   const rules = [];
-  for (const raw of String(text || "").split(/\r?\n/)) {
+  for (const raw of String(text2 || "").split(/\r?\n/)) {
     const line2 = raw.trim();
     if (!line2 || line2.startsWith("#")) continue;
     const m = line2.match(/^\/(.+)\/([gimsuy]*)$/);
@@ -1603,8 +1673,8 @@ function compileBlockRules(text) {
   }
   return rules;
 }
-function matchBlock(rules, text) {
-  for (const r of rules) if (r.test(text)) return r.label;
+function matchBlock(rules, text2) {
+  for (const r of rules) if (r.test(text2)) return r.label;
   return null;
 }
 function titleFingerprint(title) {
@@ -1631,8 +1701,8 @@ function cleanTitle(title, source = "", url = "") {
   }
   return t.replace(/\s*[（(](转载|转|原创)[)）]\s*$/, "").trim();
 }
-function extractDeadline(text, publishedAt, now = Date.now()) {
-  const s = String(text || "").slice(0, 1500);
+function extractDeadline(text2, publishedAt, now = Date.now()) {
+  const s = String(text2 || "").slice(0, 1500);
   if (!s) return null;
   const base = publishedAt || now;
   const baseYear = new Date(base + BJ).getUTCFullYear();
@@ -1659,8 +1729,8 @@ function extractDeadline(text, publishedAt, now = Date.now()) {
   const ok = cands.filter((t) => t && t > base - 864e5 && t < now + 400 * 864e5);
   return ok.length ? Math.min(...ok) : null;
 }
-function extractCodes(text) {
-  const s = String(text || "").slice(0, 2e3);
+function extractCodes(text2) {
+  const s = String(text2 || "").slice(0, 2e3);
   const out = [];
   const re = /(?:兑换码|激活码|注册码|优惠码|折扣码|序列号|口令|礼包码|(?<![a-z])(?:cdkey|cd-key|promo code|coupon code|redeem code|license key|serial|code)(?![a-z]))\s*[:：为是]?\s*[「“"'`(（]?\s*([A-Z0-9][A-Z0-9-]{4,38}[A-Z0-9])/gi;
   let m;
@@ -1672,8 +1742,8 @@ function extractCodes(text) {
   }
   return out;
 }
-function firstSentence(text, n = 90) {
-  const t = String(text || "").replace(/\s+/g, " ").trim();
+function firstSentence(text2, n = 90) {
+  const t = String(text2 || "").replace(/\s+/g, " ").trim();
   if (!t) return "";
   const m = /^(.{12,}?[。！？!?；;])/.exec(t.slice(0, n + 40));
   const s = m && m[1].length <= n ? m[1] : t.slice(0, n);
@@ -1780,16 +1850,16 @@ function parseTelegram(html2, ch) {
     const st = b.indexOf(">", tm) + 1;
     const end = b.indexOf("</div>", st);
     const textHtml = b.slice(st, end < 0 ? st + 4e3 : end).replace(/<br\s*\/?>/gi, "\n");
-    const text = decodeEntities(textHtml.replace(/<[^>]+>/g, "")).replace(/[ \t]+/g, " ").trim();
-    if (!text) continue;
-    const first = text.split("\n").map((x) => x.trim()).find((x) => x.length > 1) || text;
+    const text2 = decodeEntities(textHtml.replace(/<[^>]+>/g, "")).replace(/[ \t]+/g, " ").trim();
+    if (!text2) continue;
+    const first = text2.split("\n").map((x) => x.trim()).find((x) => x.length > 1) || text2;
     const dt = /datetime="([^"]+)"/.exec(b);
     const link = /<a[^>]+href="(https?:\/\/(?!t\.me)[^"]+)"/.exec(b.slice(st, end));
     out.push({
       title: first.replace(/^[^\p{L}\p{N}【\[（(]+/u, "").slice(0, 120),
       url: `https://t.me/${post2[1]}`,
       published_at: dt ? parseDate(dt[1]) : null,
-      raw_text: (text.slice(0, 1200) + (link ? `
+      raw_text: (text2.slice(0, 1200) + (link ? `
 \u94FE\u63A5\uFF1A${decodeEntities(link[1])}` : "")).slice(0, 1500),
       target: link ? decodeEntities(link[1]) : null
       // 频道消息指向的原文，用来和其它来源合并
@@ -2119,12 +2189,12 @@ function allowedOf(item, cats) {
   return own.length ? cats.filter((k) => own.includes(k)) : cats;
 }
 function heuristicJudge(item, s) {
-  const text = stripNegated(`${item.title} ${item.raw_text || ""}`).toLowerCase();
-  const hard = s.simple_signup_only !== "false" && lines(s.hard_signup_keywords).find((w) => text.includes(w));
+  const text2 = stripNegated(`${item.title} ${item.raw_text || ""}`).toLowerCase();
+  const hard = s.simple_signup_only !== "false" && lines(s.hard_signup_keywords).find((w) => text2.includes(w));
   const obtain = guessObtain(item.title, item.raw_text || "");
   const allowed = lines(s.allowed_obtain);
   const allow = allowedOf(item, enabledCats(s));
-  const category = guessCategory(text, allow) || (item.hint && allow.includes(item.hint) ? item.hint : null) || "other";
+  const category = guessCategory(text2, allow) || (item.hint && allow.includes(item.hint) ? item.hint : null) || "other";
   if (isInfoCat(category) && item.hint === category) return { status: "approved", obtain: null, category, name: null, summary: firstSentence(item.raw_text, 90), signup: null, score: null, judged_by: "keywords" };
   const asking = /^(求|请问|问下|问一下|有没有|求助|求推荐)|[？?]\s*$/.test(String(item.title || "").trim());
   return {
@@ -2143,9 +2213,9 @@ function triage(item, s) {
   const h = heuristicJudge(item, s);
   if (isInfoCat(h.category) && item.hint === h.category) return { verdict: h, sure: true };
   const title = String(item.title || "").toLowerCase();
-  const text = `${title} ${String(item.raw_text || "").slice(0, 400).toLowerCase()}`;
+  const text2 = `${title} ${String(item.raw_text || "").slice(0, 400).toLowerCase()}`;
   if (h.status === "approved" && h.obtain === "free" && !DOUBT.test(title) && !DOUBT.test(String(item.raw_text || "").slice(0, 200))) return { verdict: { ...h, score: 70, judged_by: "auto" }, sure: true };
-  if (h.obtain === "paid" && !lines(s.free_keywords).some((w) => kwHit(text, w))) return { verdict: { ...h, status: "rejected", judged_by: "auto" }, sure: true };
+  if (h.obtain === "paid" && !lines(s.free_keywords).some((w) => kwHit(text2, w))) return { verdict: { ...h, status: "rejected", judged_by: "auto" }, sure: true };
   if (/^(求|请问|问下|有没有|求助)|[？?]\s*$/.test(String(item.title || "").trim())) return { verdict: { ...h, status: "rejected", signup: "\u63D0\u95EE\u5E16", judged_by: "auto" }, sure: true };
   return { verdict: h, sure: false };
 }
@@ -2292,13 +2362,13 @@ ${it.raw_text || ""}`)) {
       }
     }
     if (src.filter !== false && !src.trusted) {
-      const text = `${it.title} ${it.raw_text || ""}`.toLowerCase();
-      if (!(c.topicRe && c.topicRe.test(text)) || !containsAny(text, c.freeWords)) {
+      const text2 = `${it.title} ${it.raw_text || ""}`.toLowerCase();
+      if (!(c.topicRe && c.topicRe.test(text2)) || !containsAny(text2, c.freeWords)) {
         stats.off_topic++;
         continue;
       }
       if (own.length) {
-        const g = guessCategory(text, cats);
+        const g = guessCategory(text2, cats);
         if (g && !allow.includes(g)) {
           stats.off_topic++;
           continue;
@@ -2388,9 +2458,9 @@ ${it.raw_text || ""}`;
     const codes = extractCodes(blob);
     const ex0 = codes.length ? { codes } : {};
     if (it.trusted && (it.category === "ai" || it.category === "aideal")) {
-      const txt2 = `${it.name || ""} ${it.title} ${it.summary || ""} ${String(it.raw_text || "").slice(0, 300)}`;
-      ex0.vendor = guessVendor(it.name || it.title) || guessVendor(txt2) || void 0;
-      ex0.perk = guessPerk(txt2) || void 0;
+      const txt = `${it.name || ""} ${it.title} ${it.summary || ""} ${String(it.raw_text || "").slice(0, 300)}`;
+      ex0.vendor = guessVendor(it.name || it.title) || guessVendor(txt) || void 0;
+      ex0.perk = guessPerk(txt) || void 0;
     }
     const extra = Object.keys(ex0).some((k) => ex0[k] !== void 0) ? JSON.stringify(ex0) : null;
     const direct = it.trusted && it.category;
@@ -2429,8 +2499,8 @@ async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
     }
     if (v.how) ex = { ...ex || {}, how: String(v.how).slice(0, 40) };
     if (v.status === "approved" && (v.category === "ai" || v.category === "aideal")) {
-      const txt2 = `${v.name || ""} ${it.title} ${v.summary || ""}`;
-      ex = { ...ex || {}, vendor: String(v.vendor || guessVendor(it.title) || guessVendor(txt2) || "").slice(0, 24) || void 0, perk: String(v.perk || guessPerk(txt2) || "").slice(0, 8) || void 0 };
+      const txt = `${v.name || ""} ${it.title} ${v.summary || ""}`;
+      ex = { ...ex || {}, vendor: String(v.vendor || guessVendor(it.title) || guessVendor(txt) || "").slice(0, 24) || void 0, perk: String(v.perk || guessPerk(txt) || "").slice(0, 8) || void 0 };
     }
     const exp = v.expires_at || it.expires_at || null;
     updates.push(
@@ -2818,7 +2888,7 @@ var init_crawler = __esm({
     init_rules();
     init_extras();
     init_mailer();
-    UA = "Mozilla/5.0 (compatible; FreeResourceRadar/1.0; +https://workers.cloudflare.com)";
+    UA = "Mozilla/5.0 (compatible; FreeResourceRadar/1.0; +https://github.com/haru-001/free-resource-radar)";
     DAY2 = 864e5;
     getJson = async (url, headers) => JSON.parse(await getText(url, { Accept: "application/json", ...headers }));
     ENT = { nbsp: " ", quot: '"', apos: "'", lt: "<", gt: ">", amp: "&" };
@@ -2833,7 +2903,7 @@ var init_crawler = __esm({
     GENERIC_LINK = /^(注册链接|注册|链接|官网|官网链接|地址|入口|官方入口|官方来源|官方链接|官方页|官方页面|官方文档|文档|公告|活动公告|活动页|专属链接|点击|访问|前往|link|website|docs|官方|source|源码|github|详情|官方免费层|免费层|试用|限时|限时免费|永久免费|试用 \/ 限时权益|有效|待核实|已失效)$/i;
     mdPlain = (x) => decodeEntities(x.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(MD_LINK, "$1").replace(/<[^>]+>/g, " ").replace(/[*_`>#]|:[a-z0-9_+-]+:/g, "").replace(/\s+/g, " ")).trim();
     CJK2 = /[\u4e00-\u9fff]/;
-    containsAny = (text, words) => words.some((w) => text.includes(w));
+    containsAny = (text2, words) => words.some((w) => text2.includes(w));
     csv = (v) => (Array.isArray(v) ? v : String(v || "").split(",")).map((x) => String(x).trim()).filter(Boolean);
     DOUBT = /抽奖|开奖|转发|付费|充值|折扣|打折|优惠码|优惠券|半价|首月|首年|低至|特价|促销|秒杀|续费|年付|月付|季付|限量|名额|内测资格|邀请码|aff|推广|广告|招聘|求助|请问|求推荐|有没有|怎么|吗[？?]?$|[？?]$|[$¥￥]\s?\d|\d+(\.\d+)?\s*(元|美元|欧元|rmb|usd)(?![a-z])/i;
     ZERO_STATS = () => ({ auto: 0, cached: 0, dead: 0, watched: 0, skipped_src: 0, merged: 0, fetched: 0, blocked: 0, block_rule: 0, noise: 0, dup_title: 0, non_zh: 0, hard_signup: 0, too_old: 0, undated: 0, off_topic: 0, candidates: 0, new: 0, trusted: 0, judged: 0, approved: 0, rejected: 0, expired_removed: 0, errors: 0 });
@@ -2984,13 +3054,13 @@ async function checkSources(current, urls) {
     try {
       const r = await fetch(url, { headers: { "User-Agent": "free-resource-radar", Accept: "*/*" }, signal: AbortSignal.timeout(15e3) });
       if (!r.ok) throw new Error("HTTP " + r.status);
-      const text = await r.text();
+      const text2 = await r.text();
       let list;
-      if (/^\s*[[{]/.test(text)) {
-        const j = JSON.parse(text);
+      if (/^\s*[[{]/.test(text2)) {
+        const j = JSON.parse(text2);
         list = (Array.isArray(j) ? j : j.sources || []).filter((x) => x && (x.url || x.type)).map((x) => ({ ...x, from: url, upstream_enabled: x.enabled !== false }));
       } else {
-        list = parseFreebieSeeds(text);
+        list = parseFreebieSeeds(text2);
       }
       unsupported += list.filter((x) => x.unsupported).length;
       const label = url === FREEBIE_SEEDS_URL || /freebie-radar/.test(url) ? "freebie-radar" : url.replace(/^https?:\/\//, "").slice(0, 60);
@@ -3046,12 +3116,12 @@ async function probeOne(raw) {
   }
   const tg = /^(?:https?:\/\/)?t\.me\/(?:s\/)?([A-Za-z0-9_]{4,})/.exec(line2) || /^@([A-Za-z0-9_]{4,})$/.exec(line2);
   if (tg) {
-    const { text } = await getHead(`https://t.me/s/${tg[1]}`, 3e5);
-    const n = (text.match(/tgme_widget_message_text/g) || []).length;
+    const { text: text2 } = await getHead(`https://t.me/s/${tg[1]}`, 3e5);
+    const n = (text2.match(/tgme_widget_message_text/g) || []).length;
     if (!n) throw new Error("\u9891\u9053\u6CA1\u6709\u516C\u5F00\u6D88\u606F\u9875");
-    const title = decode((/<meta property="og:title" content="([^"]+)"/.exec(text) || [])[1]) || tg[1];
-    const texts = [...text.matchAll(/tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/g)].map((m) => m[1].replace(/<[^>]+>/g, ""));
-    const dates = [...text.matchAll(/datetime="([^"]+)"/g)].map((m) => Date.parse(m[1])).filter(Boolean);
+    const title = decode((/<meta property="og:title" content="([^"]+)"/.exec(text2) || [])[1]) || tg[1];
+    const texts = [...text2.matchAll(/tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/g)].map((m) => m[1].replace(/<[^>]+>/g, ""));
+    const dates = [...text2.matchAll(/datetime="([^"]+)"/g)].map((m) => Date.parse(m[1])).filter(Boolean);
     return { src: { name: `TG \xB7 ${title}`, type: "telegram", channel: tg[1], enabled: true }, zh: texts.filter((t) => CJK3.test(t)).length >= texts.length / 2, count: n, latest: dates.length ? Math.max(...dates) : null };
   }
   const gh = /^(?:https?:\/\/)?github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/.*)?$/i.exec(line2);
@@ -3748,7 +3818,7 @@ var init_admin = __esm({
                 <button class="btn" onclick="hitCron(this)">\u8BBF\u95EE\u4E00\u6B21</button>
                 <button class="btn" onclick="resetCronKey(this)">\u6362\u5BC6\u94A5</button>
               </div>
-              <div class="hint" style="margin-top:6px">Cloudflare \u81EA\u5E26\u7684\u6BCF\u5206\u949F\u5B9A\u65F6\u5DF2\u7ECF\u591F\u7528\u3002\u60F3\u591A\u4E00\u5C42\u4FDD\u9669\uFF0C\u53EF\u4EE5\u628A\u8FD9\u4E2A\u5730\u5740\u586B\u5230 <a href="https://cron-job.org" target="_blank" rel="noopener">cron-job.org</a> \u6216 <a href="https://uptimerobot.com" target="_blank" rel="noopener">UptimeRobot</a>\uFF0C\u8BBE\u6210\u6BCF 1\u20135 \u5206\u949F\u8BBF\u95EE\u4E00\u6B21\u3002<span id="cronLast"></span></div>
+              <div class="hint" style="margin-top:6px">Vercel \u514D\u8D39\u7248\u7684\u81EA\u5E26\u5B9A\u65F6\u4E00\u5929\u53EA\u8DD1\u4E00\u6B21\uFF0C<b>\u8BF7\u52A1\u5FC5</b>\u628A\u8FD9\u4E2A\u5730\u5740\u586B\u5230 <a href="https://cron-job.org" target="_blank" rel="noopener">cron-job.org</a>\uFF08\u514D\u8D39\uFF09\u6216 <a href="https://uptimerobot.com" target="_blank" rel="noopener">UptimeRobot</a>\uFF0C\u8BBE\u6210\u6BCF 10 \u5206\u949F\u8BBF\u95EE\u4E00\u6B21\u3002\u6BCF\u6B21\u8BBF\u95EE\u4F1A\u8FDE\u7EED\u63A8\u8FDB\u6700\u591A\u7EA6 45 \u79D2\uFF0C\u6CA1\u5230\u6293\u53D6\u65F6\u95F4\u5C31\u4EC0\u4E48\u90FD\u4E0D\u505A\u3002<span id="cronLast"></span></div>
             </div>
             <div class="grid3">
               <div><label class="f">\u89E6\u53D1\u6700\u5C0F\u95F4\u9694\uFF08\u79D2\uFF09</label><input type="number" data-key="trigger_min_seconds" min="5" /></div>
@@ -3853,7 +3923,7 @@ var init_admin = __esm({
           <header><h2>\u90AE\u4EF6\u65E5\u62A5</h2><label class="sw"><input type="checkbox" data-key="mail_enabled" />\u542F\u7528</label></header>
           <div class="body">
             <div class="grid2">
-              <div><label class="f">\u53D1\u9001\u65B9\u5F0F</label><select data-key="mail_provider" onchange="applyShow()"><option value="smtp">SMTP\uFF08\u9ED8\u8BA4 QQ \u90AE\u7BB1\uFF09</option><option value="resend">Resend</option><option value="brevo">Brevo</option><option value="cloudflare">Cloudflare Email Routing</option></select></div>
+              <div><label class="f">\u53D1\u9001\u65B9\u5F0F</label><select data-key="mail_provider" onchange="applyShow()"><option value="smtp">SMTP\uFF08\u9ED8\u8BA4 QQ \u90AE\u7BB1\uFF09</option><option value="resend">Resend</option><option value="brevo">Brevo</option></select></div>
               <div><label class="f">\u6BCF\u5929\u51E0\u70B9\u63A8\u9001\uFF08\u5317\u4EAC\u65F6\u95F4\uFF09</label><input type="text" data-key="mail_hours" placeholder="9,21" /></div>
             </div>
             <div class="pills" id="mailHourPills" style="margin-top:-8px"></div>
@@ -3882,7 +3952,6 @@ var init_admin = __esm({
               <div><label class="f">API Key</label><input type="password" data-key="mail_api_key" autocomplete="off" /></div>
               <div><label class="f">\u53D1\u4EF6\u5730\u5740\uFF08\u9700\u5DF2\u9A8C\u8BC1\u57DF\u540D\uFF09</label><input type="text" data-key="mail_from" /></div>
             </div>
-            <div data-show="mail_provider=cloudflare" class="hint">\u9700\u8981\u53D6\u6D88 wrangler.toml \u4E2D [[send_email]] \u7684\u6CE8\u91CA\uFF0C\u53D1\u4EF6\u57DF\u540D\u5F00\u542F Email Routing\uFF0C\u6536\u4EF6\u4EBA\u5728 Email Routing \u4E2D\u9A8C\u8BC1\u3002</div>
             <div class="grid3">
               <div><label class="f">\u53D1\u4EF6\u4EBA\u540D\u79F0</label><input type="text" data-key="mail_from_name" /></div>
               <div><label class="f">\u6807\u9898</label><input type="text" data-key="mail_subject" /></div>
@@ -3933,7 +4002,7 @@ var init_admin = __esm({
               <label class="sw"><input type="checkbox" data-key="mail_send_empty" />\u6CA1\u6709\u65B0\u5185\u5BB9\u4E5F\u63A8</label>
             </div>
             <div><label class="f">\u63A8\u9001\u54EA\u4E9B\u5206\u7C7B\uFF08\u90FD\u4E0D\u52FE = \u4E0E\u6536\u96C6\u7684\u76F8\u540C\uFF09</label><div class="cgrps" data-csv="mail_categories" id="mailCatBox"></div></div>
-            <div><label class="f">\u8D44\u6E90\u9875\u5730\u5740\uFF08\u90AE\u4EF6\u5E95\u90E8\u201C\u67E5\u770B\u5168\u90E8\u201D\uFF0C\u9996\u6B21\u767B\u5F55\u540E\u53F0\u65F6\u81EA\u52A8\u586B\u5199\uFF09</label><input type="text" data-key="mail_site_url" placeholder="https://xxx.workers.dev" /></div>
+            <div><label class="f">\u8D44\u6E90\u9875\u5730\u5740\uFF08\u90AE\u4EF6\u5E95\u90E8\u201C\u67E5\u770B\u5168\u90E8\u201D\uFF0C\u9996\u6B21\u767B\u5F55\u540E\u53F0\u65F6\u81EA\u52A8\u586B\u5199\uFF09</label><input type="text" data-key="mail_site_url" placeholder="https://xxx.vercel.app" /></div>
             <div class="row"><button class="btn pri" onclick="pushAction('send', null, this)">\u7ACB\u5373\u63A8\u9001\u65E5\u62A5</button><span class="hint">\u5230\u4E86\u63A8\u9001\u65F6\u95F4\u6309\u542F\u7528\u7684\u6E20\u9053\u81EA\u52A8\u63A8\u9001\u3002</span></div>
           </div>
         </div>
@@ -3976,7 +4045,7 @@ var init_admin = __esm({
         <div class="section">
           <header><h2>\u7BA1\u7406\u5458\u5BC6\u7801</h2></header>
           <div class="body">
-            <div id="pwEnvNote" class="hint" style="display:none">\u5F53\u524D\u4F7F\u7528 Cloudflare \u73AF\u5883\u53D8\u91CF ADMIN_TOKEN \u767B\u5F55\uFF0C\u8BF7\u5728\u63A7\u5236\u53F0\u300C\u8BBE\u7F6E \u2192 \u53D8\u91CF\u548C\u673A\u5BC6\u300D\u4FEE\u6539\u3002</div>
+            <div id="pwEnvNote" class="hint" style="display:none">\u5F53\u524D\u4F7F\u7528\u73AF\u5883\u53D8\u91CF ADMIN_TOKEN \u767B\u5F55\uFF0C\u8BF7\u5728 Vercel \u9879\u76EE\u300CSettings \u2192 Environment Variables\u300D\u4FEE\u6539\uFF0C\u7136\u540E\u91CD\u65B0\u90E8\u7F72\u3002</div>
             <div id="pwForm" class="row">
               <input class="grow" type="password" id="newPw" placeholder="\u65B0\u5BC6\u7801\uFF08\u81F3\u5C11 8 \u4F4D\uFF09" />
               <button class="btn" onclick="changePw(this)">\u4FEE\u6539\u5BC6\u7801</button>
@@ -4688,9 +4757,9 @@ async function init() {
   if (!$('#catBox').children.length) { renderCats(); renderBackends(); renderPush(); }
   route();
   STATUS = await fetch('/api/admin/status').then((r) => r.json()).catch(() => STATUS);
-  const where = STATUS.storage === 'kv' ? 'Cloudflare KV' : 'D1 \u72EC\u7ACB\u7684 secrets \u8868';
+  const where = '\u6570\u636E\u5E93\u91CC\u72EC\u7ACB\u7684 secrets \u8868';
   $$('.storageNote').forEach((el) => (el.textContent = ' Key \u7B49\u654F\u611F\u4FE1\u606F\u4FDD\u5B58\u5728 ' + where + '\uFF0C\u540E\u53F0\u53EA\u663E\u793A\u6253\u7801\u503C\u3002'));
-  $('#storageInfo').textContent = '\u8D44\u6E90\u4E0E\u8BBE\u7F6E\uFF1AD1 \u6570\u636E\u5E93\u3002\u654F\u611F\u4FE1\u606F\uFF1A' + where + (STATUS.storage === 'kv' ? '' : '\uFF08\u5982\u9700\u6539\u5B58 KV\uFF0C\u7ED9 Worker \u7ED1\u5B9A\u4E00\u4E2A\u53D8\u91CF\u540D\u4E3A SECRETS \u7684 KV \u547D\u540D\u7A7A\u95F4\uFF0C\u518D\u4FDD\u5B58\u4E00\u6B21\u8BBE\u7F6E\uFF09') + '\u3002';
+  $('#storageInfo').textContent = '\u8D44\u6E90\u4E0E\u8BBE\u7F6E\uFF1ATurso \u6570\u636E\u5E93\u3002\u654F\u611F\u4FE1\u606F\uFF1A' + where + '\u3002';
   $('#pwEnvNote').style.display = STATUS.env_token ? '' : 'none';
   $('#pwForm').style.display = STATUS.env_token ? 'none' : '';
   siteLockLabel();
@@ -5348,7 +5417,9 @@ setInterval(() => { if (!document.hidden) refresh(); }, 5 * 60000);
 // src/index.js
 var index_exports = {};
 __export(index_exports, {
-  default: () => index_default
+  cronTick: () => cronTick,
+  default: () => index_default,
+  drainTick: () => drainTick
 });
 function safeEqual(a, b) {
   const x = new TextEncoder().encode(String(a));
@@ -5623,7 +5694,7 @@ async function handleAdmin(req, env, url) {
 }
 function setupMissing(env) {
   const m = [];
-  if (!env.DB || typeof env.DB.prepare !== "function") m.push(["DB", "D1 \u6570\u636E\u5E93", "Worker \u2192 \u7ED1\u5B9A \u2192 \u6DFB\u52A0\u7ED1\u5B9A \u2192 D1 \u6570\u636E\u5E93\uFF0C\u53D8\u91CF\u540D\u586B DB\uFF0C\u9009\u62E9\uFF08\u6216\u65B0\u5EFA\uFF09\u4E00\u4E2A\u6570\u636E\u5E93"]);
+  if (!env.DB || typeof env.DB.prepare !== "function") m.push(["TURSO_DATABASE_URL / TURSO_AUTH_TOKEN", "Turso \u6570\u636E\u5E93", "Vercel \u9879\u76EE \u2192 Storage \u2192 \u6DFB\u52A0 Turso\uFF08\u514D\u8D39\uFF09\uFF0C\u8FDE\u63A5\u5230\u672C\u9879\u76EE\u540E\u4F1A\u81EA\u52A8\u5199\u5165\u8FD9\u4E24\u4E2A\u73AF\u5883\u53D8\u91CF\uFF1B\u4E5F\u53EF\u4EE5\u5728 turso.tech \u5EFA\u5E93\u540E\u624B\u52A8\u586B\u5230 Settings \u2192 Environment Variables"]);
   return m;
 }
 function setupPage(missing, asJson) {
@@ -5631,7 +5702,7 @@ function setupPage(missing, asJson) {
   const rows = missing.map(([k, n, how]) => `<li><b>${k}</b>\uFF08${n}\uFF09<br><span>${how}</span></li>`).join("");
   return html(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>\u8FD8\u5DEE\u4E00\u6B65 \xB7 \u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</title>
 <style>body{margin:0;background:#f6f7f9;font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#111318}.b{max-width:560px;margin:10vh auto;background:#fff;border:1px solid #e6e8ec;border-radius:8px;padding:24px 28px}h1{font-size:17px;margin:0 0 6px}p{color:#525c6b;margin:0 0 14px}li{margin-bottom:12px}li span{color:#4b5563;font-size:13px}code{background:#f1f3f6;padding:1px 5px;border-radius:4px}</style>
-<div class="b"><h1>\u90E8\u7F72\u6210\u529F\uFF0C\u8FD8\u5DEE\u4E00\u6B65</h1><p>\u5728 Cloudflare \u63A7\u5236\u53F0\u6253\u5F00\u8FD9\u4E2A Worker\uFF0C\u8865\u4E0A\u4EE5\u4E0B\u7ED1\u5B9A\u540E\u5237\u65B0\u672C\u9875\u3002\u6570\u636E\u8868\u4F1A\u81EA\u52A8\u521B\u5EFA\uFF0C\u7BA1\u7406\u5458\u5BC6\u7801\u5728\u9996\u6B21\u6253\u5F00 /admin \u65F6\u8BBE\u7F6E\u3002</p><ol>${rows}</ol><p>\u5B9A\u65F6\u6293\u53D6\uFF1A\u8BBE\u7F6E \u2192 \u89E6\u53D1\u4E8B\u4EF6 \u2192 \u6DFB\u52A0 Cron\uFF0C\u586B <code>* * * * *</code>\uFF08\u6BCF\u5206\u949F\u4E00\u6B21\uFF0C\u6293\u53D6\u65F6\u95F4\u5728\u540E\u53F0\u8BBE\u7F6E\uFF09\u3002\u7528\u4E00\u952E\u90E8\u7F72\u7684\u8BDD\u5DF2\u81EA\u52A8\u914D\u7F6E\u3002</p></div></html>`, 503);
+<div class="b"><h1>\u90E8\u7F72\u6210\u529F\uFF0C\u8FD8\u5DEE\u4E00\u6B65</h1><p>\u5728 Vercel \u63A7\u5236\u53F0\u8865\u4E0A\u4EE5\u4E0B\u73AF\u5883\u53D8\u91CF\uFF0C\u7136\u540E\u5230 Deployments \u91CC\u70B9 Redeploy\uFF08\u73AF\u5883\u53D8\u91CF\u8981\u91CD\u65B0\u90E8\u7F72\u624D\u751F\u6548\uFF09\u3002\u6570\u636E\u8868\u4F1A\u81EA\u52A8\u521B\u5EFA\uFF0C\u7BA1\u7406\u5458\u5BC6\u7801\u5728\u9996\u6B21\u6253\u5F00 /admin \u65F6\u8BBE\u7F6E\u3002</p><ol>${rows}</ol><p>\u5B9A\u65F6\u6293\u53D6\uFF1A\u540E\u53F0\u300C\u91C7\u96C6\u4E0E\u5206\u7C7B \u2192 \u5B9A\u65F6\u4E0E\u89E6\u53D1\u300D\u91CC\u590D\u5236\u89E6\u53D1\u5730\u5740\uFF0C\u586B\u5230 cron-job.org\uFF0C\u6BCF 10 \u5206\u949F\u8BBF\u95EE\u4E00\u6B21\u3002</p></div></html>`, 503);
 }
 async function siteGate(req, env, url) {
   const h = await siteHash(env);
@@ -5650,7 +5721,7 @@ function errorPage(e, path) {
   const quota = /limit|exceed|quota|too many/i.test(msg);
   return html(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>\u6682\u65F6\u6253\u4E0D\u5F00 \xB7 \u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</title>
 <style>body{margin:0;background:#f6f7f9;font:14px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#111318}.b{max-width:640px;margin:10vh auto;background:#fff;border:1px solid #e6e8ec;border-radius:8px;padding:24px 28px}h1{font-size:17px;margin:0 0 6px}p{color:#525c6b}pre{background:#f1f3f6;padding:10px;border-radius:6px;white-space:pre-wrap;word-break:break-all;font-size:12px}</style>
-<div class="b"><h1>\u9875\u9762\u6682\u65F6\u6253\u4E0D\u5F00</h1><p>${quota ? "\u770B\u8D77\u6765\u662F Cloudflare \u514D\u8D39\u989D\u5EA6\uFF08D1 \u8BFB\u5199\u6B21\u6570\u6216\u8BF7\u6C42\u6570\uFF09\u4ECA\u5929\u7528\u5B8C\u4E86\uFF0C\u5317\u4EAC\u65F6\u95F4 08:00 \u91CD\u7F6E\u3002" : "\u7A0B\u5E8F\u51FA\u9519\u4E86\uFF0C\u628A\u4E0B\u9762\u8FD9\u6BB5\u53D1\u7ED9\u7EF4\u62A4\u8005\u5373\u53EF\u5B9A\u4F4D\u3002"}</p><pre>${msg.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c])}</pre><p>\u8BCA\u65AD\uFF1A\u6253\u5F00 <a href="/api/health">/api/health</a> \u67E5\u770B\u5404\u9879\u68C0\u67E5\u3002</p></div></html>`, 500);
+<div class="b"><h1>\u9875\u9762\u6682\u65F6\u6253\u4E0D\u5F00</h1><p>${quota ? "\u770B\u8D77\u6765\u662F\u514D\u8D39\u989D\u5EA6\uFF08Turso \u8BFB\u5199\u6B21\u6570\u6216 Vercel \u8C03\u7528\u6B21\u6570\uFF09\u7528\u5B8C\u4E86\uFF0C\u7A0D\u540E\u518D\u8BD5\u3002" : "\u7A0B\u5E8F\u51FA\u9519\u4E86\uFF0C\u628A\u4E0B\u9762\u8FD9\u6BB5\u53D1\u7ED9\u7EF4\u62A4\u8005\u5373\u53EF\u5B9A\u4F4D\u3002"}</p><pre>${msg.replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" })[c])}</pre><p>\u8BCA\u65AD\uFF1A\u6253\u5F00 <a href="/api/health">/api/health</a> \u67E5\u770B\u5404\u9879\u68C0\u67E5\u3002</p></div></html>`, 500);
 }
 async function health(env) {
   const out = {};
@@ -5663,7 +5734,7 @@ async function health(env) {
       out[k] = { ok: false, error: String(e && e.message || e).slice(0, 300) };
     }
   };
-  await step("d1", async () => ({ v: (await env.DB.prepare("SELECT 1 AS x").first())?.x }));
+  await step("db", async () => ({ v: (await env.DB.prepare("SELECT 1 AS x").first())?.x }));
   await step("schema", async () => {
     await ensureSchema(env);
     return {};
@@ -5677,12 +5748,11 @@ async function health(env) {
     const s = await getBasicSettings(env);
     return { keys: Object.keys(s).length };
   });
-  await step("kv", async () => ({ bound: !!env.SECRETS }));
   await step("run", async () => {
     const r = await env.DB.prepare("SELECT id, started_at, finished_at FROM runs ORDER BY id DESC LIMIT 1").first();
     return { last: r || null };
   });
-  return { ok: Object.values(out).every((x) => x.ok), version: "1.8.4", checks: out };
+  return { ok: Object.values(out).every((x) => x.ok), version: "2.0.0", checks: out };
 }
 async function handleFetch(req, env, ctx) {
   const url = new URL(req.url);
@@ -5795,7 +5865,7 @@ async function handleFetch(req, env, ctx) {
         ctx.waitUntil(markDirty(env));
       }
       if (url.pathname === "/api/admin/password" && req.method === "POST") {
-        if (envToken(env)) return json({ error: "\u5F53\u524D\u4F7F\u7528\u73AF\u5883\u53D8\u91CF ADMIN_TOKEN\uFF0C\u8BF7\u5728 Cloudflare \u63A7\u5236\u53F0\u4FEE\u6539" }, 400);
+        if (envToken(env)) return json({ error: "\u5F53\u524D\u4F7F\u7528\u73AF\u5883\u53D8\u91CF ADMIN_TOKEN\uFF0C\u8BF7\u5728 Vercel \u7684 Environment Variables \u91CC\u4FEE\u6539" }, 400);
         const { password } = await req.json().catch(() => ({}));
         if (!password || String(password).length < 8) return json({ error: "\u5BC6\u7801\u81F3\u5C11 8 \u4F4D" }, 400);
         await setAdminHash(env, String(password));
@@ -5906,6 +5976,21 @@ function nextSlotText(now, hours) {
   const n = hours.find((x) => x > h);
   return n === void 0 ? `\u660E\u5929 ${hours[0]}:00` : `${n}:00`;
 }
+async function drainTick(env, trigger, budget = Number(env.TICK_BUDGET_MS) || 45e3) {
+  const t0 = Date.now();
+  let r, n = 0;
+  do {
+    r = await autoTick(env, trigger);
+    n++;
+    if (r.action === "wait" || r.idle && !["snap", "mail"].includes(r.action)) break;
+  } while (Date.now() - t0 < budget && n < 400);
+  return { ...r, ticks: n };
+}
+async function cronTick(env) {
+  if (setupMissing(env).length) return { ok: false, error: "\u7F3A\u5C11\u6570\u636E\u5E93\u73AF\u5883\u53D8\u91CF" };
+  await ensureSchema(env);
+  return drainTick(env, "cron");
+}
 async function triggerTick(env, trigger) {
   const s = await basic(env);
   const gap = Math.max(5, Number(s.trigger_min_seconds) || 30) * 1e3;
@@ -5918,8 +6003,8 @@ async function triggerTick(env, trigger) {
   }
   lastTrigger = now;
   await setMeta(env, "trigger_last", now);
-  const r = await autoTick(env, trigger);
-  return { ok: true, action: r.action, message: r.message, current: r.current, done: r.done, left: r.left, total: r.total, run_id: r.run_id };
+  const r = await drainTick(env, trigger);
+  return { ok: true, ticks: r.ticks, action: r.action, message: r.message, current: r.current, done: r.done, left: r.left, total: r.total, run_id: r.run_id };
 }
 function maybeVisitTick(env, ctx) {
   if (Date.now() - lastTrigger < 5e3) return;
@@ -5998,40 +6083,195 @@ input{width:100%;box-sizing:border-box;height:38px;border:1px solid #e6e8ec;bord
   }
 });
 
-// src/entry.js
+// src/turso.js
+var toArg = (v) => {
+  if (v === null || v === void 0) return { type: "null" };
+  if (typeof v === "boolean") return { type: "integer", value: v ? "1" : "0" };
+  if (typeof v === "bigint") return { type: "integer", value: v.toString() };
+  if (typeof v === "number") return Number.isInteger(v) && Math.abs(v) <= Number.MAX_SAFE_INTEGER ? { type: "integer", value: String(v) } : { type: "float", value: v };
+  if (v instanceof ArrayBuffer || ArrayBuffer.isView(v)) {
+    const b = v instanceof ArrayBuffer ? new Uint8Array(v) : new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+    let s = "";
+    for (let i = 0; i < b.length; i += 32768) s += String.fromCharCode(...b.subarray(i, i + 32768));
+    return { type: "blob", base64: btoa(s) };
+  }
+  return { type: "text", value: String(v) };
+};
+var fromVal = (c) => {
+  if (!c || c.type === "null") return null;
+  if (c.type === "integer") {
+    const n = Number(c.value);
+    return Number.isSafeInteger(n) ? n : c.value;
+  }
+  if (c.type === "float") return Number(c.value);
+  if (c.type === "blob") {
+    const s = atob(c.base64 || "");
+    const b = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i);
+    return b.buffer;
+  }
+  return c.value;
+};
+function tursoD1(rawUrl, token) {
+  const base = String(rawUrl || "").trim().replace(/^(libsql|turso):\/\//, "https://").replace(/^wss?:\/\//, "https://").replace(/\/+$/, "");
+  const endpoint = base + "/v2/pipeline";
+  async function pipeline(stmts) {
+    const body = { requests: [...stmts.map((s) => ({ type: "execute", stmt: { sql: s.sql, args: s.args.map(toArg) } })), { type: "close" }] };
+    let res;
+    for (let attempt = 0; ; attempt++) {
+      res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json", ...token ? { authorization: "Bearer " + token } : {} }, body: JSON.stringify(body) });
+      if (res.status >= 500 && attempt < 2) {
+        await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+        continue;
+      }
+      break;
+    }
+    if (!res.ok) {
+      const t = (await res.text().catch(() => "")).slice(0, 300);
+      throw new Error(`Turso \u6570\u636E\u5E93\u8BF7\u6C42\u5931\u8D25 HTTP ${res.status}${res.status === 401 ? "\uFF08TURSO_AUTH_TOKEN \u4E0D\u5BF9\u6216\u5DF2\u8FC7\u671F\uFF09" : ""}\uFF1A${t}`);
+    }
+    const j = await res.json();
+    return stmts.map((s, i) => {
+      const r = j.results?.[i];
+      if (!r || r.type === "error") throw new Error("\u6570\u636E\u5E93\u9519\u8BEF\uFF1A" + (r?.error?.message || "\u672A\u77E5") + " \xB7 SQL: " + s.sql.slice(0, 120));
+      const x = r.response?.result || {};
+      const cols = (x.cols || []).map((c) => c.name);
+      const rows = (x.rows || []).map((row) => row.map(fromVal));
+      return { cols, rows, changes: x.affected_row_count || 0, last: x.last_insert_rowid == null ? null : Number(x.last_insert_rowid) };
+    });
+  }
+  const objs = (r) => r.rows.map((row) => Object.fromEntries(r.cols.map((c, i) => [c, row[i]])));
+  const meta = (r) => ({ changes: r.changes, last_row_id: r.last, rows_read: r.rows.length });
+  function prepare(sql) {
+    const st = {
+      sql,
+      args: [],
+      bind(...a) {
+        return Object.assign(Object.create(st), { sql, args: a });
+      },
+      async first(col) {
+        const [r] = await pipeline([this]);
+        const o = objs(r)[0];
+        return o === void 0 ? null : col ? o[col] ?? null : o;
+      },
+      async all() {
+        const [r] = await pipeline([this]);
+        return { results: objs(r), success: true, meta: meta(r) };
+      },
+      async run() {
+        const [r] = await pipeline([this]);
+        return { results: objs(r), success: true, meta: meta(r) };
+      },
+      async raw() {
+        const [r] = await pipeline([this]);
+        return r.rows;
+      }
+    };
+    return st;
+  }
+  return {
+    prepare,
+    // D1 的 batch 是一个事务；这里也包在 BEGIN / COMMIT 里，一次网络往返
+    async batch(list) {
+      if (!list.length) return [];
+      const stmts = [{ sql: "BEGIN", args: [] }, ...list, { sql: "COMMIT", args: [] }];
+      try {
+        const out = await pipeline(stmts);
+        return out.slice(1, -1).map((r) => ({ results: objs(r), success: true, meta: meta(r) }));
+      } catch (e) {
+        throw e;
+      }
+    },
+    async exec(sql) {
+      await pipeline(String(sql).split(/;\s*\n/).map((s) => s.trim()).filter(Boolean).map((s) => ({ sql: s, args: [] })));
+      return { count: 1 };
+    }
+  };
+}
+
+// src/vercel.js
+var VERSION = "2.0.0";
 var app = null;
-var err = null;
-async function boot() {
-  if (app || err) return;
+var loadErr = null;
+var envCache = null;
+function makeEnv() {
+  if (envCache) return envCache;
+  const e = process.env;
+  const url = e.TURSO_DATABASE_URL || e.LIBSQL_URL || e.DATABASE_URL_TURSO || "";
+  const token = e.TURSO_AUTH_TOKEN || e.LIBSQL_AUTH_TOKEN || "";
+  envCache = {
+    DB: /^(libsql|turso|https?|wss?):\/\//.test(url) ? tursoD1(url, token) : void 0,
+    ADMIN_TOKEN: e.ADMIN_TOKEN || "",
+    TICK_BUDGET_MS: e.TICK_BUDGET_MS || "",
+    PLATFORM: "vercel"
+  };
+  return envCache;
+}
+function makeCtx() {
+  const pending = [];
+  const rc = globalThis[Symbol.for("@vercel/request-context")]?.get?.();
+  return {
+    waitUntil(p) {
+      const q = Promise.resolve(p).catch((e) => console.error("background task failed", e));
+      if (rc?.waitUntil) rc.waitUntil(q);
+      else pending.push(q);
+    },
+    passThroughOnException() {
+    },
+    flush: () => Promise.all(pending)
+  };
+}
+async function load() {
+  if (app || loadErr) return;
   try {
-    app = (await Promise.resolve().then(() => (init_index(), index_exports))).default;
+    app = await Promise.resolve().then(() => (init_index(), index_exports));
   } catch (e) {
-    err = e;
+    loadErr = e;
     console.error("\u542F\u52A8\u5931\u8D25", e && (e.stack || e));
   }
 }
-var txt = (t, e) => new Response(t + "\n\n" + String(e && (e.stack || e.message) || e), { status: 500, headers: { "content-type": "text/plain; charset=utf-8" } });
-var entry_default = {
-  async fetch(req, env, ctx) {
-    if (["/ping", "/__ping"].includes(new URL(req.url).pathname)) return new Response("pong v1.8.4", { headers: { "content-type": "text/plain; charset=utf-8" } });
-    await boot();
-    if (err) return txt("\u7A0B\u5E8F\u52A0\u8F7D\u5931\u8D25\uFF08\u628A\u8FD9\u6BB5\u53D1\u7ED9\u7EF4\u62A4\u8005\uFF09\uFF1A", err);
+var text = (t, status = 200) => new Response(t, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
+async function handle(request) {
+  let req = request;
+  const u = new URL(request.url);
+  const p = u.searchParams.get("__path");
+  if (p !== null) {
+    u.searchParams.delete("__path");
+    u.pathname = "/" + p.replace(/^\/+/, "");
+    const m = request.method;
+    req = new Request(u.toString(), { method: m, headers: request.headers, body: m === "GET" || m === "HEAD" ? void 0 : await request.arrayBuffer() });
+  }
+  if (u.pathname === "/ping" || u.pathname === "/__ping") return text("pong v" + VERSION + " (vercel)");
+  await load();
+  if (loadErr) return text("\u7A0B\u5E8F\u52A0\u8F7D\u5931\u8D25\uFF08\u628A\u8FD9\u6BB5\u53D1\u7ED9\u7EF4\u62A4\u8005\uFF09\uFF1A\n\n" + String(loadErr.stack || loadErr), 500);
+  const env = makeEnv();
+  if (u.pathname === "/api/vercel-cron") {
+    const secret = process.env.CRON_SECRET;
+    if (secret && req.headers.get("authorization") !== "Bearer " + secret) return text("unauthorized", 401);
     try {
-      return await app.fetch(req, env, ctx);
+      return Response.json(await app.cronTick(env));
     } catch (e) {
-      return txt("\u8BF7\u6C42\u5904\u7406\u5931\u8D25\uFF1A", e);
-    }
-  },
-  async scheduled(event, env, ctx) {
-    await boot();
-    if (err) return;
-    try {
-      await app.scheduled(event, env, ctx);
-    } catch (e) {
-      console.error("scheduled failed", e && (e.stack || e));
+      return Response.json({ ok: false, error: String(e.message || e) }, { status: 500 });
     }
   }
-};
+  const ctx = makeCtx();
+  const res = await app.default.fetch(req, env, ctx);
+  await ctx.flush();
+  return res;
+}
+var GET = handle;
+var POST = handle;
+var PUT = handle;
+var PATCH = handle;
+var DELETE = handle;
+var HEAD = handle;
+var OPTIONS = handle;
 export {
-  entry_default as default
+  DELETE,
+  GET,
+  HEAD,
+  OPTIONS,
+  PATCH,
+  POST,
+  PUT
 };

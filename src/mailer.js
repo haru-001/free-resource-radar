@@ -1,4 +1,4 @@
-// 邮件日报：Resend / Brevo / Cloudflare Email（send_email binding）
+// 邮件日报：SMTP / Resend / Brevo
 import { getSettings, saveSettings } from './db.js';
 import { foldItems } from './fold.js';
 import { CATEGORIES, mailCats } from './categories.js';
@@ -75,7 +75,7 @@ ${list.map((it) => `
 ${body}
 <tr><td style="padding:18px 24px;font-family:${font};font-size:12px;color:#9ca3af;line-height:1.6;">
   ${siteUrl ? `<a href="${esc(siteUrl)}" target="_blank" style="color:#312e81;text-decoration:none;">查看全部资源 →</a>&nbsp;·&nbsp;<a href="${esc(siteUrl)}/feed.xml" target="_blank" style="color:#9ca3af;">RSS</a><br>` : ''}
-  由 Cloudflare Workers 自动抓取并经 AI 筛选，使用前请自行确认服务条款。
+  由免费资源雷达自动抓取并经 AI 筛选，使用前请自行确认服务条款。
 </td></tr>
 </table></td></tr></table></body></html>`;
 
@@ -175,15 +175,7 @@ async function sendMailTo(env, s, { subject, html, text }, to) {
     if (!r.ok) throw new Error(`Brevo HTTP ${r.status}: ${(await r.text()).slice(0, 300)}`);
     return { provider, to };
   }
-  if (provider === 'cloudflare') {
-    if (!env.MAILER) throw new Error('未绑定 send_email（MAILER），请在 wrangler.toml 中开启并配置 Email Routing');
-    const { EmailMessage } = await import('cloudflare:email');
-    for (const addr of to) {
-      const raw = buildMime({ fromName, from: s.mail_from, to: addr, subject, html, text });
-      await env.MAILER.send(new EmailMessage(s.mail_from, addr, raw));
-    }
-    return { provider, to };
-  }
+  if (provider === 'cloudflare') throw new Error('Vercel 版不支持 Cloudflare Email，请在后台把发送方式改成 SMTP、Resend 或 Brevo');
   throw new Error(`未知的邮件服务：${provider}`);
 }
 
