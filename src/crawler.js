@@ -498,6 +498,8 @@ async function ingest(env, c, src, items, stats, log) {
   if (src.trusted && src.category && !autoCat && own.length && !allow.includes(src.category)) { log.push(`– ${src.name}: 固定分类不在它负责的分类里，跳过`); return; }
   // 按 feed 的 <category> 标签筛：tags 命中其一才收，skip_tags 命中就丢
   const wantTags = csv(src.tags), skipTags = csv(src.skip_tags);
+  // 一步最多处理 60 条（大的 feed 动辄上百条，全处理容易超出免费版 CPU）
+  if (items.length > 60) items = items.slice(0, 60);
   if (wantTags.length || skipTags.length) items = items.filter((x) => { const t = x.tags || []; if (wantTags.length && !t.some((y) => wantTags.includes(y))) { stats.off_topic++; return false; } if (skipTags.some((y) => t.includes(y))) { stats.off_topic++; return false; } return true; });
   let include = null;
   if (src.include) { try { include = new RegExp(src.include, 'i'); } catch { log.push(`! ${src.name}: include 正则无效`); } }
@@ -637,7 +639,7 @@ async function ingest(env, c, src, items, stats, log) {
 /** 判定一批待处理条目。返回是否还有剩余 */
 async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
   const s = c.s;
-  const perStep = c.aiReady ? Math.min(20, Math.max(1, Number(s.ai_batch_size) || 12)) * 3 : 40;
+  const perStep = c.aiReady ? Math.min(20, Math.max(1, Number(s.ai_batch_size) || 12)) * 3 : 30;
   const cap = c.aiReady ? (capOverride || Math.max(1, Number(s.ai_max_items) || 60)) : 100000;
   const room = Math.max(0, cap - judgedSoFar);
   if (!room) { log.push(`– 本次 AI 判定已达上限 ${cap} 条，剩余留到下次`); return false; }
@@ -854,11 +856,11 @@ export async function planRun(env, trigger = 'cron', opts = {}) {
     // 可用的搜索后端并行跑；单次调用外部请求上限 50，按每步最多 40 个请求分组
     const ready = BACKENDS.filter((b) => backendReady(s, b)).map((b) => b.id);
     const perBackend = Math.max(1, Number(s.search_max_queries) || 8);
-    const group = Math.max(1, Math.min(2, Math.floor(40 / perBackend))); // 每步最多 2 家并行，控制单步 CPU
+    const group = 1; // 每步只跑一家搜索后端，控制单步 CPU（免费版 10ms）
     for (let i = 0; i < ready.length; i += group) steps.push(['search', { engines: ready.slice(i, i + group) }]);
     // AI 福利雷达：AI 两个分类有勾选、且有可用的搜索后端时，单独跑一步（最多 2 家）
     const cats = enabledCats(s);
-    if (s.aifree_radar !== 'false' && ready.length && (cats.includes('ai') || cats.includes('aideal'))) steps.push(['radar', { engines: ready.slice(0, 2) }]);
+    if (s.aifree_radar !== 'false' && ready.length && (cats.includes('ai') || cats.includes('aideal'))) for (const id of ready.slice(0, 2)) steps.push(['radar', { engines: [id] }]);
     steps.push(['judge', {}], ['cleanup', {}], ['check', {}], ['watch', {}]);
   }
   if (!aiReady) log.push('未配置 AI，使用关键词判定');
@@ -955,7 +957,9 @@ export async function tick(env, maxSteps = 1) {
   for (let n = 0; n < maxSteps; n++) {
     // 原子地认领下一步：同一次运行同时只允许一个步骤在执行（定时任务和后台按钮可能同时触发）
     const t = Date.now();
-    await env.DB.prepare("UPDATE jobs SET status = 'pending' WHERE run_id = ? AND status = 'running' AND claimed_at < ?").bind(run.id, t - 5 * 60000).run();
+    // 卡住的步骤（多半是超出 CPU 被强制结束）：重试一次，再卡就跳过，免得整轮抓取一直卡在这一步
+    const stuck = await env.DB.prepare("UPDATE jobs SET status = CASE WHEN tries >= 1 THEN 'done' ELSE 'pending' END, tries = tries + 1 WHERE run_id = ? AND status = 'running' AND claimed_at < ? RETURNING kind, status, payload").bind(run.id, t - 4 * 60000).all();
+    for (const j of stuck.results || []) if (j.status === 'done') { let nm = ''; try { nm = JSON.parse(j.payload || '{}').src?.name || ''; } catch {} log.push(`✗ ${STEP_LABEL[j.kind] || j.kind}${nm ? '：' + nm : ''} 两次没跑完（可能超出 CPU 限制），已跳过`); }
     const job = await env.DB.prepare(
       `UPDATE jobs SET status = 'running', claimed_at = ?1
        WHERE id = (SELECT id FROM jobs WHERE run_id = ?2 AND status = 'pending' ORDER BY seq LIMIT 1)
