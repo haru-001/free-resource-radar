@@ -1,11 +1,13 @@
-import { ensureSchema, getSettings, getBasicSettings, saveSettings, settingsForAdmin, storageMode, getAdminHash, setAdminHash, sha256, dayOf, getSitePassHash, setSitePass, getMeta, setMeta, getCronKey } from './db.js';
+import { ensureSchema, getSettings, getBasicSettings, saveSettings, settingsForAdmin, storageMode, getAdminHash, setAdminHash, sha256, dayOf, getSitePassHash, setSitePass, getMeta, setMeta, getCronKey, DEFAULT_SETTINGS, SECRET_KEYS } from './db.js';
 import { listModels, chat } from './ai.js';
 import { planRun, tick } from './crawler.js';
-import { sendDigest, previewDigest } from './mailer.js';
+import { sendDigest, previewDigest, sendWeekly } from './mailer.js';
+import { PUSH_CHANNELS } from './push.js';
+import { weeklyPicks, perksOf, checkinOf } from './extras.js';
 import { BACKENDS, BACKEND_MAP, runBackend, searchForDiscovery } from './search.js';
 import { checkSources, probeInputs, discoverSources } from './sources-sync.js';
 import { foldItems } from './fold.js';
-import { CATEGORIES, CAT_MAP, enabledCats } from './categories.js';
+import { CATEGORIES, CAT_MAP, GROUPS, enabledCats } from './categories.js';
 import adminHtml from './admin.html';
 import publicHtml from './public.html';
 
@@ -57,33 +59,104 @@ function cached(req, body, type, extra = {}) {
 }
 const basic = (env) => memo('basic', 15000, () => getBasicSettings(env));
 
-// 资源页一次拿全：统计 + 保留期内全部已通过条目（前端本地筛选，点分类不再请求）
-async function publicData(env) {
+// 资源页数据：默认只给近 fresh_days 天的（首屏更小、更快）；「较早发布」展开时再用 ?old=1 取
+const ITEM_COLS = 'id, title, url, source, published_at, fetched_at, day, category, name, summary, signup, score, obtain, target, sources, extra, expires_at, up, down, dead';
+const shapeItems = (rows) => foldItems(rows || []).map((it) => {
+  if (it.extra) { try { it.extra = JSON.parse(it.extra); } catch { delete it.extra; } } else delete it.extra;
+  if (it.published_at) delete it.fetched_at;
+  if (it.summary && it.summary.length > 200) it.summary = it.summary.slice(0, 200) + '…';
+  for (const k of ['up', 'down', 'dead', 'expires_at', 'signup', 'score', 'obtain', 'name', 'summary']) if (it[k] == null || it[k] === 0) delete it[k];
+  return it;
+});
+async function publicData(env, old = false) {
   const st = await basic(env);
   const ttl = Math.max(0, Number(st.public_cache_seconds) || 0) * 1000;
-  return memo('data', ttl, async () => {
-    const cutoff = Date.now() - (Number(st.max_age_days) || 180) * 86400000;
-    const [items, last] = await Promise.all([
-      env.DB.prepare("SELECT id, title, url, source, published_at, day, category, name, summary, signup, score, obtain, target, sources FROM items WHERE status = 'approved' AND (published_at IS NULL OR published_at >= ?) ORDER BY day DESC, score DESC, published_at DESC LIMIT 1500").bind(cutoff).all(),
+  return memo(old ? 'data-old' : 'data', ttl, async () => {
+    const now = Date.now();
+    const cutoff = now - (Number(st.max_age_days) || 180) * 86400000;
+    const freshDays = Math.max(1, Number(st.fresh_days) || 15);
+    const fresh = now - freshDays * 86400000;
+    // 截止时间已过一天以上的不再展示
+    const live = `status = 'approved' AND (expires_at IS NULL OR expires_at > ${now - 86400000})`;
+    if (old) {
+      const { results } = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND published_at >= ? AND published_at < ? ORDER BY published_at DESC LIMIT 1500`).bind(cutoff, fresh).all();
+      return JSON.stringify({ items: shapeItems(results) });
+    }
+    const [items, last, oldN] = await Promise.all([
+      // 按发布时间倒序（没有发布时间的按收录时间）
+      env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ORDER BY published_at IS NULL, published_at DESC, fetched_at DESC LIMIT 1200`).bind(fresh).all(),
       env.DB.prepare("SELECT MAX(finished_at) AS t FROM runs WHERE trigger != 'mail'").first(),
+      env.DB.prepare(`SELECT COUNT(*) AS n FROM items WHERE ${live} AND published_at >= ? AND published_at < ?`).bind(cutoff, fresh).first(),
     ]);
+    const list = shapeItems(items.results);
     const data = {
-      today: dayOf(Date.now()),
+      today: dayOf(now),
       retention_days: Number(st.retention_days) || 15,
       run_hour: Number(st.run_hour) || 0,
       every: Math.min(24, Math.max(1, Number(st.crawl_every_hours) || 24)),
       last_run: last?.t || null,
-      categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color })),
-      items: foldItems(items.results || []),
+      fresh_days: freshDays,
+      old_count: oldN?.n || 0,
+      groups: GROUPS,
+      categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color, group: CAT_MAP[k].group, info: !!CAT_MAP[k].info })),
+      weekly: weeklyPicks(list, now).map((x) => x.id),
+      perks: perksOf(st),
+      checkin: checkinOf(st),
+      vote: true,
+      items: list,
     };
     return JSON.stringify(data);
   });
 }
 
+// ---------- 频率限制：公开接口按 IP 每分钟限次（单个实例内存计数，够挡住脚本乱刷）；登录失败计数存 D1 ----------
+const RL = new Map();
+function rateOk(key, limit, windowMs = 60000) {
+  if (!limit) return true;
+  const now = Date.now();
+  let e = RL.get(key);
+  if (!e || e.reset < now) { if (RL.size > 5000) RL.clear(); e = { n: 0, reset: now + windowMs }; RL.set(key, e); }
+  return ++e.n <= limit;
+}
+const ipOf = (req) => req.headers.get('cf-connecting-ip') || req.headers.get('x-real-ip') || 'local';
+const FAIL_WINDOW = 15 * 60000;
+async function failsOf(env, ip) {
+  const r = await env.DB.prepare('SELECT n, reset FROM rate WHERE k = ?').bind('login:' + ip).first();
+  return r && r.reset > Date.now() ? r.n : 0;
+}
+function addFail(env, ip) {
+  const now = Date.now();
+  return env.DB.prepare('INSERT INTO rate (k, n, reset) VALUES (?, 1, ?) ON CONFLICT(k) DO UPDATE SET n = CASE WHEN rate.reset < ? THEN 1 ELSE rate.n + 1 END, reset = CASE WHEN rate.reset < ? THEN excluded.reset ELSE rate.reset END')
+    .bind('login:' + ip, now + FAIL_WINDOW, now, now).run().catch(() => {});
+}
+const tooMany = () => json({ error: '密码错误次数太多，请 15 分钟后再试' }, 429);
+
+// ---------- 值 / 不值 投票 ----------
+async function vote(req, env) {
+  const { id, v } = await req.json().catch(() => ({}));
+  const val = Number(v);
+  if (!/^[0-9a-f]{40}$/.test(String(id || '')) || ![1, -1, 0].includes(val)) return json({ error: '参数不对' }, 400);
+  const voter = (await sha256('vote:' + ipOf(req))).slice(0, 24);
+  const prev = await env.DB.prepare('SELECT v FROM votes WHERE id = ? AND voter = ?').bind(id, voter).first();
+  const pv = prev?.v || 0;
+  if (pv === val) { const r = await env.DB.prepare('SELECT up, down FROM items WHERE id = ?').bind(id).first(); return json({ ok: true, up: r?.up || 0, down: r?.down || 0, mine: val }); }
+  const du = (val === 1) - (pv === 1), dd = (val === -1) - (pv === -1);
+  await env.DB.batch([
+    val ? env.DB.prepare('INSERT INTO votes (id, voter, v, at) VALUES (?, ?, ?, ?) ON CONFLICT(id, voter) DO UPDATE SET v = excluded.v, at = excluded.at').bind(id, voter, val, Date.now())
+      : env.DB.prepare('DELETE FROM votes WHERE id = ? AND voter = ?').bind(id, voter),
+    env.DB.prepare('UPDATE items SET up = MAX(0, up + ?), down = MAX(0, down + ?) WHERE id = ?').bind(du, dd, id),
+  ]);
+  const r = await env.DB.prepare('SELECT up, down FROM items WHERE id = ?').bind(id).first();
+  const st = await basic(env);
+  const hide = Number(st.vote_hide) || 0;
+  if (r && hide > 0 && r.down - r.up >= hide) await env.DB.prepare("UPDATE items SET status = 'rejected', judged_by = 'votes', judged_at = ? WHERE id = ?").bind(Date.now(), id).run();
+  return json({ ok: true, up: r?.up || 0, down: r?.down || 0, mine: val });
+}
+
 async function publicItems(env, url) {
   const s = await basic(env);
   const cutoff = Date.now() - (Number(s.max_age_days) || 180) * 86400000;
-  const where = ["status = 'approved'", '(published_at IS NULL OR published_at >= ?)'];
+  const where = ["status = 'approved'", 'dead = 0', '(published_at IS NULL OR published_at >= ?)'];
   const args = [cutoff];
   const ob = url.searchParams.get('obtain');
   if (ob) { where.push('obtain = ?'); args.push(ob); }
@@ -169,7 +242,41 @@ async function handleAdmin(req, env, url) {
     if (!kw) return json({ error: '请输入关键词' }, 400);
     return json(await discoverSources(current, kw, (qs) => searchForDiscovery(s, qs)));
   }
-  if (p === '/mail/test' && m === 'POST') return json(await sendDigest(env, { force: true, test: true, channel: body.channel === 'telegram' ? 'telegram' : 'mail' }));
+  if (p === '/mail/test' && m === 'POST') {
+    const ch = body.channel === 'telegram' || /^push:\w+$/.test(body.channel || '') ? body.channel : 'mail';
+    return json(await sendDigest(env, { force: true, test: true, channel: ch }));
+  }
+  if (p === '/weekly/send' && m === 'POST') return json(await sendWeekly(env, { test: !!body.test }));
+  // 来源健康：近 7 天每个源抓到多少、新增多少、失败几次
+  if (p === '/sources/health' && m === 'GET') {
+    const since = dayOf(Date.now() - 6 * 86400000);
+    const { results } = await env.DB.prepare('SELECT name, SUM(fetched) AS fetched, SUM(added) AS added, SUM(errors) AS errors, MAX(last_at) AS last_at, COUNT(*) AS days FROM src_health WHERE day >= ? GROUP BY name').bind(since).all();
+    const { results: errs } = await env.DB.prepare('SELECT name, last_err FROM src_health WHERE day >= ? AND last_err IS NOT NULL ORDER BY day DESC').bind(since).all();
+    const out = {};
+    for (const r of results || []) out[r.name] = { fetched: r.fetched || 0, added: r.added || 0, errors: r.errors || 0, last_at: r.last_at || null };
+    for (const r of errs || []) if (out[r.name] && !out[r.name].last_err) out[r.name].last_err = r.last_err;
+    return json(out);
+  }
+  // 备份与迁移：导出 / 导入全部设置（含数据源）。密钥默认不导出
+  if (p === '/export' && m === 'GET') {
+    const s = await getSettings(env);
+    const withSecrets = url.searchParams.get('secrets') === '1';
+    const out = {};
+    for (const k of Object.keys(DEFAULT_SETTINGS)) {
+      if (k === 'mail_last_sent_at') continue;
+      if (SECRET_KEYS.includes(k) && !withSecrets) continue;
+      if (s[k] !== DEFAULT_SETTINGS[k] || k === 'sources') out[k] = s[k];
+    }
+    return new Response(JSON.stringify({ app: 'free-resource-radar', version: 1, exported_at: new Date().toISOString(), secrets: withSecrets, settings: out }, null, 2), { headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="free-resource-radar-${dayOf(Date.now())}.json"` } });
+  }
+  if (p === '/import' && m === 'POST') {
+    const src = body && body.settings && typeof body.settings === 'object' ? body.settings : null;
+    if (!src || body.app !== 'free-resource-radar') return json({ error: '不是本项目导出的备份文件' }, 400);
+    const patch = {};
+    for (const [k, v] of Object.entries(src)) if (k in DEFAULT_SETTINGS && k !== 'mail_last_sent_at') patch[k] = String(v ?? '');
+    try { await saveSettings(env, patch); } catch (e) { return json({ error: '导入失败：' + e.message }, 400); }
+    return json({ ok: true, count: Object.keys(patch).length, settings: settingsForAdmin(await getSettings(env)) });
+  }
   if (p === '/mail/send' && m === 'POST') return json(await sendDigest(env, { force: true }));
   if (p === '/mail/preview' && m === 'GET') return html(await previewDigest(env));
   if (p === '/runs' && m === 'GET') {
@@ -244,18 +351,27 @@ export default {
     if (missing.length) return setupPage(missing, url.pathname.startsWith('/api/'));
     try {
       await ensureSchema(env);
+      const ip = ipOf(req);
       if (url.pathname === '/api/site-login' && req.method === 'POST') {
         const h = await getSitePassHash(env);
         const { password } = await req.json().catch(() => ({}));
         if (!h) return json({ ok: true });
-        if (!password || !safeEqual(await sha256('frr-site:' + password), h)) return json({ error: '密码错误' }, 401);
+        if ((await failsOf(env, ip)) >= (Number((await basic(env)).login_max_fails) || 10)) return tooMany();
+        if (!password || !safeEqual(await sha256('frr-site:' + password), h)) { await addFail(env, ip); return json({ error: '密码错误' }, 401); }
         const token = await sha256('cookie:' + h);
         return new Response('{"ok":true}', { headers: { 'content-type': 'application/json', 'set-cookie': `${SITE_COOKIE}=${token}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax` } });
       }
-      if (['/', '/index.html', '/api/items', '/api/stats', '/feed.xml'].includes(url.pathname)) {
+      // 公开接口限频（资源页本身走缓存，主要防脚本刷接口和投票）
+      if (url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/admin/') && url.pathname !== '/api/cron') {
+        const lim = Number((await basic(env)).api_rate_per_min);
+        if (!rateOk('api:' + ip, Number.isFinite(lim) ? lim : 120) || (url.pathname === '/api/vote' && !rateOk('vote:' + ip, 30))) return json({ error: '请求太频繁，稍后再试' }, 429);
+      }
+      if (['/', '/index.html', '/api/items', '/api/stats', '/feed.xml', '/api/data', '/api/vote'].includes(url.pathname)) {
         const g = await siteGate(req, env, url);
         if (!g.ok) return url.pathname.startsWith('/api/') || url.pathname === '/feed.xml' ? json({ error: '需要访问密码' }, 401) : html(lockPage(), 401);
       }
+      if (url.pathname === '/api/vote' && req.method === 'POST') { const r = await vote(req, env); clearMemo(); return r; }
+      if (url.pathname === '/api/data' && url.searchParams.get('old') === '1') return cached(req, await publicData(env, true), 'application/json; charset=utf-8');
       if (url.pathname === '/' || url.pathname === '/index.html' || url.pathname === '/api/data') {
         maybeVisitTick(env, ctx);
         const data = await publicData(env);
@@ -270,7 +386,8 @@ export default {
         return json(await triggerTick(env, 'url'));
       }
       if (url.pathname === '/admin' || url.pathname === '/admin/') return html(adminHtml
-        .replace('/*__CATS__*/[]', JSON.stringify(CATEGORIES.map(({ key, label, color, kw }) => ({ key, label, color, kw: kw.slice(0, 6) }))))
+        .replace('/*__CATS__*/[]', JSON.stringify(CATEGORIES.map(({ key, label, color, kw, group, info }) => ({ key, label, color, group, info: !!info, kw: kw.slice(0, 6) })))).replace('/*__GROUPS__*/[]', JSON.stringify(GROUPS))
+        .replace('/*__PUSH__*/[]', JSON.stringify(PUSH_CHANNELS.map(({ id, name, key, secret, hint }) => ({ id, name, key, secret, hint }))))
         .replace('/*__BACKENDS__*/[]', JSON.stringify(BACKENDS.map(({ id, name, keyless, free, signup, note, zh }) => ({ id, name, keyless, free, signup, note, zh })))));
       if (url.pathname === '/api/items') return json(await publicItems(env, url));
       if (url.pathname === '/api/stats') {
@@ -307,7 +424,9 @@ export default {
           await setAdminHash(env, String(password));
           return json({ ok: true });
         }
-        if (!(await isAdmin(req, env))) return json({ error: '未授权' }, 401);
+        const maxFails = Number((await basic(env)).login_max_fails) || 10;
+        if ((await failsOf(env, ip)) >= maxFails) return tooMany();
+        if (!(await isAdmin(req, env))) { if (req.headers.get('authorization')) await addFail(env, ip); return json({ error: '未授权' }, 401); }
         if (req.method !== 'GET') clearMemo(); // 后台有改动，公开数据缓存立即失效（本实例）
         if (url.pathname === '/api/admin/password' && req.method === 'POST') {
           if (envToken(env)) return json({ error: '当前使用环境变量 ADMIN_TOKEN，请在 Cloudflare 控制台修改' }, 400);
@@ -362,6 +481,12 @@ async function autoTick(env, trigger) {
         const r = await sendDigest(env, { label });
         line = r.skipped ? `– ${label}跳过：${r.skipped}` : `✓ ${label}已推送 ${r.sent} 条（${r.providers.join(' + ')}）→ ${r.to.join(', ')}${r.errors.length ? '\n✗ ' + r.errors.join('\n✗ ') : ''}`;
       } catch (e) { line = `✗ ${label}推送失败：${e.message}`; }
+      // 每周精选：到了设定的星期几，随这一天的第一次推送一起发
+      const bjNow = new Date(now + BJ);
+      if (s.weekly_enabled === 'true' && bjNow.getUTCDay() === (Number(s.weekly_weekday) || 0) % 7 && (await getMeta(env, 'weekly_day')) !== dayOf(now)) {
+        await setMeta(env, 'weekly_day', dayOf(now));
+        try { const w = await sendWeekly(env); line += w.skipped ? `\n– 本周精选跳过：${w.skipped}` : `\n✓ 本周精选已推送 ${w.sent} 条（${w.providers.join(' + ')}）`; } catch (e) { line += `\n✗ 本周精选推送失败：${e.message}`; }
+      }
       if (!line.includes('没有可用的推送渠道')) await env.DB.prepare("INSERT INTO runs (trigger, started_at, finished_at, stats, log) VALUES ('mail', ?, ?, '{}', ?)").bind(t0, Date.now(), line).run();
       return { idle: true, action: 'mail', message: line };
     }

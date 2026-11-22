@@ -1,4 +1,4 @@
-// 免费资源雷达 · 单文件版（用于 Cloudflare 控制台直接粘贴部署）。源码见 src/，由 npm run build:single 生成。
+// 免费资源雷达 · 单文件版（v1.8.0）。在 Cloudflare 控制台新建 Worker 后整份粘贴，绑定 D1（变量名 DB），可选绑定 KV（SECRETS）。
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __esm = (fn, res) => function __init() {
@@ -79,8 +79,8 @@ var init_smtp = __esm({
         for (; ; ) {
           const nl = this.buf.indexOf("\n", pos);
           if (nl < 0) return 0;
-          const line = this.buf.slice(pos, nl).replace(/\r$/, "");
-          if (/^\d{3}( |$)/.test(line)) return nl + 1;
+          const line2 = this.buf.slice(pos, nl).replace(/\r$/, "");
+          if (/^\d{3}( |$)/.test(line2)) return nl + 1;
           pos = nl + 1;
         }
       }
@@ -105,8 +105,8 @@ var init_smtp = __esm({
           this.buf += this.dec.decode(r.value, { stream: true });
         }
       }
-      async cmd(line, expect, step) {
-        await this.write(line + "\r\n");
+      async cmd(line2, expect, step) {
+        await this.write(line2 + "\r\n");
         return this.reply(expect, step);
       }
       release() {
@@ -122,6 +122,353 @@ var init_smtp = __esm({
     };
   }
 });
+
+// src/categories.js
+var CATEGORIES = [
+  { key: "domain", label: "\u514D\u8D39\u57DF\u540D", color: "#4f46e5", kw: ["\u57DF\u540D", "\u4E8C\u7EA7\u57DF\u540D", "\u5B50\u57DF\u540D", "domain", "subdomain", "dns", ".eu.org", ".us.kg"], q: ["\u514D\u8D39\u57DF\u540D \u6CE8\u518C", "\u514D\u8D39\u4E8C\u7EA7\u57DF\u540D"] },
+  { key: "hosting", label: "\u4E3B\u673A / VPS", color: "#0891b2", kw: ["\u4E3B\u673A", "\u865A\u62DF\u4E3B\u673A", "\u7A7A\u95F4", "vps", "\u670D\u52A1\u5668", "\u5EFA\u7AD9", "hosting", "webhost", "web host", "cpanel", "server", "\u5C0F\u9E21"], q: ["\u514D\u8D39\u865A\u62DF\u4E3B\u673A", "\u514D\u8D39 VPS \u670D\u52A1\u5668"] },
+  { key: "cloud", label: "\u4E91\u670D\u52A1 / CDN", color: "#0284c7", kw: ["\u4E91\u670D\u52A1", "\u4E91\u51FD\u6570", "serverless", "cdn", "\u5BF9\u8C61\u5B58\u50A8", "s3", "\u6570\u636E\u5E93", "database", "cloud", "pages", "workers", "\u6258\u7BA1", "deploy", "paas"], q: ["\u514D\u8D39\u4E91\u670D\u52A1 \u989D\u5EA6", "\u514D\u8D39 CDN \u5BF9\u8C61\u5B58\u50A8"] },
+  { key: "ai", label: "AI \u514D\u8D39\u989D\u5EA6", group: "aifree", color: "#7c3aed", kw: ["ai", "gpt", "claude", "gemini", "llm", "\u5927\u6A21\u578B", "api key", "token", "\u989D\u5EA6", "\u6A21\u578B", "openrouter", "deepseek", "copilot", "cursor", "\u514D\u8D39\u6A21\u578B", "\u514D\u8D39\u5C42", "free tier"], q: ["\u514D\u8D39 AI API \u989D\u5EA6", "\u5927\u6A21\u578B \u514D\u8D39 token"] },
+  // AI 限时福利：限时免费开放、注册送额度、优惠码 / 免费月、公益站签到，时效强，单独成类
+  { key: "aideal", label: "AI \u9650\u65F6\u798F\u5229", group: "aifree", color: "#c026d3", need: /(^|[^a-z])(ai|api|gpt|llm|agent|token)([^a-z]|$)|claude|gemini|deepseek|qwen|kimi|glm|grok|openai|anthropic|cursor|copilot|大模型|模型|智能体|算力|生图|编程助手/i, kw: ["\u9650\u65F6\u514D\u8D39", "\u514D\u8D39\u5F00\u653E", "\u9001\u989D\u5EA6", "\u6CE8\u518C\u9001", "\u8D60\u91D1", "\u8D60\u9001", "\u514D\u8D39\u9886", "\u514D\u8D39\u4E00\u4E2A\u6708", "\u514D\u8D39\u8BD5\u7528", "\u4F18\u60E0\u7801", "\u5151\u6362\u7801", "\u516C\u76CA\u7AD9", "\u4E2D\u8F6C\u7AD9", "new api", "\u7B7E\u5230", "\u798F\u5229", "free credits", "free month"], q: ["AI \u9650\u65F6\u514D\u8D39 \u9001\u989D\u5EA6", "AI \u516C\u76CA\u7AD9 \u6CE8\u518C\u9001\u989D\u5EA6"] },
+  { key: "aitool", label: "AI \u5DE5\u5177", group: "ai", color: "#a21caf", kw: ["ai \u5DE5\u5177", "ai\u5DE5\u5177", "agent", "\u667A\u80FD\u4F53", "ai \u7ED8\u753B", "ai\u7ED8\u56FE", "\u751F\u56FE", "ai \u5199\u4F5C", "chatgpt \u955C\u50CF", "\u955C\u50CF\u7AD9", "mcp", "ai \u52A9\u624B", "ai\u52A9\u624B", "\u63D2\u4EF6"], q: ["\u514D\u8D39 AI \u5DE5\u5177 \u63A8\u8350"] },
+  { key: "software", label: "\u8F6F\u4EF6\u6388\u6743", color: "#db2777", kw: ["\u6FC0\u6D3B\u7801", "\u6388\u6743", "\u6CE8\u518C\u7801", "\u8BB8\u53EF\u8BC1", "license", "giveaway", "\u9650\u514D", "\u6B63\u7248", "pro \u7248", "\u4F1A\u5458\u7248", "lifetime"], q: ["\u6B63\u7248\u8F6F\u4EF6 \u9650\u514D", "\u8F6F\u4EF6 \u6FC0\u6D3B\u7801 \u514D\u8D39\u9886\u53D6"] },
+  { key: "dev", label: "\u5F00\u53D1\u5DE5\u5177", color: "#475569", kw: ["\u5F00\u53D1\u8005", "developer", "ide", "github", "api", "sdk", "ci", "\u76D1\u63A7", "\u90AE\u7BB1\u670D\u52A1", "smtp", "free tier", "free plan"], q: ["\u5F00\u53D1\u8005 \u514D\u8D39\u5957\u9910", "free tier for developers"] },
+  { key: "game", label: "\u6E38\u620F", color: "#16a34a", kw: ["\u6E38\u620F", "steam", "epic", "gog", "game", "\u559C\u52A0\u4E00", "dlc"], q: ["\u559C\u52A0\u4E00 \u514D\u8D39\u9886\u53D6"] },
+  { key: "media", label: "\u5F71\u97F3\u4F1A\u5458", color: "#e11d48", kw: ["\u4F1A\u5458", "\u89C6\u9891", "\u97F3\u4E50", "\u5F71\u89C6", "vip", "spotify", "youtube", "netflix", "\u7535\u5B50\u4E66", "kindle"], q: ["\u514D\u8D39\u4F1A\u5458 \u9886\u53D6"] },
+  { key: "design", label: "\u8BBE\u8BA1\u7D20\u6750", color: "#ea580c", kw: ["\u5B57\u4F53", "\u7D20\u6750", "\u56FE\u6807", "\u6A21\u677F", "font", "icon", "template", "figma", "psd"], q: ["\u514D\u8D39\u5546\u7528 \u5B57\u4F53 \u7D20\u6750"] },
+  { key: "edu", label: "\u5B66\u751F / \u6559\u80B2", color: "#ca8a04", kw: ["\u5B66\u751F", "\u6559\u80B2", "edu", "student", "\u5B66\u672F", "\u6821\u56ED"], q: ["\u5B66\u751F \u514D\u8D39 \u6743\u76CA"] },
+  { key: "course", label: "\u7F51\u8BFE\u6559\u7A0B", color: "#65a30d", kw: ["\u8BFE\u7A0B", "\u7F51\u8BFE", "\u6559\u7A0B", "course", "udemy", "coursera", "\u8BAD\u7EC3\u8425"], q: ["\u9650\u65F6\u514D\u8D39 \u8BFE\u7A0B"] },
+  { key: "pan", label: "\u7F51\u76D8\u8D44\u6E90", color: "#0d9488", kw: ["\u7F51\u76D8", "\u4E91\u76D8", "\u963F\u91CC\u4E91\u76D8", "\u767E\u5EA6\u7F51\u76D8", "\u5938\u514B", "\u5206\u4EAB\u94FE\u63A5", "\u8D44\u6E90\u5408\u96C6"], q: [] },
+  { key: "goods", label: "\u5B9E\u7269\u798F\u5229", color: "#dc2626", kw: ["\u5305\u90AE", "\u5B9E\u7269", "\u5468\u8FB9", "0\u5143\u8D2D", "\u514D\u8D39\u9001", "\u8D60\u9001", "\u8D34\u7EB8", "swag"], q: [] },
+  { key: "invite", label: "\u9080\u8BF7\u7801", color: "#9333ea", kw: ["\u9080\u8BF7\u7801", "\u9080\u8BF7\u94FE\u63A5", "invite", "\u5185\u6D4B\u8D44\u683C", "beta"], q: [] },
+  // 资讯与梯子：不是“白嫖资源”，不要求出现“免费”字样，一般由专源直接收录
+  { key: "ainews", label: "AI \u8D44\u8BAF", group: "ai", info: true, color: "#6d28d9", kw: ["\u53D1\u5E03", "\u4E0A\u7EBF", "\u5F00\u6E90", "\u5927\u6A21\u578B", "\u6A21\u578B", "openai", "anthropic", "gemini", "deepseek", "\u667A\u80FD\u4F53"], q: [] },
+  { key: "news", label: "\u79D1\u6280\u8D44\u8BAF", group: "news", info: true, color: "#2563eb", kw: ["\u53D1\u5E03", "\u5BA3\u5E03", "\u6D88\u606F", "\u62A5\u9053", "\u8D22\u62A5", "\u65B0\u54C1", "\u66F4\u65B0"], q: [] },
+  { key: "proxy", label: "\u68AF\u5B50\u8BA2\u9605", group: "proxy", info: true, color: "#0f766e", kw: ["\u8282\u70B9", "\u8BA2\u9605", "v2ray", "clash", "vless", "trojan", "shadowsocks", "\u673A\u573A", "\u79D1\u5B66\u4E0A\u7F51", "\u68AF\u5B50"], q: [] },
+  { key: "other", label: "\u5176\u5B83", color: "#9ca3af", kw: [], q: [] }
+];
+for (const c of CATEGORIES) c.group ||= "fuli";
+var CAT_MAP = Object.fromEntries(CATEGORIES.map((c) => [c.key, c]));
+var GROUPS = [
+  { key: "fuli", label: "\u798F\u5229\u7F8A\u6BDB", icon: "\u7F8A" },
+  { key: "aifree", label: "AI \u798F\u5229", icon: "\u60E0" },
+  { key: "ai", label: "AI \u5DE5\u5177\u4E0E\u8D44\u8BAF", icon: "AI" },
+  { key: "news", label: "\u65B0\u95FB\u8D44\u8BAF", icon: "\u8BAF" },
+  { key: "proxy", label: "\u514D\u8D39\u68AF\u5B50", icon: "\u68AF" }
+];
+var isInfoCat = (k) => !!CAT_MAP[k]?.info;
+var DEFAULT_ENABLED = ["domain", "hosting", "cloud", "ai", "aideal", "aitool", "software", "dev", "game", "edu", "ainews", "news", "proxy"];
+function enabledCats(s) {
+  const list = String(s.enabled_categories || "").split(/[,\s]+/).filter((k) => CAT_MAP[k]);
+  return list.length ? list : DEFAULT_ENABLED;
+}
+function mailCats(s) {
+  const list = String(s.mail_categories || "").split(/[,\s]+/).filter((k) => CAT_MAP[k]);
+  return list.length ? list : enabledCats(s);
+}
+var reCache = /* @__PURE__ */ new Map();
+function kwHit(text, w) {
+  if (/^[a-z0-9.\- ]{1,4}$/.test(w)) {
+    let re = reCache.get(w);
+    if (!re) {
+      re = new RegExp(`(^|[^a-z0-9])${w.replace(/[.\-]/g, "\\$&")}($|[^a-z0-9])`);
+      reCache.set(w, re);
+    }
+    return re.test(text);
+  }
+  return text.includes(w);
+}
+function compileWords(words) {
+  const esc2 = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = [...new Set(words.filter(Boolean))].map((w) => /^[a-z0-9.\- ]{1,4}$/.test(w) ? `(?:^|[^a-z0-9])${esc2(w)}(?:$|[^a-z0-9])` : esc2(w));
+  return parts.length ? new RegExp(parts.join("|")) : null;
+}
+function guessCategory(text, enabled) {
+  const t = String(text || "").toLowerCase();
+  let best = null, bestN = 0;
+  for (const k of enabled) {
+    if (CAT_MAP[k]?.need && !CAT_MAP[k].need.test(t)) continue;
+    const n = (CAT_MAP[k]?.kw || []).reduce((a, w) => a + (kwHit(t, w) ? 1 : 0), 0);
+    if (n > bestN) {
+      best = k;
+      bestN = n;
+    }
+  }
+  return best;
+}
+function topicWordsFor(enabled) {
+  return [...new Set(enabled.flatMap((k) => CAT_MAP[k]?.kw || []))];
+}
+function searchQueriesFor(enabled) {
+  return enabled.flatMap((k) => CAT_MAP[k]?.q || []);
+}
+
+// src/push.js
+var CAT = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
+var OBTAIN_ZH = { free: "\u76F4\u63A5\u767D\u5AD6", conditional: "\u6709\u6761\u4EF6", lottery: "\u62BD\u5956", trial: "\u8BD5\u7528", promo: "\u63A8\u5E7F", paid: "\u9700\u4ED8\u8D39" };
+var PUSH_CHANNELS = [
+  { id: "wecom", name: "\u4F01\u4E1A\u5FAE\u4FE1\u673A\u5668\u4EBA", key: "wecom_webhook", hint: "\u7FA4\u673A\u5668\u4EBA\u7684 Webhook \u5730\u5740\uFF08https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=\u2026\uFF09" },
+  { id: "dingtalk", name: "\u9489\u9489\u673A\u5668\u4EBA", key: "dingtalk_webhook", secret: "dingtalk_secret", hint: "\u81EA\u5B9A\u4E49\u673A\u5668\u4EBA\u7684 Webhook \u5730\u5740\uFF1B\u5B89\u5168\u8BBE\u7F6E\u9009\u300C\u52A0\u7B7E\u300D\u65F6\u628A\u5BC6\u94A5\u586B\u5230\u4E0B\u9762\uFF0C\u9009\u300C\u81EA\u5B9A\u4E49\u5173\u952E\u8BCD\u300D\u65F6\u5173\u952E\u8BCD\u586B\uFF1A\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE" },
+  { id: "feishu", name: "\u98DE\u4E66\u673A\u5668\u4EBA", key: "feishu_webhook", secret: "feishu_secret", hint: "\u81EA\u5B9A\u4E49\u673A\u5668\u4EBA\u7684 Webhook \u5730\u5740\uFF1B\u5F00\u4E86\u7B7E\u540D\u6821\u9A8C\u5C31\u628A\u5BC6\u94A5\u586B\u5230\u4E0B\u9762" },
+  { id: "serverchan", name: "Server \u9171\uFF08\u5FAE\u4FE1\uFF09", key: "serverchan_key", hint: "SendKey\uFF08sct.ftqq.com \u6216 Server \u9171\xB3 \u7684 sctp \u5F00\u5934\u7684 Key\uFF09" },
+  { id: "pushplus", name: "PushPlus\uFF08\u5FAE\u4FE1\uFF09", key: "pushplus_token", hint: "pushplus.plus \u7684 token" },
+  { id: "bark", name: "Bark\uFF08iPhone\uFF09", key: "bark_url", hint: "Bark App \u91CC\u590D\u5236\u7684\u5730\u5740\uFF0C\u5982 https://api.day.app/\u4F60\u7684Key" },
+  { id: "webhook", name: "\u901A\u7528 Webhook", key: "webhook_url", hint: "POST JSON\uFF1A{title, text, items:[{title,url,summary,category}]}\uFF0C\u53EF\u63A5 n8n / \u81EA\u5EFA\u670D\u52A1" }
+];
+var PUSH_KEYS = PUSH_CHANNELS.flatMap((c) => [c.key, c.secret].filter(Boolean));
+var pushReady = (s, c) => !!String(s[c.key] || "").trim() && s[`${c.id}_enabled`] !== "false";
+var line = (it) => {
+  const tags = [CAT[it.category] || "", it.obtain && OBTAIN_ZH[it.obtain] && it.obtain !== "free" ? OBTAIN_ZH[it.obtain] : "", it.expires_at ? "\u622A\u6B62 " + new Date(it.expires_at + 8 * 36e5).toISOString().slice(5, 10) : ""].filter(Boolean).join(" \xB7 ");
+  return { name: String(it.name || it.title).slice(0, 80), url: it.url, summary: String(it.summary || "").slice(0, 90), tags };
+};
+function markdown(title, items, max, siteUrl) {
+  let out = `### ${title}
+`;
+  let n = 0;
+  for (const it of items) {
+    const l = line(it);
+    const block = `
+- [${l.name.replace(/[[\]]/g, "")}](${l.url})${l.summary ? `
+  ${l.summary}` : ""}${l.tags ? `
+  <font color="comment">${l.tags}</font>` : ""}`;
+    if (new TextEncoder().encode(out + block).length > max - 200) break;
+    out += block;
+    n++;
+  }
+  if (n < items.length) out += `
+
+\u2026\u2026\u8FD8\u6709 ${items.length - n} \u6761${siteUrl ? `\uFF0C[\u67E5\u770B\u5168\u90E8](${siteUrl})` : ""}`;
+  else if (siteUrl) out += `
+
+[\u67E5\u770B\u5168\u90E8](${siteUrl})`;
+  if (!items.length) out += "\n\u4ECA\u5929\u6CA1\u6709\u65B0\u7684\u8D44\u6E90\u3002";
+  return out;
+}
+var plain = (title, items, siteUrl) => [title, "", ...items.slice(0, 30).map((it, i) => {
+  const l = line(it);
+  return `${i + 1}. ${l.name}
+${l.url}${l.summary ? "\n" + l.summary : ""}`;
+}), items.length > 30 ? `\u2026\u2026\u8FD8\u6709 ${items.length - 30} \u6761` : "", siteUrl ? `\u67E5\u770B\u5168\u90E8\uFF1A${siteUrl}` : ""].filter((x) => x !== "").join("\n");
+async function hmacB64(key, msg) {
+  const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(msg)));
+  return btoa(String.fromCharCode(...sig));
+}
+async function post(url, body, type = "json") {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": type === "json" ? "application/json" : "application/x-www-form-urlencoded" },
+    body: type === "json" ? JSON.stringify(body) : new URLSearchParams(body).toString(),
+    signal: AbortSignal.timeout(15e3)
+  });
+  const t = await r.text();
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${t.slice(0, 160)}`);
+  let j = {};
+  try {
+    j = JSON.parse(t);
+  } catch {
+  }
+  const code = j.errcode ?? j.code ?? j.StatusCode ?? 0;
+  if (code !== 0 && code !== 200 && code !== "0") throw new Error(j.errmsg || j.msg || j.message || `\u8FD4\u56DE\u7801 ${code}`);
+  return j;
+}
+async function pushTo(id, s, title, items) {
+  const c = PUSH_CHANNELS.find((x) => x.id === id);
+  if (!c) throw new Error("\u672A\u77E5\u6E20\u9053");
+  const v = String(s[c.key] || "").trim();
+  if (!v) throw new Error(`\u672A\u586B\u5199${c.name}`);
+  const site = (s.mail_site_url || "").replace(/\/+$/, "");
+  switch (id) {
+    case "wecom":
+      return post(v, { msgtype: "markdown", markdown: { content: markdown(title, items, 4e3, site) } });
+    case "dingtalk": {
+      let url = v;
+      if (s.dingtalk_secret) {
+        const ts = Date.now();
+        url += `${url.includes("?") ? "&" : "?"}timestamp=${ts}&sign=${encodeURIComponent(await hmacB64(s.dingtalk_secret, `${ts}
+${s.dingtalk_secret}`))}`;
+      }
+      return post(url, { msgtype: "markdown", markdown: { title: `\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 ${title}`.slice(0, 60), text: markdown(`\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 ${title}`, items, 18e3, site) } });
+    }
+    case "feishu": {
+      const body = { msg_type: "text", content: { text: `\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 ${plain(title, items, site)}`.slice(0, 18e3) } };
+      if (s.feishu_secret) {
+        const ts = Math.floor(Date.now() / 1e3);
+        body.timestamp = String(ts);
+        body.sign = await hmacB64(`${ts}
+${s.feishu_secret}`, "");
+      }
+      return post(v, body);
+    }
+    case "serverchan": {
+      const m = /^sctp(\d+)t/i.exec(v);
+      const url = m ? `https://${m[1]}.push.ft07.com/send/${v}.send` : `https://sctapi.ftqq.com/${v}.send`;
+      return post(url, { title: title.slice(0, 32), desp: markdown(title, items, 3e4, site) }, "form");
+    }
+    case "pushplus":
+      return post("https://www.pushplus.plus/send", { token: v, title: title.slice(0, 100), content: markdown(title, items, 18e3, site), template: "markdown" });
+    case "bark": {
+      const first = items[0];
+      return post(v.replace(/\/+$/, ""), { title: title.slice(0, 60), body: items.length ? items.slice(0, 5).map((it) => "\xB7 " + (it.name || it.title)).join("\n") + (items.length > 5 ? `
+\u2026\u5171 ${items.length} \u6761` : "") : "\u4ECA\u5929\u6CA1\u6709\u65B0\u7684\u8D44\u6E90", group: "\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE", url: items.length === 1 ? first.url : site || void 0 });
+    }
+    case "webhook":
+      return post(v, { title, text: plain(title, items, site), items: items.map((it) => ({ title: it.name || it.title, url: it.url, summary: it.summary || "", category: it.category, obtain: it.obtain || null, expires_at: it.expires_at || null })) });
+  }
+}
+async function pushAll(s, title, items, only) {
+  const ok = [], errors = [];
+  for (const c of PUSH_CHANNELS) {
+    if (only ? c.id !== only : !pushReady(s, c)) continue;
+    try {
+      await pushTo(c.id, s, title, items);
+      ok.push(c.name);
+    } catch (e) {
+      errors.push(`${c.name}\uFF1A${e.message}`);
+    }
+  }
+  return { ok, errors };
+}
+
+// src/extras.js
+var DAY = 864e5;
+function rankOf(it) {
+  const srcN = Array.isArray(it.srcs) ? it.srcs.length : 0;
+  return (it.score ?? 70) + (it.up || 0) * 6 - (it.down || 0) * 8 + srcN * 4 + (it.obtain === "free" ? 5 : 0) + (it.expires_at ? 3 : 0) - (it.dead ? 60 : 0);
+}
+function weeklyPicks(items, now = Date.now(), n = 10) {
+  const list = items.filter((it) => !isInfoCat(it.category) && !it.dead && !(it.extra && it.extra.subs) && now - (it.published_at || it.fetched_at || 0) <= 7 * DAY && !(it.expires_at && it.expires_at < now));
+  list.sort((a, b) => rankOf(b) - rankOf(a));
+  const per = {}, out = [], seen = /* @__PURE__ */ new Set();
+  for (const it of list) {
+    const k = String(it.name || it.title).toLowerCase().replace(/[（(【[][^)）】\]]*[)）】\]]/g, "").replace(/giveaway|免费领取|限免|epic|steam|[^\p{L}\p{N}]+/gu, "").slice(0, 24);
+    if (k && seen.has(k)) continue;
+    if (k) seen.add(k);
+    if ((per[it.category] = (per[it.category] || 0) + 1) > 3) continue;
+    out.push(it);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+var PERKS = [
+  { name: "GitHub \u5B66\u751F\u5F00\u53D1\u8005\u5305", url: "https://education.github.com/pack", note: "\u5B66\u751F\u8BA4\u8BC1\u540E\u9001 Copilot Pro\u3001\u57DF\u540D\u3001\u4E91\u670D\u52A1\u989D\u5EA6\u7B49\u51E0\u5341\u9879\u6743\u76CA", who: "\u5B66\u751F" },
+  { name: "JetBrains \u6559\u80B2\u8BB8\u53EF", url: "https://www.jetbrains.com/academy/student-pack/", note: "\u5B66\u751F\u548C\u8001\u5E08\u514D\u8D39\u7528 IntelliJ IDEA\u3001PyCharm \u7B49\u5168\u5BB6\u6876", who: "\u5B66\u751F" },
+  { name: "Azure \u5B66\u751F\u7248", url: "https://azure.microsoft.com/free/students/", note: "\u5B66\u6821\u90AE\u7BB1\u8BA4\u8BC1\uFF0C\u9001 100 \u7F8E\u5143\u989D\u5EA6\uFF0C\u4E0D\u7528\u4FE1\u7528\u5361", who: "\u5B66\u751F" },
+  { name: "Figma \u6559\u80B2\u7248", url: "https://www.figma.com/education/", note: "\u5B66\u751F\u548C\u8001\u5E08\u514D\u8D39\u7528\u4E13\u4E1A\u7248", who: "\u5B66\u751F" },
+  { name: "Notion \u6559\u80B2\u7248", url: "https://www.notion.com/product/notion-for-education", note: "\u5B66\u6821\u90AE\u7BB1\u6CE8\u518C\uFF0C\u4E2A\u4EBA Plus \u514D\u8D39", who: "\u5B66\u751F" },
+  { name: "Autodesk \u6559\u80B2\u7248", url: "https://www.autodesk.com/education/home", note: "AutoCAD\u3001Maya\u3001Fusion \u7B49\u6559\u80B2\u8BB8\u53EF", who: "\u5B66\u751F" },
+  { name: "Canva \u6559\u80B2\u7248", url: "https://www.canva.com/education/", note: "\u8001\u5E08\u548C\u5B66\u751F\u514D\u8D39\u7528\u9AD8\u7EA7\u529F\u80FD", who: "\u5B66\u751F" },
+  { name: "Cloudflare \u514D\u8D39\u8BA1\u5212", url: "https://www.cloudflare.com/plans/free/", note: "CDN\u3001DNS\u3001Workers\u3001Pages\u3001R2 \u90FD\u6709\u957F\u671F\u514D\u8D39\u989D\u5EA6", who: "\u5F00\u53D1\u8005" },
+  { name: "Oracle Cloud \u6C38\u4E45\u514D\u8D39", url: "https://www.oracle.com/cloud/free/", note: "\u6C38\u4E45\u514D\u8D39\u7684 ARM \u4E91\u4E3B\u673A\u548C\u6570\u636E\u5E93\uFF08\u6CE8\u518C\u8981\u7ED1\u5361\u9A8C\u8BC1\uFF09", who: "\u5F00\u53D1\u8005" },
+  { name: "Google Cloud \u514D\u8D39\u5C42", url: "https://cloud.google.com/free", note: "\u65B0\u7528\u6237 300 \u7F8E\u5143\u989D\u5EA6 + \u957F\u671F\u514D\u8D39\u7684\u5C0F\u89C4\u683C\u8D44\u6E90", who: "\u5F00\u53D1\u8005" },
+  { name: "AWS \u514D\u8D39\u5957\u9910", url: "https://aws.amazon.com/free/", note: "\u65B0\u7528\u6237\u989D\u5EA6 + \u4E00\u6279\u957F\u671F\u514D\u8D39\u7684\u670D\u52A1", who: "\u5F00\u53D1\u8005" },
+  { name: "Vercel Hobby", url: "https://vercel.com/pricing", note: "\u4E2A\u4EBA\u9879\u76EE\u514D\u8D39\u6258\u7BA1\u524D\u7AEF\u548C Serverless \u51FD\u6570", who: "\u5F00\u53D1\u8005" },
+  { name: "Netlify \u514D\u8D39\u7248", url: "https://www.netlify.com/pricing/", note: "\u9759\u6001\u7AD9\u70B9\u548C\u51FD\u6570\u514D\u8D39\u6258\u7BA1", who: "\u5F00\u53D1\u8005" },
+  { name: "Supabase \u514D\u8D39\u7248", url: "https://supabase.com/pricing", note: "\u514D\u8D39\u7684 Postgres \u6570\u636E\u5E93\u3001\u8BA4\u8BC1\u548C\u5B58\u50A8", who: "\u5F00\u53D1\u8005" },
+  { name: "EU.org \u514D\u8D39\u57DF\u540D", url: "https://nic.eu.org/", note: "\u8001\u724C\u514D\u8D39\u4E8C\u7EA7\u57DF\u540D\uFF0C\u4EBA\u5DE5\u5BA1\u6838\uFF0C\u53EF\u63A5 Cloudflare", who: "\u5F00\u53D1\u8005" },
+  { name: "free-for-dev \u6E05\u5355", url: "https://free-for.dev/", note: "\u5F00\u53D1\u8005\u514D\u8D39\u670D\u52A1\u5927\u5168\uFF08\u82F1\u6587\uFF09\uFF0C\u6301\u7EED\u66F4\u65B0", who: "\u5F00\u53D1\u8005" }
+];
+function parseRows(text, keys) {
+  const out = [];
+  for (const raw of String(text || "").split(/\r?\n/)) {
+    const l = raw.trim();
+    if (!l || l.startsWith("#")) continue;
+    const parts = l.split(/\s*[|｜]\s*/);
+    const url = parts.find((x) => /^https?:\/\//.test(x));
+    if (!url) continue;
+    const rest = parts.filter((x) => x !== url);
+    const o = { url };
+    keys.forEach((k, i) => {
+      if (rest[i]) o[k] = rest[i];
+    });
+    if (!o.name) {
+      try {
+        o.name = new URL(url).hostname.replace(/^www\./, "");
+      } catch {
+        o.name = url;
+      }
+    }
+    out.push(o);
+    if (out.length >= 60) break;
+  }
+  return out;
+}
+var perksOf = (s) => s.perks_enabled === "false" ? [] : [...PERKS, ...parseRows(s.perks_extra, ["name", "note", "who"]).map((x) => ({ ...x, who: /学生|edu|student/i.test(x.who || "") ? "\u5B66\u751F" : "\u5F00\u53D1\u8005" }))];
+var checkinOf = (s) => parseRows(s.checkin_sites, ["name", "note"]);
+var VENDORS = [
+  ["OpenAI", /openai|chatgpt|gpt-?\d|codex|sora/i],
+  ["Anthropic", /anthropic|claude/i],
+  ["Google", /google|gemini|antigravity|vertex|ai studio|jules/i],
+  ["DeepSeek", /deepseek|深度求索/i],
+  ["\u963F\u91CC", /qwen|通义|阿里云百炼|百炼|modelscope|魔搭/i],
+  ["\u6708\u4E4B\u6697\u9762", /kimi|moonshot|月之暗面/i],
+  ["\u667A\u8C31", /智谱|glm-?\d|chatglm|bigmodel/i],
+  ["MiniMax", /minimax|海螺/i],
+  ["\u5B57\u8282", /豆包|doubao|火山方舟|火山引擎|trae|coze|扣子/i],
+  ["\u817E\u8BAF", /混元|hunyuan|腾讯云|codebuddy|元宝/i],
+  ["\u767E\u5EA6", /文心|ernie|千帆/i],
+  ["xAI", /xai|grok/i],
+  ["Mistral", /mistral/i],
+  ["Meta", /llama|meta ai/i],
+  ["Microsoft", /microsoft|azure|copilot|bing/i],
+  ["Amazon", /aws|amazon|bedrock|kiro/i],
+  ["OpenRouter", /openrouter/i],
+  ["Groq", /groq(?!k)/i],
+  ["Cerebras", /cerebras/i],
+  ["\u7845\u57FA\u6D41\u52A8", /siliconflow|硅基流动/i],
+  ["NVIDIA", /nvidia|nim/i],
+  ["Cursor", /cursor/i],
+  ["Windsurf", /windsurf|codeium/i],
+  ["GitHub", /github copilot|github models/i],
+  ["Perplexity", /perplexity/i],
+  ["Hugging Face", /hugging ?face/i],
+  ["Cloudflare", /cloudflare workers ai|workers ai/i],
+  ["Fireworks", /fireworks/i],
+  ["Together", /together\.ai|together ai/i],
+  ["\u516C\u76CA\u7AD9", /公益站|中转站|new ?api/i]
+];
+function guessVendor(text) {
+  const t = String(text || "").replace(/^(【[^】]*】|\[[^\]]*\]|额度变化\s*·\s*)+/, "").trim().slice(0, 400);
+  let best = null, at = Infinity;
+  for (const [n, re] of VENDORS) {
+    const m = re.exec(t);
+    if (m && m.index < at) {
+      best = n;
+      at = m.index;
+    }
+  }
+  const head = /^([A-Za-z][\w.+-]{1,24})(?=\s|：|:|，|的|上线|推出|限时|免费|送|宣布)/.exec(t);
+  if (head && (best === null || at > head[1].length + 2) && !/^(AI|API|LLM|GPT|Free|The|New|Pro)$/i.test(head[1])) return head[1];
+  return best;
+}
+var PERKS_TYPE = [
+  ["\u4F18\u60E0\u7801", /优惠码|兑换码|折扣码|promo code|coupon|redeem/i],
+  ["\u516C\u76CA\u7AD9", /公益站|中转站|new ?api|签到/i],
+  ["\u514D\u8D39\u4F1A\u5458", /免费(领|送|获得)?.{0,6}(会员|pro|plus|max|studio|一个月|1 ?个月|月卡)|free (month|pro|plus)/i],
+  ["\u8D60\u91D1", /送\s*[$¥￥]?\s*\d+\s*(刀|美元|美金|元|积分|credits?)|赠金|赠送.{0,6}(额度|积分|credits?)|\$\d+\s*(free )?credits?|免费.{0,4}\d+\s*(刀|美元|积分)/i],
+  ["\u9650\u65F6\u514D\u8D39", /限时免费|限免|免费开放|限时.{0,6}免费|free for a limited time|limited[- ]time free/i],
+  ["\u514D\u8D39\u989D\u5EA6", /免费额度|免费层|免费档|free tier|free plan|每日.{0,6}(次|额度)|免费调用|免费模型|:free/i]
+];
+function guessPerk(text) {
+  const t = String(text || "").slice(0, 600);
+  for (const [n, re] of PERKS_TYPE) if (re.test(t)) return n;
+  return null;
+}
+var PERK_TYPES = PERKS_TYPE.map((x) => x[0]).concat("\u5176\u5B83");
+var DEFAULT_RADAR_QUERIES = ["AI \u9650\u65F6\u514D\u8D39 \u9001\u989D\u5EA6", "\u5927\u6A21\u578B API \u514D\u8D39\u989D\u5EA6 \u6D3B\u52A8", "\u6CE8\u518C\u9001 \u7F8E\u5143 \u989D\u5EA6 API", "AI \u7F16\u7A0B\u52A9\u624B \u514D\u8D39 Pro", "AI \u516C\u76CA\u7AD9 \u6CE8\u518C\u9001\u989D\u5EA6", "\u514D\u8D39 Token \u6D3B\u52A8 \u5927\u6A21\u578B"];
+var DEFAULT_RADAR_VENDORS = ["Claude", "Gemini", "ChatGPT", "DeepSeek", "\u901A\u4E49\u5343\u95EE Qwen", "Kimi", "\u667A\u8C31 GLM", "\u8C46\u5305 \u706B\u5C71\u65B9\u821F", "MiniMax", "Grok", "Cursor", "GitHub Copilot", "OpenRouter", "\u7845\u57FA\u6D41\u52A8", "Trae", "Perplexity"];
+function radarQueries(s, round) {
+  const base = String(s.aifree_queries || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  const vendors = String(s.aifree_vendors || "").split(/\r?\n|,|，/).map((x) => x.trim()).filter(Boolean);
+  const n = Math.min(8, Math.max(0, Number(s.aifree_vendors_per_run) || 4));
+  const pick2 = [];
+  for (let i = 0; i < Math.min(n, vendors.length); i++) pick2.push(vendors[(round * n + i) % vendors.length]);
+  const qBase = Math.max(1, Math.min(8, Number(s.search_max_queries) || 6) - pick2.length);
+  const b = [];
+  for (let i = 0; i < Math.min(qBase, base.length); i++) b.push(base[(round * qBase + i) % base.length]);
+  return [...b, ...pick2.map((v) => `${v} \u514D\u8D39 \u989D\u5EA6 \u798F\u5229`)];
+}
 
 // src/db.js
 var DEFAULT_SOURCES = [
@@ -171,6 +518,41 @@ var DEFAULT_SOURCES = [
   { name: "VPSGO", type: "rss", url: "https://www.vpsgo.com/feed", cats: ["hosting", "domain", "cloud"], hint: "hosting", enabled: true },
   { name: "xiaoz \u535A\u5BA2", type: "rss", url: "https://blog.xiaoz.org/feed", cats: ["hosting", "domain", "cloud", "dev", "software"], enabled: true },
   { name: "TG \xB7 \u7F51\u76D8\u8D44\u6E90\uFF08\u8FC5\u96F7\u4E91\u76D8\uFF09@yunpanxunlei", type: "telegram", channel: "yunpanxunlei", category: "pan", trusted: true, enabled: false },
+  // ---------- AI 专区（2026-11-22 实测可抓） ----------
+  // Ailyre AI 速递（ailyre.com/news）：「福利速递」轨道是厂商福利（限时免费开放、优惠码、送额度），其余是模型上新和服务变动
+  { name: "Ailyre \xB7 AI \u798F\u5229\u901F\u9012", type: "rss", url: "https://www.ailyre.com/news/rss.xml", tags: ["\u798F\u5229\u901F\u9012"], cats: ["ai", "aideal"], hint: "aideal", every: 3, enabled: true },
+  { name: "Ailyre \xB7 AI \u901F\u9012\uFF08\u6A21\u578B\u4E0E\u670D\u52A1\u53D8\u52A8\uFF09", type: "rss", url: "https://www.ailyre.com/news/rss.xml", skip_tags: ["\u798F\u5229\u901F\u9012"], category: "ainews", trusted: true, limit: 10, every: 6, enabled: true },
+  { name: "\u8D5B\u535A\u9E21\u86CB \xB7 AI \u514D\u8D39\u989D\u5EA6", type: "rss", url: "https://jidan.si/rss.xml", cats: ["ai", "aideal", "aitool"], hint: "ai", enabled: true },
+  { name: "AI \u798F\u5229\u96F7\u8FBE", type: "rss", url: "https://aifuli.dev/rss.xml", cats: ["ai", "aideal", "aitool"], hint: "aideal", enabled: true },
+  { name: "free-llm-intel \xB7 \u514D\u8D39\u989D\u5EA6\u53D8\u5316", type: "rss", url: "https://free-llm-intel.aishort.top/feeds/llm-intel-changes.xml", category: "ai", trusted: true, limit: 15, enabled: true },
+  { name: "TG \xB7 LINUX DO \u798F\u5229 @linuxdo_tg", type: "telegram", channel: "linuxdo_tg", include: "\u798F\u5229\u7F8A\u6BDB|\u516C\u76CA\u7AD9|\u516C\u76CA\u63A8\u5E7F|\u767D\u5AD6|\u514D\u8D39|\u989D\u5EA6|\u8D60\u9001|\u9001\\s*\\$?\\d", cats: ["ai", "aideal", "aitool", "cloud", "dev"], hint: "aideal", enabled: true },
+  { name: "TG \xB7 \u82F9\u679C\u79D1\u6280 @pgkj666", type: "telegram", channel: "pgkj666", include: "API|\u989D\u5EA6|Token|\u514D\u8D39|\u516C\u76CA|\u4E2D\u8F6C", cats: ["ai", "aideal", "aitool"], hint: "aideal", enabled: true },
+  // GitHub 同类清单：仓库一有新提交，就把新增的条目同步过来（读 commits.atom + 提交的 .patch，不走 GitHub API，不需要 Token）
+  { name: "GitHub \xB7 \u514D\u8D39 AI API \u4E2D\u8F6C\u7AD9\u5BFC\u822A", type: "repo", repo: "kirito8/free-newapi", mode: "diff", include: "\u516C\u76CA|\u514D\u8D39|\u7B7E\u5230|\u6CE8\u518C\u9001|\u8D60\u9001|\u9001\\s*[$\xA5]?\\d|\u767D\u5AD6|\u989D\u5EA6", category: "aideal", trusted: true, every: 12, enabled: true },
+  { name: "GitHub \xB7 AI API \u516C\u76CA\u7AD9\u5BFC\u822A", type: "repo", repo: "bubblevv/ai-api-gongyi-nav", mode: "diff", path: "README\\.md$", include: "\u516C\u76CA|\u514D\u8D39|\u7B7E\u5230|\u6CE8\u518C\u9001|\u8D60\u9001|\u9001\\s*[$\xA5]?\\d|\u767D\u5AD6|\u989D\u5EA6", category: "aideal", trusted: true, every: 12, enabled: true },
+  { name: "GitHub \xB7 \u514D\u8D39 AI Token \u6E05\u5355\uFF08\u4E2D\u56FD\u533A\uFF09", type: "repo", repo: "KJAI123/awesome-free-ai-tokens-cn", mode: "diff", category: "ai", trusted: true, every: 12, enabled: true },
+  { name: "GitHub \xB7 \u514D\u8D39\u5927\u6A21\u578B API \u5BFC\u822A", type: "repo", repo: "peter123023/awesome-free-llm-api", mode: "diff", path: "README\\.md$", category: "ai", trusted: true, every: 12, enabled: true },
+  { name: "GitHub \xB7 FreeToken \u514D\u8D39\u989D\u5EA6\u5927\u5168", type: "repo", repo: "AIPMAndy/FreeToken", mode: "diff", path: "README", category: "ai", trusted: true, every: 12, enabled: true },
+  { name: "GitHub \xB7 \u514D\u8D39 LLM API \u5E73\u53F0\u6C47\u603B", type: "repo", repo: "CYBIRD-D/FREE-LLM-API-Provider", mode: "diff", path: "README\\.zh-CN\\.md$", category: "ai", trusted: true, every: 12, enabled: true },
+  { name: "GitHub \xB7 \u4E2D\u56FD\u72EC\u7ACB\u5F00\u53D1\u8005\u9879\u76EE", type: "repo", repo: "1c7/chinese-independent-developer", mode: "diff", path: "^README\\.md$", cats: ["aitool", "software", "dev"], hint: "software", category: "auto", fallback: "software", trusted: true, every: 12, enabled: false },
+  { name: "GitHub \xB7 free-for-dev\uFF08\u82F1\u6587\uFF09", type: "repo", repo: "ripienaar/free-for-dev", mode: "diff", cats: ["dev", "cloud", "hosting", "ai"], hint: "dev", every: 12, enabled: false },
+  // ---------- 新闻资讯：资讯类专源直接收录，每次每个源最多取 limit 条 ----------
+  { name: "free-llm-intel \xB7 AI \u5382\u5546\u52A8\u6001", type: "rss", url: "https://free-llm-intel.aishort.top/feeds/llm-news-all.xml", category: "ainews", trusted: true, limit: 12, every: 6, enabled: true },
+  { name: "\u91CF\u5B50\u4F4D", type: "rss", url: "https://www.qbitai.com/feed", category: "ainews", trusted: true, limit: 10, every: 6, enabled: true },
+  { name: "Solidot", type: "rss", url: "https://www.solidot.org/index.rss", category: "news", trusted: true, limit: 10, every: 6, enabled: true },
+  { name: "\u7231\u8303\u513F", type: "rss", url: "https://www.ifanr.com/feed", category: "news", trusted: true, limit: 10, every: 6, enabled: true },
+  { name: "cnBeta", type: "rss", url: "https://www.cnbeta.com.tw/backend.php", category: "news", trusted: true, limit: 10, every: 6, enabled: true },
+  { name: "\u6781\u5BA2\u516C\u56ED", type: "rss", url: "https://www.geekpark.net/rss", category: "news", trusted: true, limit: 8, every: 6, enabled: true },
+  { name: "\u962E\u4E00\u5CF0 \xB7 \u79D1\u6280\u7231\u597D\u8005\u5468\u520A", type: "rss", url: "https://www.ruanyifeng.com/blog/atom.xml", category: "news", trusted: true, limit: 3, every: 6, enabled: true },
+  // ---------- 免费梯子：GitHub 上自动更新的公共节点订阅，每个仓库只占一条，有新提交就刷新时间 ----------
+  { name: "Pawdroid / Free-servers", type: "repo", repo: "Pawdroid/Free-servers", mode: "sub", category: "proxy", trusted: true, subs: [["\u901A\u7528\u8BA2\u9605", "https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub"]], every: 12, enabled: true },
+  { name: "ermaozi / get_subscribe", type: "repo", repo: "ermaozi/get_subscribe", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt"], ["Clash", "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/clash.yml"]], every: 12, enabled: true },
+  { name: "chengaopan / AutoMergePublicNodes", type: "repo", repo: "chengaopan/AutoMergePublicNodes", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/chengaopan/AutoMergePublicNodes/master/list.txt"], ["Clash", "https://raw.githubusercontent.com/chengaopan/AutoMergePublicNodes/master/list.yml"]], every: 12, enabled: true },
+  { name: "peasoft / NoMoreWalls", type: "repo", repo: "peasoft/NoMoreWalls", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.txt"], ["Clash", "https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.yml"]], every: 12, enabled: true },
+  { name: "mahdibland / V2RayAggregator", type: "repo", repo: "mahdibland/V2RayAggregator", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt"], ["Clash", "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/Eternity.yml"]], every: 12, enabled: true },
+  { name: "snakem982 / proxypool", type: "repo", repo: "snakem982/proxypool", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/snakem982/proxypool/main/source/v2ray-2.txt"], ["Clash Meta", "https://raw.githubusercontent.com/snakem982/proxypool/main/source/clash-meta-2.yaml"]], every: 12, enabled: true },
+  { name: "Barabama / FreeNodes", type: "repo", repo: "Barabama/FreeNodes", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/clashmeta.txt"], ["Clash Meta", "https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/clashmeta.yaml"]], every: 12, enabled: true },
+  { name: "free18 / v2ray", type: "repo", repo: "free18/v2ray", mode: "sub", category: "proxy", trusted: true, subs: [["V2Ray", "https://raw.githubusercontent.com/free18/v2ray/main/v.txt"], ["Clash", "https://raw.githubusercontent.com/free18/v2ray/main/c.yaml"]], every: 12, enabled: true },
   // 英文社区：默认过滤纯英文内容，这些源默认关闭；关掉「过滤纯英文」后可按需打开
   { name: "LowEndTalk \xB7 Offers", type: "rss", url: "https://lowendtalk.com/categories/offers/feed.rss", enabled: false },
   { name: "LowEndSpirit", type: "rss", url: "https://lowendspirit.com/discussions/feed.rss", enabled: false },
@@ -199,7 +581,12 @@ var DEFAULT_SETTINGS = {
   ai_max_items: "60",
   // 每次运行最多送 AI 判定几条（免费版 Worker 每次最多 50 个外部请求，别设太大）
   ai_min_score: "60",
-  // 低于此分数视为不通过
+  ai_review: "smart",
+  // smart：把握大的自动通过 / 拒绝，只把拿不准的交给 AI；all：全部交给 AI
+  fresh_days: "15",
+  // 发布超过这么多天的条目，前台和邮件里单独归到「较早发布」
+  ai_cache: "true",
+  // 同一个目标地址判过一次就复用结论，不重复花 AI 额度
   // 联网搜索后端（见 search.js 的 BACKENDS）。全部默认开启：AnySearch、Keenable 免 Key 直接可用；其余填了 Key 就自动参与，没填就跳过
   anysearch_enabled: "true",
   anysearch_api_key: "",
@@ -280,6 +667,8 @@ var DEFAULT_SETTINGS = {
   // 存 KV
   telegram_chat_id: "",
   // 存 KV
+  // Webhook 类推送（地址 / Key 存 KV），填了就推；{id}_enabled 可单独关掉
+  ...Object.fromEntries(PUSH_CHANNELS.flatMap((c) => [[c.key, ""], [`${c.id}_enabled`, "true"], ...c.secret ? [[c.secret, ""]] : []])),
   // 抓取与过滤
   noise_filter: "true",
   filter_english: "true",
@@ -307,8 +696,40 @@ var DEFAULT_SETTINGS = {
   // 有人打开资源页时顺带推进一步抓取（定时任务的备用方案）
   public_cache_seconds: "60",
   // 资源页数据缓存秒数，缓存期内不查数据库
+  // AI 福利雷达：用已开启的搜索后端按福利词 + 厂商轮流搜，结果只收「AI 免费额度 / AI 限时福利」，再经判定整理
+  aifree_radar: "true",
+  aifree_queries: DEFAULT_RADAR_QUERIES.join("\n"),
+  aifree_vendors: DEFAULT_RADAR_VENDORS.join("\n"),
+  aifree_vendors_per_run: "3",
+  // 每轮轮到几个厂商
+  aifree_days: "30",
+  // 只要最近多少天的
+  // v1.8 板块与功能
+  search_strict: "true",
+  // 搜索结果标题里必须有免费类字样（搜索来的条目质量参差，从严）
+  watch_enabled: "true",
+  // 关键词提醒：命中就单独推送，不等日报
+  watch_keywords: "",
+  // 每行一个关键词，如 Claude / 域名 / VPS
+  link_check: "true",
+  // 失效检测：每次抓取后抽查一批链接，打不开或写着已结束的标灰下沉
+  link_check_per_run: "12",
+  weekly_enabled: "false",
+  // 每周精选：每周一（可改）随推送附带本周最值的 10 条
+  weekly_weekday: "1",
+  // 0 = 周日，1 = 周一 …
+  vote_hide: "3",
+  // 「不值」比「值」多这么多票就自动隐藏（0 = 不隐藏）
+  checkin_sites: "",
+  // 签到清单，每行：名称 | 地址 | 备注
+  perks_extra: "",
+  // 学生 / 开发者专区追加，每行：名称 | 地址 | 说明 | 学生 或 开发者
+  login_max_fails: "10",
+  // 同一 IP 15 分钟内登录失败这么多次就暂时锁定
+  api_rate_per_min: "120",
+  // 公开接口每个 IP 每分钟最多请求数（0 = 不限）
   // 分类：勾选要收集的；推送分类留空 = 与收集相同
-  enabled_categories: "domain,hosting,cloud,ai,software,dev,game,edu",
+  enabled_categories: "domain,hosting,cloud,ai,aideal,aitool,software,dev,game,edu,ainews,news,proxy",
   mail_categories: "",
   simple_signup_only: "true",
   // 只要注册简单的（邮箱 / GitHub / Google 登录）
@@ -319,8 +740,8 @@ var DEFAULT_SETTINGS = {
   sources: JSON.stringify(DEFAULT_SOURCES, null, 2)
 };
 var SEARCH_KEYS = ["anysearch_api_key", "keenable_api_key", "tavily_api_key", "exa_api_key", "brave_api_key", "qianfan_api_key", "volc_api_key"];
-var SECRET_KEYS = ["ai_api_key", "mail_api_key", "smtp_pass", "telegram_bot_token", ...SEARCH_KEYS];
-var KV_KEYS = ["ai_base_url", "ai_api_key", "mail_api_key", "smtp_user", "smtp_pass", "telegram_bot_token", "telegram_chat_id", ...SEARCH_KEYS];
+var SECRET_KEYS = ["ai_api_key", "mail_api_key", "smtp_pass", "telegram_bot_token", ...SEARCH_KEYS, ...PUSH_KEYS];
+var KV_KEYS = ["ai_base_url", "ai_api_key", "mail_api_key", "smtp_user", "smtp_pass", "telegram_bot_token", "telegram_chat_id", ...SEARCH_KEYS, ...PUSH_KEYS];
 var kvName = (k) => `cfg:${k}`;
 var schemaReady = false;
 async function ensureSchema(env) {
@@ -338,31 +759,38 @@ async function ensureSchema(env) {
     // 去重记忆：条目 15 天后会清理，但“见过”的记录保留更久，避免旧帖被重新抓取、重复推送
     env.DB.prepare("CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, fp TEXT, seen_at INTEGER NOT NULL)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_seen_fp ON seen(fp)"),
-    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_seen_at ON seen(seen_at)")
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_seen_at ON seen(seen_at)"),
+    // v1.8：投票、来源健康、AI 结论缓存、登录失败计数
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS votes (id TEXT NOT NULL, voter TEXT NOT NULL, v INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (id, voter))"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS src_health (name TEXT NOT NULL, day TEXT NOT NULL, fetched INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0, last_at INTEGER, last_err TEXT, PRIMARY KEY (name, day))"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS verdicts (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS rate (k TEXT PRIMARY KEY, n INTEGER NOT NULL, reset INTEGER NOT NULL)")
   ]);
-  for (const col of ["obtain TEXT", "fp TEXT", "day TEXT", "cats TEXT", "hint TEXT", "target TEXT", "sources TEXT"]) {
+  const cols = new Set(((await env.DB.prepare("PRAGMA table_info(items)").all()).results || []).map((r) => r.name));
+  const add = [["obtain", "TEXT"], ["fp", "TEXT"], ["day", "TEXT"], ["cats", "TEXT"], ["hint", "TEXT"], ["target", "TEXT"], ["sources", "TEXT"], ["extra", "TEXT"], ["expires_at", "INTEGER"], ["up", "INTEGER NOT NULL DEFAULT 0"], ["down", "INTEGER NOT NULL DEFAULT 0"], ["dead", "INTEGER NOT NULL DEFAULT 0"], ["checked_at", "INTEGER"]].filter(([c]) => !cols.has(c));
+  for (const [c, t] of add) {
     try {
-      await env.DB.prepare(`ALTER TABLE items ADD COLUMN ${col}`).run();
+      await env.DB.prepare(`ALTER TABLE items ADD COLUMN ${c} ${t}`).run();
     } catch {
     }
   }
-  try {
-    await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_items_target ON items(target)").run();
-  } catch {
-  }
-  try {
-    await env.DB.prepare("ALTER TABLE jobs ADD COLUMN claimed_at INTEGER").run();
-  } catch {
-  }
-  for (const sql of [
-    "CREATE INDEX IF NOT EXISTS idx_items_fp ON items(fp)",
-    "CREATE INDEX IF NOT EXISTS idx_items_day ON items(day, status)",
-    "CREATE INDEX IF NOT EXISTS idx_items_fetched ON items(fetched_at)"
-  ]) {
+  const jcols = add.length || !cols.size ? new Set(((await env.DB.prepare("PRAGMA table_info(jobs)").all()).results || []).map((r) => r.name)) : /* @__PURE__ */ new Set(["claimed_at"]);
+  if (!jcols.has("claimed_at")) {
     try {
-      await env.DB.prepare(sql).run();
+      await env.DB.prepare("ALTER TABLE jobs ADD COLUMN claimed_at INTEGER").run();
     } catch {
     }
+  }
+  if (add.length) {
+    await env.DB.batch([
+      "CREATE INDEX IF NOT EXISTS idx_items_target ON items(target)",
+      "CREATE INDEX IF NOT EXISTS idx_items_fp ON items(fp)",
+      "CREATE INDEX IF NOT EXISTS idx_items_day ON items(day, status)",
+      "CREATE INDEX IF NOT EXISTS idx_items_fetched ON items(fetched_at)",
+      "CREATE INDEX IF NOT EXISTS idx_items_expires ON items(expires_at)",
+      "CREATE INDEX IF NOT EXISTS idx_health_name ON src_health(name, last_at)"
+    ].map((q) => env.DB.prepare(q))).catch(() => {
+    });
   }
   schemaReady = true;
 }
@@ -463,70 +891,6 @@ function dayOf(ts) {
   return new Date(ts + 8 * 36e5).toISOString().slice(0, 10);
 }
 
-// src/categories.js
-var CATEGORIES = [
-  { key: "domain", label: "\u514D\u8D39\u57DF\u540D", color: "#4f46e5", kw: ["\u57DF\u540D", "\u4E8C\u7EA7\u57DF\u540D", "\u5B50\u57DF\u540D", "domain", "subdomain", "dns", ".eu.org", ".us.kg"], q: ["\u514D\u8D39\u57DF\u540D \u6CE8\u518C", "\u514D\u8D39\u4E8C\u7EA7\u57DF\u540D"] },
-  { key: "hosting", label: "\u4E3B\u673A / VPS", color: "#0891b2", kw: ["\u4E3B\u673A", "\u865A\u62DF\u4E3B\u673A", "\u7A7A\u95F4", "vps", "\u670D\u52A1\u5668", "\u5EFA\u7AD9", "hosting", "webhost", "web host", "cpanel", "server", "\u5C0F\u9E21"], q: ["\u514D\u8D39\u865A\u62DF\u4E3B\u673A", "\u514D\u8D39 VPS \u670D\u52A1\u5668"] },
-  { key: "cloud", label: "\u4E91\u670D\u52A1 / CDN", color: "#0284c7", kw: ["\u4E91\u670D\u52A1", "\u4E91\u51FD\u6570", "serverless", "cdn", "\u5BF9\u8C61\u5B58\u50A8", "s3", "\u6570\u636E\u5E93", "database", "cloud", "pages", "workers", "\u6258\u7BA1", "deploy", "paas"], q: ["\u514D\u8D39\u4E91\u670D\u52A1 \u989D\u5EA6", "\u514D\u8D39 CDN \u5BF9\u8C61\u5B58\u50A8"] },
-  { key: "ai", label: "AI \u989D\u5EA6", color: "#7c3aed", kw: ["ai", "gpt", "claude", "gemini", "llm", "\u5927\u6A21\u578B", "api key", "token", "\u989D\u5EA6", "\u6A21\u578B", "openrouter", "deepseek", "copilot", "cursor"], q: ["\u514D\u8D39 AI API \u989D\u5EA6", "\u5927\u6A21\u578B \u514D\u8D39 token"] },
-  { key: "software", label: "\u8F6F\u4EF6\u6388\u6743", color: "#db2777", kw: ["\u6FC0\u6D3B\u7801", "\u6388\u6743", "\u6CE8\u518C\u7801", "\u8BB8\u53EF\u8BC1", "license", "giveaway", "\u9650\u514D", "\u6B63\u7248", "pro \u7248", "\u4F1A\u5458\u7248", "lifetime"], q: ["\u6B63\u7248\u8F6F\u4EF6 \u9650\u514D", "\u8F6F\u4EF6 \u6FC0\u6D3B\u7801 \u514D\u8D39\u9886\u53D6"] },
-  { key: "dev", label: "\u5F00\u53D1\u5DE5\u5177", color: "#475569", kw: ["\u5F00\u53D1\u8005", "developer", "ide", "github", "api", "sdk", "ci", "\u76D1\u63A7", "\u90AE\u7BB1\u670D\u52A1", "smtp", "free tier", "free plan"], q: ["\u5F00\u53D1\u8005 \u514D\u8D39\u5957\u9910", "free tier for developers"] },
-  { key: "game", label: "\u6E38\u620F", color: "#16a34a", kw: ["\u6E38\u620F", "steam", "epic", "gog", "game", "\u559C\u52A0\u4E00", "dlc"], q: ["\u559C\u52A0\u4E00 \u514D\u8D39\u9886\u53D6"] },
-  { key: "media", label: "\u5F71\u97F3\u4F1A\u5458", color: "#e11d48", kw: ["\u4F1A\u5458", "\u89C6\u9891", "\u97F3\u4E50", "\u5F71\u89C6", "vip", "spotify", "youtube", "netflix", "\u7535\u5B50\u4E66", "kindle"], q: ["\u514D\u8D39\u4F1A\u5458 \u9886\u53D6"] },
-  { key: "design", label: "\u8BBE\u8BA1\u7D20\u6750", color: "#ea580c", kw: ["\u5B57\u4F53", "\u7D20\u6750", "\u56FE\u6807", "\u6A21\u677F", "font", "icon", "template", "figma", "psd"], q: ["\u514D\u8D39\u5546\u7528 \u5B57\u4F53 \u7D20\u6750"] },
-  { key: "edu", label: "\u5B66\u751F / \u6559\u80B2", color: "#ca8a04", kw: ["\u5B66\u751F", "\u6559\u80B2", "edu", "student", "\u5B66\u672F", "\u6821\u56ED"], q: ["\u5B66\u751F \u514D\u8D39 \u6743\u76CA"] },
-  { key: "course", label: "\u7F51\u8BFE\u6559\u7A0B", color: "#65a30d", kw: ["\u8BFE\u7A0B", "\u7F51\u8BFE", "\u6559\u7A0B", "course", "udemy", "coursera", "\u8BAD\u7EC3\u8425"], q: ["\u9650\u65F6\u514D\u8D39 \u8BFE\u7A0B"] },
-  { key: "pan", label: "\u7F51\u76D8\u8D44\u6E90", color: "#0d9488", kw: ["\u7F51\u76D8", "\u4E91\u76D8", "\u963F\u91CC\u4E91\u76D8", "\u767E\u5EA6\u7F51\u76D8", "\u5938\u514B", "\u5206\u4EAB\u94FE\u63A5", "\u8D44\u6E90\u5408\u96C6"], q: [] },
-  { key: "goods", label: "\u5B9E\u7269\u798F\u5229", color: "#dc2626", kw: ["\u5305\u90AE", "\u5B9E\u7269", "\u5468\u8FB9", "0\u5143\u8D2D", "\u514D\u8D39\u9001", "\u8D60\u9001", "\u8D34\u7EB8", "swag"], q: [] },
-  { key: "invite", label: "\u9080\u8BF7\u7801", color: "#9333ea", kw: ["\u9080\u8BF7\u7801", "\u9080\u8BF7\u94FE\u63A5", "invite", "\u5185\u6D4B\u8D44\u683C", "beta"], q: [] },
-  { key: "other", label: "\u5176\u5B83", color: "#9ca3af", kw: [], q: [] }
-];
-var CAT_MAP = Object.fromEntries(CATEGORIES.map((c) => [c.key, c]));
-var DEFAULT_ENABLED = ["domain", "hosting", "cloud", "ai", "software", "dev", "game", "edu"];
-function enabledCats(s) {
-  const list = String(s.enabled_categories || "").split(/[,\s]+/).filter((k) => CAT_MAP[k]);
-  return list.length ? list : DEFAULT_ENABLED;
-}
-function mailCats(s) {
-  const list = String(s.mail_categories || "").split(/[,\s]+/).filter((k) => CAT_MAP[k]);
-  return list.length ? list : enabledCats(s);
-}
-var reCache = /* @__PURE__ */ new Map();
-function kwHit(text, w) {
-  if (/^[a-z0-9.\- ]{1,4}$/.test(w)) {
-    let re = reCache.get(w);
-    if (!re) {
-      re = new RegExp(`(^|[^a-z0-9])${w.replace(/[.\-]/g, "\\$&")}($|[^a-z0-9])`);
-      reCache.set(w, re);
-    }
-    return re.test(text);
-  }
-  return text.includes(w);
-}
-function compileWords(words) {
-  const esc2 = (w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const parts = [...new Set(words.filter(Boolean))].map((w) => /^[a-z0-9.\- ]{1,4}$/.test(w) ? `(?:^|[^a-z0-9])${esc2(w)}(?:$|[^a-z0-9])` : esc2(w));
-  return parts.length ? new RegExp(parts.join("|")) : null;
-}
-function guessCategory(text, enabled) {
-  const t = String(text || "").toLowerCase();
-  let best = null, bestN = 0;
-  for (const k of enabled) {
-    const n = (CAT_MAP[k]?.kw || []).reduce((a, w) => a + (kwHit(t, w) ? 1 : 0), 0);
-    if (n > bestN) {
-      best = k;
-      bestN = n;
-    }
-  }
-  return best;
-}
-function topicWordsFor(enabled) {
-  return [...new Set(enabled.flatMap((k) => CAT_MAP[k]?.kw || []))];
-}
-function searchQueriesFor(enabled) {
-  return enabled.flatMap((k) => CAT_MAP[k]?.q || []);
-}
-
 // src/ai.js
 function normalizeBase(u) {
   return String(u || "").trim().replace(/\/+$/, "").replace(/\/chat\/completions$/, "").replace(/\/models$/, "");
@@ -578,13 +942,17 @@ function extractJson(text) {
 var catLine = (s) => enabledCats(s).map((k) => `${k}=${CAT_MAP[k].label}`).join("\uFF0C");
 var judgePrompt = (s) => `\u4F60\u662F"\u514D\u8D39\u8D44\u6E90 / \u767D\u5AD6\u798F\u5229"\u5BA1\u6838\u5458\u3002\u9010\u6761\u5224\u65AD\u8F93\u5165\u7684\u5E16\u5B50\u6216\u9875\u9762\uFF0C\u53EA\u8F93\u51FA\u4E25\u683C JSON\u3002
 \u5173\u6CE8\u7684\u5206\u7C7B\uFF08category \u53EA\u80FD\u53D6\u8FD9\u4E9B key\uFF0C\u4E0D\u5C5E\u4E8E\u4EFB\u4F55\u4E00\u7C7B\u586B other\uFF09\uFF1A${catLine(s)}\u3002
+\u5206\u7C7B\u8BF4\u660E\uFF1Aai=\u957F\u671F\u6709\u6548\u7684\u514D\u8D39\u989D\u5EA6 / \u514D\u8D39\u6A21\u578B / \u514D\u8D39 API\uFF1Baideal=\u6709\u65F6\u6548\u7684 AI \u798F\u5229\uFF08\u9650\u65F6\u514D\u8D39\u5F00\u653E\u3001\u6CE8\u518C\u9001\u989D\u5EA6\u3001\u4F18\u60E0\u7801 / \u514D\u8D39\u6708\u3001\u516C\u76CA\u7AD9\u7B7E\u5230\uFF09\u3002
 \u5224\u5B9A\u89C4\u5219\uFF1A
 1. relevant\uFF1A\u5185\u5BB9\u786E\u5B9E\u5728\u63D0\u4F9B\u6216\u4ECB\u7ECD\u3010\u53EF\u514D\u8D39\u83B7\u5F97\u3011\u4E14\u5C5E\u4E8E\u4E0A\u8FF0\u5206\u7C7B\u7684\u8D44\u6E90\uFF08\u514D\u8D39\u989D\u5EA6\u3001\u9650\u514D\u3001\u8D60\u9001\u3001\u514D\u8D39\u5957\u9910\u7B49\uFF09\u3002\u4EE5\u4E0B\u60C5\u51B5\u4E3A false\uFF1A\u7EAF\u8BA8\u8BBA\u6216\u6C42\u52A9\u3001\u4ED8\u8D39\u4FC3\u9500\u6216\u6253\u6298\uFF08\u975E\u514D\u8D39\uFF09\u3001\u5DF2\u5931\u6548 / \u5DF2\u5173\u95ED / \u5DF2\u552E\u7F44 / \u5DF2\u9886\u5B8C\u3001\u5E7F\u544A\u6216\u660E\u663E\u4E0D\u53EF\u4FE1\u3001\u65B0\u95FB\u8D44\u8BAF\u3002
 2. simple_signup\uFF1A\u53EA\u9700\u90AE\u7BB1\uFF0C\u6216 GitHub / Google \u7B49\u7B2C\u4E09\u65B9\u8D26\u53F7\u5373\u53EF\u6CE8\u518C\u4F7F\u7528 \u2192 true\u3002\u9700\u8981\u4FE1\u7528\u5361 / PayPal \u7ED1\u5361\u3001\u624B\u673A\u53F7\u77ED\u4FE1\u9A8C\u8BC1\u3001\u5B9E\u540D / KYC / \u8EAB\u4EFD\u8BC1\u3001\u9080\u8BF7\u7801\u3001\u4EBA\u5DE5\u5BA1\u6838\u7533\u8BF7\u3001\u5148\u4ED8\u8D39 \u2192 false\u3002\u4FE1\u606F\u4E0D\u8DB3\u65F6\u6309\u5E38\u8BC6\u8C28\u614E\u5224\u65AD\uFF0C\u5E76\u5728 signup \u5B57\u6BB5\u5199\u660E\u4F9D\u636E\u3002
 3. obtain\uFF1A\u83B7\u53D6\u65B9\u5F0F\uFF0C\u53EA\u80FD\u662F free\uFF08\u76F4\u63A5\u767D\u5AD6\uFF0C\u6CE8\u518C\u5373\u7528\uFF09\u3001conditional\uFF08\u9700\u8981\u5B8C\u6210\u7B80\u5355\u4EFB\u52A1\uFF0C\u5982\u56DE\u5E16\u3001\u9080\u8BF7\u3001\u7B7E\u5230\uFF09\u3001lottery\uFF08\u62BD\u5956 / \u540D\u989D\u968F\u673A\uFF09\u3001trial\uFF08\u9650\u65F6\u8BD5\u7528\uFF0C\u5230\u671F\u6536\u8D39\uFF09\u3001promo\uFF08\u5546\u5BB6\u63A8\u5E7F\u5F15\u6D41\uFF09\u3001paid\uFF08\u9700\u8981\u4ED8\u8D39\uFF09\u3002
 4. score\uFF1A0-100 \u7684\u6574\u6570\uFF0C\u7EFC\u5408\u76F8\u5173\u6027\u3001\u6CE8\u518C\u7B80\u6613\u5EA6\u3001\u8D44\u6E90\u4EF7\u503C\u3001\u53EF\u4FE1\u5EA6\u3001\u662F\u5426\u957F\u671F\u53EF\u7528\u3002
-\u8F93\u51FA\u683C\u5F0F\uFF1A{"results":[{"i":\u5E8F\u53F7,"relevant":true,"category":"\u5206\u7C7Bkey","obtain":"free","simple_signup":true,"signup":"\u6CE8\u518C\u8981\u6C42\uFF0C15\u5B57\u5185","name":"\u670D\u52A1\u6216\u8D44\u6E90\u540D\u79F0","summary":"\u4E00\u53E5\u8BDD\u4E2D\u6587\u7B80\u4ECB\uFF0C40\u5B57\u5185","score":80}]}`;
-async function judgeBatch(items, s) {
+5. summary\uFF1A\u798F\u5229\u7C7B\u5199\u300C\u9001\u4EC0\u4E48 + \u6709\u4EC0\u4E48\u9650\u5236\u300D\uFF0C\u8D44\u8BAF\u7C7B\u5199\u4E00\u53E5\u8BDD\u8981\u70B9\uFF0C\u90FD\u4E0D\u8D85\u8FC7 40 \u5B57\uFF1Bhow\uFF1A\u600E\u4E48\u9886\uFF08\u5982\u201CGitHub \u767B\u5F55\u540E\u5728\u63A7\u5236\u53F0\u9886\u53D6\u201D\uFF09\uFF0C20 \u5B57\u5185\uFF0C\u6CA1\u6709\u5C31\u586B null\uFF1Bdeadline\uFF1A\u539F\u6587\u5199\u660E\u7684\u622A\u6B62\u65E5\u671F YYYY-MM-DD\uFF0C\u6CA1\u5199\u5C31\u586B null\uFF0C\u4E0D\u8981\u731C\u3002
+6. name\uFF1A\u670D\u52A1\u6216\u8D44\u6E90\u672C\u8EAB\u7684\u540D\u5B57\uFF08\u5982\u201CCloudflare R2\u201D\uFF09\uFF0C\u4E0D\u8981\u5E26\u7AD9\u70B9\u540D\u3001\u3010\u8F6C\u3011\u4E4B\u7C7B\u7684\u524D\u540E\u7F00\u3002
+7. \u53EA\u5BF9 ai / aideal \u4E24\u7C7B\uFF1Avendor \u586B\u63D0\u4F9B\u798F\u5229\u7684\u5382\u5546\u6216\u4EA7\u54C1\u65B9\uFF08\u5982\u201CGoogle\u201D\u201Cpacket.ai\u201D\u201C\u67D0\u67D0\u516C\u76CA\u7AD9\u201D\uFF0C\u4E0D\u77E5\u9053\u586B null\uFF09\uFF1Bperk \u586B\u798F\u5229\u7C7B\u578B\uFF0C\u53EA\u80FD\u662F \u514D\u8D39\u989D\u5EA6 / \u9650\u65F6\u514D\u8D39 / \u8D60\u91D1 / \u4F18\u60E0\u7801 / \u514D\u8D39\u4F1A\u5458 / \u516C\u76CA\u7AD9 / \u5176\u5B83\u3002\u798F\u5229\u5DF2\u7ED3\u675F\u3001\u53EA\u6709\u4ED8\u8D39\u6298\u6263\u3001\u6216\u9700\u8981\u5148\u4ED8\u8D39\u7684\uFF0Crelevant \u586B false\u3002
+\u8F93\u51FA\u683C\u5F0F\uFF1A{"results":[{"i":\u5E8F\u53F7,"relevant":true,"category":"\u5206\u7C7Bkey","obtain":"free","simple_signup":true,"signup":"\u6CE8\u518C\u8981\u6C42\uFF0C15\u5B57\u5185","name":"\u670D\u52A1\u6216\u8D44\u6E90\u540D\u79F0","summary":"\u9001\u4EC0\u4E48 + \u9650\u5236\uFF0C40\u5B57\u5185","how":"\u600E\u4E48\u9886\uFF0C20\u5B57\u5185","deadline":null,"vendor":null,"perk":null,"score":80}]}`;
+async function judgeBatch(items, s, bad = []) {
   const payload = items.map((it, i) => ({
     i,
     title: it.title,
@@ -598,7 +966,9 @@ async function judgeBatch(items, s) {
     apiKey: s.ai_api_key,
     model: s.ai_model,
     messages: [
-      { role: "system", content: judgePrompt(s) },
+      { role: "system", content: judgePrompt(s) + (bad.length ? `
+\u7528\u6237\u53CD\u9988\u300C\u4E0D\u503C\u300D\u7684\u4F8B\u5B50\uFF08\u7C7B\u4F3C\u7684\u8BF7\u4ECE\u4E25\uFF0Crelevant \u586B false \u6216\u538B\u4F4E\u5206\u6570\uFF09\uFF1A
+${bad.map((t) => "- " + String(t).slice(0, 60)).join("\n")}` : "") },
       { role: "user", content: JSON.stringify(payload) }
     ]
   });
@@ -639,8 +1009,8 @@ function foldItems(list) {
 var esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 var recipients = (s) => [...new Set(String(s || "").split(/[,;，；\s]+/).map((x) => x.trim().toLowerCase()).filter((x) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x)))].slice(0, 10);
 var ymd = (t) => new Date(t + 8 * 36e5).toISOString().slice(0, 10);
-var CAT = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
-var OBTAIN_ZH = { free: "\u76F4\u63A5\u767D\u5AD6", conditional: "\u6709\u6761\u4EF6", lottery: "\u62BD\u5956", trial: "\u8BD5\u7528", promo: "\u63A8\u5E7F", paid: "\u9700\u4ED8\u8D39" };
+var CAT2 = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.label]));
+var OBTAIN_ZH2 = { free: "\u76F4\u63A5\u767D\u5AD6", conditional: "\u6709\u6761\u4EF6", lottery: "\u62BD\u5956", trial: "\u8BD5\u7528", promo: "\u63A8\u5E7F", paid: "\u9700\u4ED8\u8D39" };
 async function collectDigest(env, s) {
   const onlyNew = s.mail_only_new !== "false";
   const since = onlyNew ? Number(s.mail_last_sent_at) || 0 : 0;
@@ -649,30 +1019,50 @@ async function collectDigest(env, s) {
   const cats = mailCats(s);
   const order = CATEGORIES.map((c, i) => `WHEN '${c.key}' THEN ${i}`).join(" ");
   const { results } = await env.DB.prepare(
-    `SELECT * FROM items WHERE status = 'approved' AND COALESCE(judged_at, fetched_at) > ? AND (published_at IS NULL OR published_at >= ?)
+    `SELECT * FROM items WHERE status = 'approved' AND dead = 0 AND (expires_at IS NULL OR expires_at > ${Date.now()}) AND COALESCE(judged_at, fetched_at) > ? AND (published_at IS NULL OR published_at >= ?)
      AND category IN (${cats.map(() => "?").join(",")})
-     ORDER BY CASE category ${order} ELSE 99 END, score DESC, published_at DESC LIMIT ?`
+     ORDER BY CASE category ${order} ELSE 99 END, COALESCE(published_at, fetched_at) DESC LIMIT ?`
   ).bind(since, cutoff, ...cats, limit).all();
   return foldItems(results || []);
 }
+var xo = (it) => {
+  if (it._x) return it._x;
+  let x = it.extra;
+  if (typeof x === "string") {
+    try {
+      x = JSON.parse(x);
+    } catch {
+      x = null;
+    }
+  }
+  return it._x = x || {};
+};
 function renderDigest(items, s, dateStr) {
   const groups = {};
-  for (const it of items) (groups[it.category || "other"] ||= []).push(it);
+  const freshMs = Math.max(1, Number(s.fresh_days) || 15) * 864e5;
+  const oldKey = `\u8F83\u65E9\u53D1\u5E03\uFF08${Math.max(1, Number(s.fresh_days) || 15)} \u5929\u524D\uFF09`;
+  for (const it of items) (groups[s._flat ? "_flat" : it.published_at && Date.now() - it.published_at > freshMs ? oldKey : it.category || "other"] ||= []).push(it);
+  if (groups[oldKey]) {
+    const o = groups[oldKey];
+    delete groups[oldKey];
+    groups[oldKey] = o;
+  }
   const siteUrl = (s.mail_site_url || "").replace(/\/+$/, "");
   const font = "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',Arial,sans-serif";
   const section = (cat, list) => `
-<tr><td style="padding:22px 24px 6px;font-family:${font};font-size:16px;font-weight:bold;color:#111827;border-bottom:1px solid #e6e8ec;">${CAT[cat] || cat}\uFF08${list.length}\uFF09</td></tr>
+${cat === "_flat" ? "" : `<tr><td style="padding:22px 24px 6px;font-family:${font};font-size:16px;font-weight:bold;color:#111827;border-bottom:1px solid #e6e8ec;">${CAT2[cat] || cat}\uFF08${list.length}\uFF09</td></tr>`}
 ${list.map((it) => `
 <tr><td style="padding:14px 24px;border-bottom:1px solid #eeeeee;font-family:${font};">
   <a href="${esc(it.url)}" target="_blank" style="font-size:15px;font-weight:bold;color:#111318;text-decoration:none;line-height:1.5;word-break:break-all;">${esc(it.name || it.title)}</a>
   ${it.name && it.name !== it.title ? `<div style="font-size:12px;color:#9ca3af;line-height:1.5;margin-top:2px;">${esc(it.title)}</div>` : ""}
   ${it.summary ? `<div style="font-size:14px;color:#374151;line-height:1.6;margin-top:6px;">${esc(it.summary)}</div>` : ""}
+  ${xo(it).how || it.expires_at || xo(it).codes ? `<div style="font-size:13px;color:#374151;line-height:1.6;margin-top:4px;">${xo(it).how ? "\u9886\u53D6\uFF1A" + esc(xo(it).how) + "&nbsp; " : ""}${it.expires_at ? `<span style="color:#b91c1c;">\u622A\u6B62 ${ymd(it.expires_at)}</span>&nbsp; ` : ""}${xo(it).codes ? "\u7801\uFF1A" + xo(it).codes.map((c) => `<code style="background:#f1f3f6;padding:1px 5px;border-radius:4px;font-family:Menlo,Consolas,monospace;">${esc(c)}</code>`).join(" ") : ""}</div>` : ""}
   <div style="font-size:12px;color:#6b7280;line-height:1.6;margin-top:6px;">
-    ${it.obtain ? `<span style="color:${it.obtain === "free" ? "#047857" : "#92400e"};font-weight:bold;">${OBTAIN_ZH[it.obtain] || ""}</span>&nbsp; ` : ""}${it.signup ? `<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px;">\u6CE8\u518C\uFF1A${esc(it.signup)}</span>&nbsp; ` : ""}
+    ${it.obtain ? `<span style="color:${it.obtain === "free" ? "#047857" : "#92400e"};font-weight:bold;">${OBTAIN_ZH2[it.obtain] || ""}</span>&nbsp; ` : ""}${it.signup ? `<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px;">\u6CE8\u518C\uFF1A${esc(it.signup)}</span>&nbsp; ` : ""}
     ${it.published_at ? ymd(it.published_at) + " \xB7 " : ""}${esc(it.srcs ? it.srcs.map((x) => x.n).join(" / ") : it.source || "")}${it.score != null ? " \xB7 " + it.score + "\u5206" : ""}
   </div>
 </td></tr>`).join("")}`;
-  const body = items.length ? Object.keys(CAT).filter((c) => groups[c]).map((c) => section(c, groups[c])).join("") : `<tr><td style="padding:30px 24px;font-family:${font};font-size:14px;color:#6b7280;text-align:center;">\u4ECA\u5929\u6CA1\u6709\u65B0\u7684\u8D44\u6E90\u3002</td></tr>`;
+  const body = items.length ? [...Object.keys(CAT2), oldKey, "_flat"].filter((c) => groups[c]).map((c) => section(c, groups[c])).join("") : `<tr><td style="padding:30px 24px;font-family:${font};font-size:14px;color:#6b7280;text-align:center;">\u4ECA\u5929\u6CA1\u6709\u65B0\u7684\u8D44\u6E90\u3002</td></tr>`;
   const html2 = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting">
 <title>${esc(s.mail_subject)}</title>
@@ -684,9 +1074,9 @@ ${list.map((it) => `
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f7f9;">
 <tr><td align="center" style="padding:20px 10px;">
 <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:8px;">
-<tr><td style="padding:22px 24px;background:#111318;border-radius:8px 8px 0 0;font-family:${font};">
+<tr><td style="padding:22px 24px;background:#312e81;border-radius:8px 8px 0 0;font-family:${font};">
   <div style="font-size:19px;font-weight:bold;color:#ffffff;">${esc(s.mail_subject)}</div>
-  <div style="font-size:13px;color:#d1d5db;margin-top:4px;">${dateStr} \xB7 \u5171 ${items.length} \u6761 \xB7 \u53EA\u6536\u5F55\u534A\u5E74\u5185\u3001\u6CE8\u518C\u7B80\u5355\u7684\u514D\u8D39\u8D44\u6E90</div>
+  <div style="font-size:13px;color:#d1d5db;margin-top:4px;">${dateStr} \xB7 \u5171 ${items.length} \u6761 \xB7 ${esc(s._sub || "\u53EA\u6536\u5F55\u534A\u5E74\u5185\u3001\u6CE8\u518C\u7B80\u5355\u7684\u514D\u8D39\u8D44\u6E90")}</div>
 </td></tr>
 ${body}
 <tr><td style="padding:18px 24px;font-family:${font};font-size:12px;color:#9ca3af;line-height:1.6;">
@@ -694,8 +1084,8 @@ ${body}
   \u7531 Cloudflare Workers \u81EA\u52A8\u6293\u53D6\u5E76\u7ECF AI \u7B5B\u9009\uFF0C\u4F7F\u7528\u524D\u8BF7\u81EA\u884C\u786E\u8BA4\u670D\u52A1\u6761\u6B3E\u3002
 </td></tr>
 </table></td></tr></table></body></html>`;
-  const text = [`${s.mail_subject} \xB7 ${dateStr} \xB7 \u5171 ${items.length} \u6761`, ""].concat(items.length ? Object.keys(CAT).filter((c) => groups[c]).flatMap((c) => [
-    `\u3010${CAT[c]}\u3011`,
+  const text = [`${s.mail_subject} \xB7 ${dateStr} \xB7 \u5171 ${items.length} \u6761`, ""].concat(items.length ? [...Object.keys(CAT2), oldKey, "_flat"].filter((c) => groups[c]).flatMap((c) => [
+    c === "_flat" ? "" : `\u3010${CAT2[c] || c}\u3011`,
     ...groups[c].map((it, i) => `${i + 1}. ${it.name || it.title}
    ${it.url}${it.summary ? "\n   " + it.summary : ""}${it.signup ? "\n   \u6CE8\u518C\uFF1A" + it.signup : ""}`),
     ""
@@ -805,7 +1195,7 @@ var tgEsc = (x) => String(x ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<"
 async function sendTelegram(s, items, title) {
   if (!s.telegram_bot_token || !s.telegram_chat_id) throw new Error("\u672A\u586B\u5199 Telegram Bot Token \u6216 Chat ID");
   const blocks = items.map((it) => {
-    const tags = [CAT[it.category] || "", it.obtain ? OBTAIN_ZH[it.obtain] : "", it.signup ? `\u6CE8\u518C\uFF1A${it.signup}` : ""].filter(Boolean).join(" \xB7 ");
+    const tags = [CAT2[it.category] || "", it.obtain ? OBTAIN_ZH2[it.obtain] : "", it.signup ? `\u6CE8\u518C\uFF1A${it.signup}` : ""].filter(Boolean).join(" \xB7 ");
     return `\u25AA\uFE0F <a href="${tgEsc(it.url)}">${tgEsc(it.name || it.title)}</a>${it.summary ? `
 ${tgEsc(it.summary)}` : ""}${tags ? `
 <i>${tgEsc(tags)}</i>` : ""}`;
@@ -831,33 +1221,61 @@ ${tgEsc(it.summary)}` : ""}${tags ? `
   }
   return { provider: "telegram", to: [String(s.telegram_chat_id)] };
 }
-async function sendDigest(env, { force = false, test = false, channel, label = "" } = {}) {
-  const s = await getSettings(env);
-  const startedAt = Date.now();
+function channelsOf(env, s) {
   const mailReady = !!String(s.mail_to || "").trim() && (s.mail_provider === "smtp" || !s.mail_provider ? !!(s.smtp_user && s.smtp_pass) : s.mail_provider === "cloudflare" ? !!s.mail_from : !!(s.mail_api_key && s.mail_from));
   const tgReady = !!(s.telegram_bot_token && s.telegram_chat_id);
-  const channels = channel ? [channel] : [s.mail_enabled === "true" && mailReady && "mail", s.telegram_enabled === "true" && tgReady && "telegram"].filter(Boolean);
-  if (!channels.length) return { skipped: "\u6CA1\u6709\u53EF\u7528\u7684\u63A8\u9001\u6E20\u9053\uFF08\u90AE\u4EF6\u9700\u586B\u5199\u8D26\u53F7\u3001\u6388\u6743\u7801\u548C\u6536\u4EF6\u4EBA\uFF0C\u6216\u914D\u7F6E Telegram\uFF09" };
-  const items = test ? (await collectDigest(env, { ...s, mail_only_new: "false" })).slice(0, 5) : await collectDigest(env, s);
-  if (!test && !items.length && s.mail_send_empty !== "true") return { skipped: "\u6CA1\u6709\u65B0\u5185\u5BB9" };
+  return [s.mail_enabled === "true" && mailReady && "mail", s.telegram_enabled === "true" && tgReady && "telegram", ...PUSH_CHANNELS.filter((c) => pushReady(s, c)).map((c) => "push:" + c.id)].filter(Boolean);
+}
+async function deliver(env, s, { kind = "digest", title, items, channel, sub } = {}) {
+  const channels = channel ? [channel] : channelsOf(env, s);
+  if (!channels.length) return { skipped: "\u6CA1\u6709\u53EF\u7528\u7684\u63A8\u9001\u6E20\u9053\uFF08\u90AE\u4EF6\u9700\u586B\u5199\u8D26\u53F7\u3001\u6388\u6743\u7801\u548C\u6536\u4EF6\u4EBA\uFF0C\u6216\u914D\u7F6E Telegram / \u5FAE\u4FE1 / \u9489\u9489 / \u98DE\u4E66\u7B49\u673A\u5668\u4EBA\uFF09" };
   const dateStr = ymd(Date.now());
-  const subject = `${test ? "[\u6D4B\u8BD5] " : ""}${s.mail_subject} \xB7 ${dateStr}${label ? " " + label : ""}${items.length ? `\uFF08${items.length} \u6761\uFF09` : ""}`;
-  const results = [];
-  const errors = [];
+  const results = [], errors = [];
   for (const ch of channels) {
     try {
       if (ch === "mail") {
-        const r = await sendMail(env, s, { subject, ...renderDigest(items, s, dateStr) });
+        const r = await sendMail(env, s, { subject: title, ...renderDigest(items, { ...s, mail_subject: title.replace(/ · \d{4}-\d{2}-\d{2}.*$/, ""), _flat: kind !== "digest", _sub: sub }, dateStr) });
         if (r.failed?.length) errors.push("\u90E8\u5206\u90AE\u4EF6\u5931\u8D25\uFF1A" + r.failed.join("\uFF1B"));
         results.push(r);
-      } else results.push(await sendTelegram(s, items, subject));
+      } else if (ch === "telegram") results.push(await sendTelegram(s, items, title));
+      else {
+        const id = ch.slice(5);
+        const r = await pushAll(s, title, items, id);
+        if (r.ok.length) results.push({ provider: r.ok[0], to: [] });
+        else errors.push(...r.errors);
+      }
     } catch (e) {
-      errors.push(`${ch === "mail" ? "\u90AE\u4EF6" : "Telegram"}\uFF1A${e.message}`);
+      errors.push(`${ch === "mail" ? "\u90AE\u4EF6" : ch === "telegram" ? "Telegram" : ch}\uFF1A${e.message}`);
     }
   }
   if (!results.length) throw new Error(errors.join("\uFF1B"));
-  if (!test) await saveSettings(env, { mail_last_sent_at: String(startedAt) });
-  return { sent: items.length, to: results.flatMap((r) => r.to), providers: results.map((r) => r.provider), errors };
+  return { sent: items.length, to: results.flatMap((r) => r.to || []), providers: results.map((r) => r.provider), errors };
+}
+async function sendDigest(env, { force = false, test = false, channel, label = "" } = {}) {
+  const s = await getSettings(env);
+  const startedAt = Date.now();
+  if (!channel && !channelsOf(env, s).length) return { skipped: "\u6CA1\u6709\u53EF\u7528\u7684\u63A8\u9001\u6E20\u9053\uFF08\u90AE\u4EF6\u9700\u586B\u5199\u8D26\u53F7\u3001\u6388\u6743\u7801\u548C\u6536\u4EF6\u4EBA\uFF0C\u6216\u914D\u7F6E Telegram / \u5FAE\u4FE1 / \u9489\u9489 / \u98DE\u4E66\u7B49\u673A\u5668\u4EBA\uFF09" };
+  const items = test ? (await collectDigest(env, { ...s, mail_only_new: "false" })).slice(0, 5) : await collectDigest(env, s);
+  if (!test && !items.length && s.mail_send_empty !== "true") return { skipped: "\u6CA1\u6709\u65B0\u5185\u5BB9" };
+  const dateStr = ymd(Date.now());
+  const title = `${test ? "[\u6D4B\u8BD5] " : ""}${s.mail_subject} \xB7 ${dateStr}${label ? " " + label : ""}${items.length ? `\uFF08${items.length} \u6761\uFF09` : ""}`;
+  const r = await deliver(env, s, { title, items, channel });
+  if (!test && !r.skipped) await saveSettings(env, { mail_last_sent_at: String(startedAt) });
+  return r;
+}
+async function sendWeekly(env, { channel, test = false } = {}) {
+  const s = await getSettings(env);
+  const { results } = await env.DB.prepare("SELECT * FROM items WHERE status = 'approved' AND dead = 0 AND COALESCE(published_at, fetched_at) >= ? ORDER BY score DESC LIMIT 400").bind(Date.now() - 7 * 864e5).all();
+  const items = weeklyPicks(foldItems(results || []).map((it) => {
+    try {
+      it.extra = it.extra ? JSON.parse(it.extra) : null;
+    } catch {
+      it.extra = null;
+    }
+    return it;
+  }));
+  if (!items.length) return { skipped: "\u8FD9\u5468\u6CA1\u6709\u53EF\u9009\u7684\u6761\u76EE" };
+  return deliver(env, s, { kind: "weekly", title: `${test ? "[\u6D4B\u8BD5] " : ""}\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 \u672C\u5468\u7CBE\u9009 ${ymd(Date.now())}\uFF08${items.length} \u6761\uFF09`, items, channel, sub: "\u8FD1 7 \u5929\u7EFC\u5408 AI \u8BC4\u5206\u3001\u6295\u7968\u548C\u6765\u6E90\u6570\u6311\u51FA\u7684 10 \u6761" });
 }
 
 // src/search.js
@@ -1064,8 +1482,9 @@ function isNoiseTitle(title) {
   if (/^(如何|怎么|怎样)/.test(t) && /教程|攻略|步骤|指南/.test(t) && !/请问|求助|有没有|失效|[?？]/.test(t)) return false;
   return NOISE_TITLE.test(t);
 }
+var stripNegated = (t) => String(t || "").replace(/(无需|不需要|不需|不用|无须|免|不必|没有|no|without)\s*(绑定|绑)?\s*(信用卡|银行卡|绑卡|卡|实名|手机号?验证|手机号|短信验证|邀请码|充值|付费|kyc|credit card|phone verification)/gi, " ");
 function guessObtain(title, summary = "") {
-  const t = `${title} ${summary}`;
+  const t = stripNegated(`${title} ${summary}`);
   if (/抽奖|抽\s*\d+\s*(份|个|名|位)|抽取|随机送|开奖|中奖|摇号|giveaway/i.test(t)) return "lottery";
   if (/招募|代理|加盟|商务合作|招商|诚招|带货|优惠码.*分成|affiliate/i.test(t)) return "promo";
   if (/(年付|月付|季付)\s*[$¥￥]?\s*\d|[$¥￥]\s*\d+(\.\d+)?\s*\/\s*(年|月|yr|year|mo|month)|首年\s*[$¥￥]?\d/i.test(t) && !/免费|free/i.test(t)) return "paid";
@@ -1076,17 +1495,17 @@ function guessObtain(title, summary = "") {
 function compileBlockRules(text) {
   const rules = [];
   for (const raw of String(text || "").split(/\r?\n/)) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const m = line.match(/^\/(.+)\/([gimsuy]*)$/);
+    const line2 = raw.trim();
+    if (!line2 || line2.startsWith("#")) continue;
+    const m = line2.match(/^\/(.+)\/([gimsuy]*)$/);
     if (m) {
       try {
-        rules.push({ label: line, test: (s) => new RegExp(m[1], m[2].replace("g", "")).test(s) });
+        rules.push({ label: line2, test: (s) => new RegExp(m[1], m[2].replace("g", "")).test(s) });
       } catch {
       }
     } else {
-      const w = line.toLowerCase();
-      rules.push({ label: line, test: (s) => s.toLowerCase().includes(w) });
+      const w = line2.toLowerCase();
+      rules.push({ label: line2, test: (s) => s.toLowerCase().includes(w) });
     }
   }
   return rules;
@@ -1098,10 +1517,86 @@ function matchBlock(rules, text) {
 function titleFingerprint(title) {
   return String(title || "").toLowerCase().replace(/【[^】]*】|\[[^\]]*\]|\([^)]*\)|（[^）]*）/g, "").replace(/https?:\/\/\S+/g, "").replace(/[^\p{L}\p{N}]+/gu, "").slice(0, 60);
 }
+var SITE_TAIL = /(社区|论坛|博客|官网|网站|频道|之家|周刊|日报|资讯|新闻网|科技|分享|软件|吧|网|blog|news|forum|community)$/i;
+var KNOWN_TAIL = /\s*[-_|｜–—]\s*(腾讯云开发者社区(-腾讯云)?|阿里云开发者社区|博客园|CSDN博客|CSDN|知乎专栏|知乎|掘金|简书|51CTO博客|开源中国|哔哩哔哩|bilibili|今日头条|网易|搜狐|新浪科技|IT之家|cnBeta\.COM|cnBeta)\s*$/i;
+function cleanTitle(title, source = "", url = "") {
+  let t = String(title || "").replace(/[\u3000\s]+/g, " ").trim();
+  t = t.replace(/^(【\s*(转|转载|转帖|原创|分享|置顶|推荐)\s*】|\[\s*(转|转载|原创|分享|置顶)\s*\]|(转载|转帖)[:：])\s*/, "");
+  t = t.replace(KNOWN_TAIL, "").trim();
+  let host = "";
+  try {
+    host = new URL(url).hostname.replace(/^www\./, "").split(".")[0].toLowerCase();
+  } catch {
+  }
+  const src = String(source || "").split(/[·\s|]/)[0].trim().toLowerCase();
+  for (let k = 0; k < 2; k++) {
+    const m = /\s*(?:\s[-–—|]\s|_|｜)\s*([^-–—|_｜]{2,24})$/.exec(t);
+    if (!m) break;
+    const tail = m[1].trim(), low = tail.toLowerCase();
+    if (/免费|白嫖|领取|限免|赠送|送|额度|教程|下载/.test(tail)) break;
+    if (!(SITE_TAIL.test(tail) || src && (low.includes(src) || src.includes(low)) || host && host.length > 2 && low.replace(/[^a-z0-9]/g, "").includes(host))) break;
+    if (m.index < 6) break;
+    t = t.slice(0, m.index).trim();
+  }
+  return t.replace(/\s*[（(](转载|转|原创)[)）]\s*$/, "").trim();
+}
+var BJ = 8 * 36e5;
+var endOfDay = (y, m, d) => {
+  const t = Date.UTC(y, m - 1, d, 23, 59, 59) - BJ;
+  return Number.isFinite(t) && m >= 1 && m <= 12 && d >= 1 && d <= 31 ? t : null;
+};
+function extractDeadline(text, publishedAt, now = Date.now()) {
+  const s = String(text || "").slice(0, 1500);
+  if (!s) return null;
+  const base = publishedAt || now;
+  const baseYear = new Date(base + BJ).getUTCFullYear();
+  const cands = [];
+  const KW = "(?:\u622A\u6B62|\u622A\u81F3|\u7ED3\u675F|\u5230\u671F|\u6709\u6548\u671F\u81F3|\u6709\u6548\u671F\u5230|\u6D3B\u52A8\u65F6\u95F4|\u9886\u53D6\u65F6\u95F4|\u9650\u65F6|until|ends?|end date|expires?|deadline|before)";
+  let m;
+  const range = /(20\d{2})[-/.年](\d{1,2})[-/.月](\d{1,2})日?[^\n]{0,20}?(?:至|到|~|～|—)\s*(?:(20\d{2})[-/.年])?(\d{1,2})[-/.月](\d{1,2})日?/g;
+  let rest = s;
+  while (m = range.exec(s)) {
+    cands.push(endOfDay(Number(m[4] || m[1]), Number(m[5]), Number(m[6])));
+    rest = rest.replace(m[0], " ");
+  }
+  const full = new RegExp(KW + "[^\\n]{0,30}?(20\\d{2})[-/.\u5E74](\\d{1,2})[-/.\u6708](\\d{1,2})|(20\\d{2})[-/.\u5E74](\\d{1,2})[-/.\u6708](\\d{1,2})\u65E5?\\s*(?:\\d{1,2}:\\d{2}(?::\\d{2})?)?\\s*(?:\u524D|\u4E4B\u524D|\u622A\u6B62|\u7ED3\u675F|\u5230\u671F|\u6B62)", "gi");
+  while (m = full.exec(rest)) cands.push(endOfDay(Number(m[1] || m[4]), Number(m[2] || m[5]), Number(m[3] || m[6])));
+  const md = new RegExp(KW + "[^\\n\\d]{0,12}(\\d{1,2})\u6708(\\d{1,2})[\u65E5\u53F7]|(\\d{1,2})\u6708(\\d{1,2})[\u65E5\u53F7]\\s*(?:\\d{1,2}[:\u70B9]\\d{0,2})?\\s*(?:\u524D|\u4E4B\u524D|\u622A\u6B62|\u7ED3\u675F|\u5230\u671F|\u6B62)", "g");
+  while (m = md.exec(rest)) {
+    const mo = Number(m[1] || m[3]), d = Number(m[2] || m[4]);
+    let t = endOfDay(baseYear, mo, d);
+    if (t && t < base - 30 * 864e5) t = endOfDay(baseYear + 1, mo, d);
+    cands.push(t);
+  }
+  const nd = /(?:限时|仅剩|只剩|还剩|剩余)\s*(\d{1,2})\s*天/.exec(rest);
+  if (nd) cands.push(base + Number(nd[1]) * 864e5);
+  const ok = cands.filter((t) => t && t > base - 864e5 && t < now + 400 * 864e5);
+  return ok.length ? Math.min(...ok) : null;
+}
+function extractCodes(text) {
+  const s = String(text || "").slice(0, 2e3);
+  const out = [];
+  const re = /(?:兑换码|激活码|注册码|优惠码|折扣码|序列号|口令|礼包码|(?<![a-z])(?:cdkey|cd-key|promo code|coupon code|redeem code|license key|serial|code)(?![a-z]))\s*[:：为是]?\s*[「“"'`(（]?\s*([A-Z0-9][A-Z0-9-]{4,38}[A-Z0-9])/gi;
+  let m;
+  while ((m = re.exec(s)) && out.length < 5) {
+    const c = m[1];
+    if (!/\d/.test(c) && !/^[A-Z0-9]{3,}(-[A-Z0-9]{3,}){2,}$/i.test(c)) continue;
+    if (/^(http|www|20\d{2}-\d)/i.test(c) || /^\d{1,6}$/.test(c) || /[a-z]/.test(c) && /[A-Z]/.test(c) && c.length < 10) continue;
+    if (!out.includes(c)) out.push(c);
+  }
+  return out;
+}
+function firstSentence(text, n = 90) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  if (!t) return "";
+  const m = /^(.{12,}?[。！？!?；;])/.exec(t.slice(0, n + 40));
+  const s = m && m[1].length <= n ? m[1] : t.slice(0, n);
+  return s.length < t.length && !/[。！？!?；;]$/.test(s) ? s.replace(/[，,、\s]+$/, "") + "\u2026" : s;
+}
 
 // src/crawler.js
 var UA = "Mozilla/5.0 (compatible; FreeResourceRadar/1.0; +https://workers.cloudflare.com)";
-var DAY = 864e5;
+var DAY2 = 864e5;
 async function getText(url, headers = {}, maxBytes = 0) {
   const r = await fetch(url, {
     headers: { "User-Agent": UA, Accept: "*/*", ...headers },
@@ -1171,6 +1666,7 @@ function tag(block, name) {
 function targetKey(u) {
   try {
     const x = new URL(normalizeUrl(u));
+    for (const k of [...x.searchParams.keys()]) if (/^(aff|aff_code|ref|refer|referral|invite|invite_code|inviter|via|from|share|channel|code)$/i.test(k)) x.searchParams.delete(k);
     return (x.hostname.replace(/^(www|m)\./, "").toLowerCase() + x.pathname.replace(/\/+$/, "") + x.search).slice(0, 300);
   } catch {
     return String(u || "").slice(0, 300);
@@ -1186,9 +1682,9 @@ function parseTelegram(html2, ch) {
   const parts = html2.split('class="tgme_widget_message_wrap');
   for (let i = parts.length - 1; i >= 1 && out.length < 30; i--) {
     const b = parts[i];
-    const post = /data-post="([^"]+)"/.exec(b);
+    const post2 = /data-post="([^"]+)"/.exec(b);
     const tm = b.indexOf("tgme_widget_message_text");
-    if (!post || tm < 0) continue;
+    if (!post2 || tm < 0) continue;
     const st = b.indexOf(">", tm) + 1;
     const end = b.indexOf("</div>", st);
     const textHtml = b.slice(st, end < 0 ? st + 4e3 : end).replace(/<br\s*\/?>/gi, "\n");
@@ -1199,7 +1695,7 @@ function parseTelegram(html2, ch) {
     const link = /<a[^>]+href="(https?:\/\/(?!t\.me)[^"]+)"/.exec(b.slice(st, end));
     out.push({
       title: first.replace(/^[^\p{L}\p{N}【\[（(]+/u, "").slice(0, 120),
-      url: `https://t.me/${post[1]}`,
+      url: `https://t.me/${post2[1]}`,
       published_at: dt ? parseDate(dt[1]) : null,
       raw_text: (text.slice(0, 1200) + (link ? `
 \u94FE\u63A5\uFF1A${decodeEntities(link[1])}` : "")).slice(0, 1500),
@@ -1236,15 +1732,56 @@ function parseFeed(xml) {
       link = alt ? decodeEntities(alt[1]) : cleanText(tag(b, "guid"));
     }
     const body = tag(b, "description") || tag(b, "summary") || tag(b, "content:encoded") || tag(b, "content");
-    const plain = cleanText(body.slice(0, 2e3));
+    const plain2 = cleanText(body.slice(0, 2e3));
+    const tags = [];
+    for (let k = b.indexOf("<category"); k >= 0 && tags.length < 8; k = b.indexOf("<category", k + 9)) {
+      const gt = b.indexOf(">", k), e = b.indexOf("</category>", gt);
+      if (gt < 0 || e < 0 || b[gt - 1] === "/") {
+        const m = /term=["']([^"']+)/.exec(b.slice(k, gt + 1));
+        if (m) tags.push(decodeEntities(m[1]));
+        continue;
+      }
+      tags.push(cleanText(b.slice(gt + 1, e)));
+    }
     out.push({
+      tags,
       title: cleanText(tag(b, "title")),
       url: link,
       published_at: parseDate(tag(b, "pubDate") || tag(b, "published") || tag(b, "dc:date") || tag(b, "updated")),
-      raw_text: plain.slice(0, 1200)
+      raw_text: plain2.slice(0, 1200),
+      target: contentTarget(body.slice(0, 4e3), link)
     });
   }
+  const n = {};
+  for (const x of out) if (x.target) n[x.target] = (n[x.target] || 0) + 1;
+  for (const x of out) if (x.target && n[x.target] > 1) x.target = null;
   return out;
+}
+var SKIP_TARGET = /(^|\.)(twitter\.com|x\.com|facebook\.com|weibo\.com|t\.me|telegram\.me|gravatar\.com|creativecommons\.org|feedburner\.com|wordpress\.org|wp\.com|qr\.|github\.com$)/i;
+function contentTarget(html2, self) {
+  if (!html2) return null;
+  let own = "";
+  try {
+    own = new URL(self).hostname.replace(/^www\./, "");
+  } catch {
+  }
+  const re = /href=(?:"|'|&quot;|&#34;|&#x22;)(https?:\/\/[^"'<>\s]+?)(?:"|'|&quot;|&#34;|&#x22;)/gi;
+  let m, k = 0;
+  while ((m = re.exec(html2)) && k++ < 12) {
+    const u = decodeEntities(m[1]);
+    let h;
+    try {
+      const x = new URL(u);
+      h = x.hostname.replace(/^www\./, "");
+      if (x.pathname.length < 2 && !x.search) continue;
+    } catch {
+      continue;
+    }
+    if (!h || h === own || h.endsWith("." + own) || own.endsWith("." + h)) continue;
+    if (SKIP_TARGET.test(h) || /\.(png|jpe?g|gif|webp|svg|mp4|mp3)(\?|$)/i.test(u) || /\/(share|sharer|intent|tag|category|author)\b/i.test(u)) continue;
+    return u;
+  }
+  return null;
 }
 function normalizeUrl(u) {
   try {
@@ -1259,6 +1796,136 @@ function normalizeUrl(u) {
 async function hashId(s) {
   const buf = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(s));
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+var GH = { "User-Agent": "Mozilla/5.0 (compatible; FreeResourceRadar/1.0)" };
+async function ghCommits(repo) {
+  const xml = await getText(`https://github.com/${repo}/commits.atom`, { ...GH, Accept: "application/atom+xml" }, 8e4);
+  const out = [];
+  for (const b of xml.split("<entry>").slice(1)) {
+    const sha = (/Commit\/([0-9a-f]{40})/.exec(b) || [])[1];
+    if (sha) out.push({ sha, title: cleanText(tag(b, "title")), date: parseDate(tag(b, "updated")), link: `https://github.com/${repo}/commit/${sha}` });
+  }
+  return out;
+}
+async function ghPatch(repo, sha) {
+  try {
+    return await getText(`https://github.com/${repo}/commit/${sha}.patch`, { ...GH, Accept: "text/plain" }, 16e4);
+  } catch {
+    return getText(`https://github.com/${repo}/commit/${sha}.patch`, { ...GH, Accept: "text/plain" }, 16e4);
+  }
+}
+function addedLines(patch, pathRe) {
+  const out = [];
+  let file = "", ok = false;
+  for (const l of patch.split("\n")) {
+    if (l.startsWith("diff --git ")) {
+      file = l.split(" b/").pop() || "";
+      ok = pathRe.test(file);
+      continue;
+    }
+    if (ok && l.startsWith("+") && !l.startsWith("+++")) out.push(l.slice(1));
+  }
+  return out;
+}
+var MD_LINK = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
+var GENERIC_LINK = /^(注册链接|注册|链接|官网|官网链接|地址|入口|官方入口|官方来源|官方链接|官方页|官方页面|官方文档|文档|公告|活动公告|活动页|专属链接|点击|访问|前往|link|website|docs|官方|source|源码|github|详情|官方免费层|免费层|试用|限时|限时免费|永久免费|试用 \/ 限时权益|有效|待核实|已失效)$/i;
+var mdPlain = (x) => decodeEntities(x.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(MD_LINK, "$1").replace(/<[^>]+>/g, " ").replace(/[*_`>#]|:[a-z0-9_+-]+:/g, "").replace(/\s+/g, " ")).trim();
+function lineToItem(line2) {
+  const l = line2.trim();
+  if (l.length < 6 || /^#|^\|?\s*:?-{3}|^<!--|^>|^(POST|GET|curl)\s/i.test(l)) return null;
+  const links = [...l.matchAll(MD_LINK)].filter((m) => !/^!/.test(l.slice(Math.max(0, m.index - 1), m.index))).map((m) => ({ t: mdPlain(m[1]), u: m[2] }));
+  if (!links.length) {
+    const m = /https?:\/\/[^\s|)<>"'`，。；]+/.exec(l);
+    if (m) links.push({ t: "", u: m[0].replace(/[.,;:!?]+$/, "") });
+  }
+  const pick2 = links.find((x) => !/\.(png|jpe?g|gif|svg|webp)(\?|$)/i.test(x.u) && !/shields\.io|badge|camo\.|\/\/github\.com\/[^/]+\/?$|\/\/github\.com\/[^/]+\/[^/]+\/(issues|pulls|blob|tree)/i.test(x.u));
+  if (!pick2) return null;
+  let name, summary;
+  if (l.startsWith("|")) {
+    const cells = l.split("|").slice(1, -1).map(mdPlain).filter(Boolean);
+    const useful = cells.filter((x) => !/^[\d.\s]+$/.test(x) && !/^\d{4}[-/.]\d{1,2}([-/.]\d{1,2})?$/.test(x) && !GENERIC_LINK.test(x) && !/^https?:/i.test(x) && !/^[\w.-]+\.[a-z]{2,}(\/\S*)?$/i.test(x) && !/^[✅❌⚠️✔️✖️🟢🔴🟡\s]+$/u.test(x));
+    if (!useful.length) return null;
+    name = useful[0];
+    summary = useful.slice(1).sort((a, b) => b.length - a.length)[0] || "";
+  } else {
+    const p = mdPlain(l.replace(/^[-*+]\s+|^\d+\.\s+/, ""));
+    name = pick2.t && !GENERIC_LINK.test(pick2.t) ? pick2.t : p.split(/[：:，,。\-–—|]/)[0].trim();
+    summary = p.replace(name, "").replace(/^[\s:：\-–—|,，]+/, "").trim();
+  }
+  name = String(name || "").trim();
+  if (name.length > 30) {
+    const cut = name.search(/[：:，,。；;（(]/);
+    name = cut >= 4 && cut <= 30 ? name.slice(0, cut) : name.slice(0, 30) + "\u2026";
+  }
+  if (name.length < 2) return null;
+  return { title: (summary ? `${name}\uFF1A${summary}` : name).slice(0, 160), name, url: pick2.u, summary: summary.slice(0, 200), raw_text: mdPlain(l).slice(0, 600) };
+}
+async function countNodes(url) {
+  const t = await getText(url, { Accept: "text/plain, */*" }, 15e4);
+  const more = t.length >= 149e3;
+  if (/^\s*(proxies:|port:|mixed-port:|allow-lan:|mode:|#)/m.test(t.slice(0, 3e3))) return { n: (t.match(/^\s*-\s*(\{\s*)?name:/gm) || []).length, more };
+  let body = t;
+  if (!/:\/\//.test(t.slice(0, 500))) {
+    try {
+      body = atob(t.replace(/\s+/g, "").slice(0, more ? Math.floor(t.replace(/\s+/g, "").length / 4) * 4 : void 0));
+    } catch {
+      body = t;
+    }
+  }
+  return { n: (body.match(/^(vmess|vless|trojan|ss|ssr|hysteria2?|hy2|tuic|wireguard|socks5?|http|https|anytls):\/\//gim) || []).length, more };
+}
+async function fetchRepo(src, env) {
+  const repo = String(src.repo || "").replace(/^https?:\/\/github\.com\//, "").replace(/\.git$|\/+$/g, "");
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repo)) throw new Error("repo \u5E94\u5199\u6210 owner/name");
+  const commits = await ghCommits(repo);
+  if (!commits.length) return [];
+  if (src.mode === "sub") {
+    const c0 = commits[0];
+    const subs = (src.subs || []).slice(0, 6);
+    let nodes = null, more = false;
+    if (subs[0]) {
+      try {
+        const r = await countNodes(subs[0][1]);
+        nodes = r.n;
+        more = r.more;
+      } catch {
+      }
+    }
+    return [{
+      title: `${src.name || repo} \xB7 \u514D\u8D39\u8282\u70B9\u8BA2\u9605`,
+      name: src.name || repo,
+      url: `https://github.com/${repo}`,
+      published_at: c0.date,
+      upsert: true,
+      summary: `\u6700\u8FD1\u66F4\u65B0\uFF1A${c0.title}`.slice(0, 200),
+      raw_text: `${c0.title} \u514D\u8D39\u8282\u70B9\u8BA2\u9605`,
+      extra: { subs, commit: c0.link, nodes, nodes_more: more || void 0 }
+    }];
+  }
+  const key = "gh:" + repo;
+  const last = await getMeta(env, key);
+  const at = last ? commits.findIndex((c) => c.sha === last) : -1;
+  let fresh = !last ? commits.slice(0, 2) : at < 0 ? commits.slice(0, 3) : commits.slice(0, at);
+  fresh = fresh.slice(0, Math.min(5, Number(src.max_commits) || 3));
+  let pathRe = /\.(md|markdown)$/i;
+  if (src.path) {
+    try {
+      pathRe = new RegExp(src.path, "i");
+    } catch {
+    }
+  }
+  const out = [];
+  for (const c of fresh) {
+    const added = addedLines(await ghPatch(repo, c.sha), pathRe);
+    if (added.length > 400) continue;
+    for (const l of added) {
+      const it = lineToItem(l);
+      if (it) out.push({ ...it, published_at: c.date, raw_text: `${it.raw_text}\uFF08\u6765\u81EA ${repo} \u7684\u63D0\u4EA4\uFF1A${c.title}\uFF09`.slice(0, 900) });
+      if (out.length >= 40) break;
+    }
+  }
+  await setMeta(env, key, commits[0].sha);
+  return out;
 }
 async function fetchSource(src, cutoff, env) {
   const q = encodeURIComponent(src.query || "");
@@ -1350,6 +2017,8 @@ async function fetchSource(src, cutoff, env) {
         signup: "\u90AE\u7BB1 / GitHub / Google"
       }));
     }
+    case "repo":
+      return fetchRepo(src, env);
     case "telegram": {
       const ch = String(src.channel || "").replace(/^@/, "").trim();
       if (!/^\w{4,}$/.test(ch)) throw new Error("\u7F3A\u5C11 channel");
@@ -1379,25 +2048,38 @@ function allowedOf(item, cats) {
   return own.length ? cats.filter((k) => own.includes(k)) : cats;
 }
 function heuristicJudge(item, s) {
-  const text = `${item.title} ${item.raw_text || ""}`.toLowerCase();
+  const text = stripNegated(`${item.title} ${item.raw_text || ""}`).toLowerCase();
   const hard = s.simple_signup_only !== "false" && lines(s.hard_signup_keywords).find((w) => text.includes(w));
   const obtain = guessObtain(item.title, item.raw_text || "");
   const allowed = lines(s.allowed_obtain);
   const allow = allowedOf(item, enabledCats(s));
   const category = guessCategory(text, allow) || (item.hint && allow.includes(item.hint) ? item.hint : null) || "other";
+  if (isInfoCat(category) && item.hint === category) return { status: "approved", obtain: null, category, name: null, summary: firstSentence(item.raw_text, 90), signup: null, score: null, judged_by: "keywords" };
+  const asking = /^(求|请问|问下|问一下|有没有|求助|求推荐)|[？?]\s*$/.test(String(item.title || "").trim());
   return {
-    // 没有 AI 时更保守：标题里要有“免费 / 白嫖 / free”之类的字样
-    status: hard || !allowed.includes(obtain) || category === "other" || !lines(s.free_keywords).some((w) => kwHit(String(item.title).toLowerCase(), w)) ? "rejected" : "approved",
+    // 没有 AI 时更保守：标题里要有“免费 / 白嫖 / free”之类的字样；提问帖不收
+    status: asking || hard || !(allowed.includes(obtain) || category === "aideal" && obtain === "trial") || category === "other" || !lines(s.free_keywords).some((w) => kwHit(String(item.title).toLowerCase(), w)) ? "rejected" : "approved",
     obtain,
     category,
     name: null,
-    summary: (item.raw_text || "").slice(0, 120),
+    summary: firstSentence(item.raw_text, 100),
     signup: hard ? `\u7591\u4F3C\u9700\u8981\uFF1A${hard}` : allowed.includes(obtain) ? null : `\u83B7\u53D6\u65B9\u5F0F\uFF1A${obtain}`,
     score: null,
     judged_by: "keywords"
   };
 }
-var ZERO_STATS = () => ({ merged: 0, fetched: 0, blocked: 0, block_rule: 0, noise: 0, dup_title: 0, non_zh: 0, hard_signup: 0, too_old: 0, undated: 0, off_topic: 0, candidates: 0, new: 0, trusted: 0, judged: 0, approved: 0, rejected: 0, expired_removed: 0, errors: 0 });
+var DOUBT = /抽奖|开奖|转发|付费|充值|折扣|打折|优惠码|优惠券|半价|首月|首年|低至|特价|促销|秒杀|续费|年付|月付|季付|限量|名额|内测资格|邀请码|aff|推广|广告|招聘|求助|请问|求推荐|有没有|怎么|吗[？?]?$|[？?]$|[$¥￥]\s?\d|\d+(\.\d+)?\s*(元|美元|欧元|rmb|usd)(?![a-z])/i;
+function triage(item, s) {
+  const h = heuristicJudge(item, s);
+  if (isInfoCat(h.category) && item.hint === h.category) return { verdict: h, sure: true };
+  const title = String(item.title || "").toLowerCase();
+  const text = `${title} ${String(item.raw_text || "").slice(0, 400).toLowerCase()}`;
+  if (h.status === "approved" && h.obtain === "free" && !DOUBT.test(title) && !DOUBT.test(String(item.raw_text || "").slice(0, 200))) return { verdict: { ...h, score: 70, judged_by: "auto" }, sure: true };
+  if (h.obtain === "paid" && !lines(s.free_keywords).some((w) => kwHit(text, w))) return { verdict: { ...h, status: "rejected", judged_by: "auto" }, sure: true };
+  if (/^(求|请问|问下|有没有|求助)|[？?]\s*$/.test(String(item.title || "").trim())) return { verdict: { ...h, status: "rejected", signup: "\u63D0\u95EE\u5E16", judged_by: "auto" }, sure: true };
+  return { verdict: h, sure: false };
+}
+var ZERO_STATS = () => ({ auto: 0, cached: 0, dead: 0, watched: 0, skipped_src: 0, merged: 0, fetched: 0, blocked: 0, block_rule: 0, noise: 0, dup_title: 0, non_zh: 0, hard_signup: 0, too_old: 0, undated: 0, off_topic: 0, candidates: 0, new: 0, trusted: 0, judged: 0, approved: 0, rejected: 0, expired_removed: 0, errors: 0 });
 var aiReadyOf = (s) => s.ai_enabled !== "false" && !!(s.ai_api_key && s.ai_base_url && s.ai_model);
 function ctxOf(s, now) {
   const maxAgeDays = Math.max(1, Number(s.max_age_days) || 180);
@@ -1407,7 +2089,7 @@ function ctxOf(s, now) {
     now,
     maxAgeDays,
     cats,
-    cutoff: now - maxAgeDays * DAY,
+    cutoff: now - maxAgeDays * DAY2,
     keepUndated: s.keep_undated === "true",
     topicRe: compileWords([...topicWordsFor(cats), ...lines(s.topic_keywords)]),
     freeWords: lines(s.free_keywords),
@@ -1431,6 +2113,7 @@ function listSources(s, aiReady, log) {
   if (skipped.length) log.push(`\u2013 \u672A\u914D\u7F6E AI\uFF0C\u8DF3\u8FC7 ${skipped.length} \u4E2A\u566A\u97F3\u8F83\u5927\u7684\u6E90\uFF08${skipped.map((x) => x.name).join("\u3001")}\uFF09`);
   return sources.filter((x) => !(x.ai_only && !aiReady));
 }
+var RADAR_SKIP = /怎么选|如何选|对比|评测|常见问题|差多少|该不该|是什么|有哪些|哪个好|值得|吗[？?]?\s*$|[？?]\s*$|速率限制|限制详解|使用限制|教程|入门|#shorts|\br\/\w+|套餐\s*[|｜]|pricing|价格/i;
 async function ingest(env, c, src, items, stats, log) {
   const cats = c.cats;
   const autoCat = src.category === "auto";
@@ -1448,6 +2131,19 @@ async function ingest(env, c, src, items, stats, log) {
     log.push(`\u2013 ${src.name}: \u56FA\u5B9A\u5206\u7C7B\u4E0D\u5728\u5B83\u8D1F\u8D23\u7684\u5206\u7C7B\u91CC\uFF0C\u8DF3\u8FC7`);
     return;
   }
+  const wantTags = csv(src.tags), skipTags = csv(src.skip_tags);
+  if (wantTags.length || skipTags.length) items = items.filter((x) => {
+    const t = x.tags || [];
+    if (wantTags.length && !t.some((y) => wantTags.includes(y))) {
+      stats.off_topic++;
+      return false;
+    }
+    if (skipTags.some((y) => t.includes(y))) {
+      stats.off_topic++;
+      return false;
+    }
+    return true;
+  });
   let include = null;
   if (src.include) {
     try {
@@ -1457,10 +2153,12 @@ async function ingest(env, c, src, items, stats, log) {
     }
   }
   const candidates = /* @__PURE__ */ new Map();
-  const runFp = /* @__PURE__ */ new Set();
+  const runFp = /* @__PURE__ */ new Map();
+  if (Number(src.limit) > 0) items = items.slice().sort((a, b) => (b.published_at || 0) - (a.published_at || 0)).slice(0, Number(src.limit));
   for (const raw of items) {
     const it = { ...raw, source: raw.source || src.name || src.type, trusted: !!src.trusted, category: src.category || null, cats: own.length ? allow.join(",") : null, hint: src.hint || src.fallback || null };
     if (src.note && !it.summary) it.summary = src.note;
+    it.title = cleanTitle(it.title, it.source, it.url);
     if (autoCat) {
       const g = guessCategory(`${it.title} ${it.raw_text || ""}`.toLowerCase(), allow) || src.fallback;
       if (!g || !allow.includes(g)) {
@@ -1501,7 +2199,15 @@ ${it.raw_text || ""}`)) {
       stats.block_rule++;
       continue;
     }
+    if (src.radar && RADAR_SKIP.test(it.title)) {
+      stats.off_topic++;
+      continue;
+    }
     if (src.isSearch) {
+      if (c.s.search_strict !== "false" && !c.freeWords.some((w) => kwHit(it.title.toLowerCase(), w))) {
+        stats.off_topic++;
+        continue;
+      }
       const zh = it.lang ? it.lang.startsWith("zh") : CJK2.test(it.title);
       if (c.searchLang === "zh_only" && !zh) {
         stats.non_zh++;
@@ -1531,19 +2237,16 @@ ${it.raw_text || ""}`)) {
     const id = await hashId(url);
     const fp = titleFingerprint(it.title);
     if (candidates.has(id)) continue;
-    if (fp.length >= 8 && runFp.has(fp)) {
-      stats.dup_title++;
-      continue;
-    }
-    if (fp.length >= 8) runFp.add(fp);
     const tkey = targetKey(it.target || url);
-    const twin = [...candidates.values()].find((x) => x.tkey === tkey);
+    const twin = fp.length >= 8 && runFp.get(fp) || [...candidates.values()].find((x) => x.tkey === tkey || x.target && targetKey(x.url) === tkey);
     if (twin) {
       twin.also = mergeSources(twin.also || [], [{ n: it.source, u: url }]);
       stats.merged++;
       continue;
     }
-    candidates.set(id, { ...it, url, id, fp, tkey });
+    const cand = { ...it, url, id, fp, tkey };
+    if (fp.length >= 8) runFp.set(fp, cand);
+    candidates.set(id, cand);
   }
   stats.candidates += candidates.size;
   if (!candidates.size) return;
@@ -1562,17 +2265,33 @@ ${it.raw_text || ""}`)) {
     }
   }
   const byTarget = /* @__PURE__ */ new Map();
-  const tkeys = [...new Set([...candidates.values()].map((x) => x.tkey))];
+  const byFp = /* @__PURE__ */ new Map();
+  const tkeys = [...new Set([...candidates.values()].flatMap((x) => [x.tkey, targetKey(x.url)]))];
   for (let i = 0; i < tkeys.length; i += 90) {
     const chunk = tkeys.slice(i, i + 90);
     const { results: rows } = await env.DB.prepare(`SELECT id, target, source, url, sources FROM items WHERE target IN (${chunk.map(() => "?").join(",")})`).bind(...chunk).all();
     for (const row of rows || []) if (!byTarget.has(row.target)) byTarget.set(row.target, row);
   }
+  const fpList = [...new Set([...candidates.values()].map((x) => x.fp).filter((f) => f && f.length >= 8))];
+  for (let i = 0; i < fpList.length; i += 90) {
+    const chunk = fpList.slice(i, i + 90);
+    const { results: rows } = await env.DB.prepare(`SELECT id, fp, target, source, url, sources FROM items WHERE fp IN (${chunk.map(() => "?").join(",")})`).bind(...chunk).all();
+    for (const row of rows || []) if (!byFp.has(row.fp)) byFp.set(row.fp, row);
+  }
   const today = dayOf(c.now);
   const stmts = [];
   for (const [id, it] of candidates) {
+    if (it.upsert) {
+      stats.new += existing.has(id) ? 0 : 1;
+      stmts.push(
+        env.DB.prepare(`INSERT INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, obtain, score, judged_by, judged_at, target, extra) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', NULL, ?, ?, ?, ?, 'free', 80, 'trusted', ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET title = excluded.title, summary = excluded.summary, extra = excluded.extra, published_at = excluded.published_at, fetched_at = excluded.fetched_at, judged_at = excluded.judged_at, day = excluded.day, status = 'approved' WHERE items.published_at IS NOT excluded.published_at OR items.extra IS NOT excluded.extra`).bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || c.now, c.now, today, it.category, it.name || null, it.summary || null, c.now, it.tkey, JSON.stringify(it.extra || {})),
+        env.DB.prepare("INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)").bind(id, null, c.now)
+      );
+      continue;
+    }
     if (existing.has(id)) continue;
-    const prev = byTarget.get(it.tkey);
+    const prev = byTarget.get(it.tkey) || byTarget.get(targetKey(it.url)) || (it.fp && it.fp.length >= 8 ? byFp.get(it.fp) : null);
     if (prev && prev.id !== id) {
       let list = [];
       try {
@@ -1590,13 +2309,26 @@ ${it.raw_text || ""}`)) {
       continue;
     }
     stats.new++;
+    const blob = `${it.title}
+${it.summary || ""}
+${it.raw_text || ""}`;
+    const exp = extractDeadline(blob, it.published_at, c.now);
+    const codes = extractCodes(blob);
+    const ex0 = codes.length ? { codes } : {};
+    if (it.trusted && (it.category === "ai" || it.category === "aideal")) {
+      const txt = `${it.name || ""} ${it.title} ${it.summary || ""} ${String(it.raw_text || "").slice(0, 300)}`;
+      ex0.vendor = guessVendor(it.name || it.title) || guessVendor(txt) || void 0;
+      ex0.perk = guessPerk(txt) || void 0;
+    }
+    const extra = Object.keys(ex0).some((k) => ex0[k] !== void 0) ? JSON.stringify(ex0) : null;
     const direct = it.trusted && it.category;
+    if (direct && isInfoCat(it.category) && !it.summary) it.summary = firstSentence(it.raw_text, 90);
     if (direct) {
       stats.trusted++;
       stats.approved++;
     }
     stmts.push(
-      direct ? env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at, target, sources) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "approved", it.fp || null, today, it.category, it.name || null, it.summary || (it.raw_text || "").slice(0, 120), it.signup || null, "free", 80, "trusted", c.now, it.tkey, it.also ? JSON.stringify(it.also) : null) : env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, cats, hint, target, sources) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "pending", it.fp || null, today, it.cats || null, it.hint || null, it.tkey, it.also ? JSON.stringify(it.also) : null),
+      direct ? env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at, target, sources, expires_at, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "approved", it.fp || null, today, it.category, it.name || null, it.summary || firstSentence(it.raw_text, 100), it.signup || null, isInfoCat(it.category) ? null : "free", 80, "trusted", c.now, it.tkey, it.also ? JSON.stringify(it.also) : null, exp, extra) : env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, cats, hint, target, sources, expires_at, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "pending", it.fp || null, today, it.cats || null, it.hint || null, it.tkey, it.also ? JSON.stringify(it.also) : null, exp, extra),
       env.DB.prepare("INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)").bind(id, it.fp || null, c.now)
     );
   }
@@ -1618,8 +2350,19 @@ async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
   if (!list.length) return false;
   const updates = [];
   const applyVerdict = (it, v) => {
+    let ex = null;
+    try {
+      ex = it.extra ? JSON.parse(it.extra) : null;
+    } catch {
+    }
+    if (v.how) ex = { ...ex || {}, how: String(v.how).slice(0, 40) };
+    if (v.status === "approved" && (v.category === "ai" || v.category === "aideal")) {
+      const txt = `${v.name || ""} ${it.title} ${v.summary || ""}`;
+      ex = { ...ex || {}, vendor: String(v.vendor || guessVendor(it.title) || guessVendor(txt) || "").slice(0, 24) || void 0, perk: String(v.perk || guessPerk(txt) || "").slice(0, 8) || void 0 };
+    }
+    const exp = v.expires_at || it.expires_at || null;
     updates.push(
-      env.DB.prepare("UPDATE items SET status=?, category=?, name=?, summary=?, signup=?, score=?, obtain=?, judged_by=?, judged_at=? WHERE id=?").bind(v.status, v.category, v.name, v.summary, v.signup, v.score, v.obtain || null, v.judged_by, Date.now(), it.id)
+      env.DB.prepare("UPDATE items SET status=?, category=?, name=?, summary=?, signup=?, score=?, obtain=?, judged_by=?, judged_at=?, expires_at=?, extra=? WHERE id=?").bind(v.status, v.category, v.name, v.summary, v.signup, v.score, v.obtain || null, v.judged_by, Date.now(), exp, ex ? JSON.stringify(ex) : null, it.id)
     );
     stats.judged++;
     if (v.status === "approved") stats.approved++;
@@ -1629,13 +2372,56 @@ async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
     const minScore = Number(s.ai_min_score) || 60;
     const allowedObtain = lines(s.allowed_obtain);
     const batchSize = Math.min(20, Math.max(1, Number(s.ai_batch_size) || 12));
-    const aiItems = list.filter((it) => it.attempts < 3);
+    let aiItems = list.filter((it) => it.attempts < 3);
     for (const it of list.filter((x) => x.attempts >= 3)) applyVerdict(it, heuristicJudge(it, s));
+    if (s.ai_review !== "all" && !capOverride) {
+      const rest = [];
+      for (const it of aiItems) {
+        const t = triage(it, s);
+        if (t.sure && !String(it.source || "").startsWith("AI \u798F\u5229\u96F7\u8FBE")) {
+          applyVerdict(it, t.verdict);
+          stats.auto++;
+        } else rest.push(it);
+      }
+      aiItems = rest;
+    }
+    const useCache = s.ai_cache !== "false" && !capOverride;
+    if (useCache && aiItems.length) {
+      const keys = [...new Set(aiItems.map((it) => it.target).filter(Boolean))];
+      const hit = /* @__PURE__ */ new Map();
+      for (let i = 0; i < keys.length; i += 90) {
+        const chunk = keys.slice(i, i + 90);
+        const { results: rows } = await env.DB.prepare(`SELECT k, v FROM verdicts WHERE k IN (${chunk.map(() => "?").join(",")})`).bind(...chunk).all();
+        for (const r of rows || []) {
+          try {
+            hit.set(r.k, JSON.parse(r.v));
+          } catch {
+          }
+        }
+      }
+      if (hit.size) {
+        const rest = [];
+        for (const it of aiItems) {
+          const v = it.target && hit.get(it.target);
+          if (v) {
+            applyVerdict(it, { ...v, judged_by: "cache" });
+            stats.cached = (stats.cached || 0) + 1;
+          } else rest.push(it);
+        }
+        aiItems = rest;
+      }
+    }
+    let bad = [];
+    if (aiItems.length) {
+      const { results: rows } = await env.DB.prepare("SELECT title FROM items WHERE down >= 2 AND down > up ORDER BY judged_at DESC LIMIT 6").all().catch(() => ({ results: [] }));
+      bad = (rows || []).map((r) => r.title);
+    }
+    const cacheWrites = [];
     const batches = [];
     for (let i = 0; i < aiItems.length; i += batchSize) batches.push(aiItems.slice(i, i + batchSize));
     await Promise.all(batches.map(async (batch) => {
       try {
-        const verdicts = await judgeBatch(batch, s);
+        const verdicts = await judgeBatch(batch, s, bad);
         batch.forEach((it, idx) => {
           const v = verdicts.get(idx);
           if (!v) {
@@ -1648,8 +2434,10 @@ async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
           let category = allow.includes(v.category) ? v.category : "other";
           if (category === "other" && (!v.category || v.category === "other") && it.hint && allow.includes(it.hint)) category = it.hint;
           const signupOk = s.simple_signup_only === "false" || v.simple_signup === true;
-          const ok = v.relevant === true && signupOk && category !== "other" && score >= minScore && allowedObtain.includes(obtain);
-          applyVerdict(it, {
+          const ok = v.relevant === true && signupOk && category !== "other" && score >= minScore && (isInfoCat(category) || allowedObtain.includes(obtain) || category === "aideal" && obtain === "trial");
+          const dl = /^(20\d{2})-(\d{2})-(\d{2})$/.exec(String(v.deadline || ""));
+          const expires_at = dl ? Date.UTC(+dl[1], +dl[2] - 1, +dl[3], 15, 59, 59) : null;
+          const verdict = {
             status: ok ? "approved" : "rejected",
             category,
             name: v.name ? String(v.name).slice(0, 100) : null,
@@ -1657,8 +2445,14 @@ async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
             signup: v.signup ? String(v.signup).slice(0, 100) : null,
             score,
             obtain,
-            judged_by: `ai:${s.ai_model}`
-          });
+            judged_by: `ai:${s.ai_model}`,
+            how: v.how ? String(v.how).slice(0, 40) : null,
+            vendor: v.vendor && v.vendor !== "null" ? String(v.vendor).slice(0, 24) : null,
+            perk: v.perk && v.perk !== "null" ? String(v.perk).slice(0, 8) : null,
+            expires_at: expires_at && expires_at > Date.now() - 30 * DAY2 && expires_at < Date.now() + 400 * DAY2 ? expires_at : null
+          };
+          applyVerdict(it, verdict);
+          if (s.ai_cache !== "false" && it.target) cacheWrites.push(env.DB.prepare("INSERT INTO verdicts (k, v, at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, at = excluded.at").bind(it.target, JSON.stringify({ ...verdict, judged_by: void 0 }), Date.now()));
         });
       } catch (e) {
         stats.errors++;
@@ -1666,6 +2460,7 @@ async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
         for (const it of batch) updates.push(env.DB.prepare("UPDATE items SET attempts = attempts + 1 WHERE id=?").bind(it.id));
       }
     }));
+    updates.push(...cacheWrites);
   } else {
     for (const it of list) applyVerdict(it, heuristicJudge(it, s));
   }
@@ -1673,16 +2468,98 @@ async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
   return (pending || []).length > list.length || c.aiReady && list.length === perStep;
 }
 async function cleanupStep(env, c, stats) {
-  const keepMs = Math.max(1, Number(c.s.retention_days) || 15) * DAY;
+  const keepMs = Math.max(1, Number(c.s.retention_days) || 15) * DAY2;
   const del = await env.DB.prepare("DELETE FROM items WHERE fetched_at < ? OR (published_at IS NOT NULL AND published_at < ?)").bind(c.now - keepMs, c.cutoff).run();
   stats.expired_removed += del.meta?.changes || 0;
   await env.DB.batch([
     env.DB.prepare("DELETE FROM seen WHERE seen_at < ?").bind(Math.min(c.cutoff, c.now - keepMs)),
-    env.DB.prepare("DELETE FROM jobs WHERE run_id IN (SELECT id FROM runs WHERE started_at < ?)").bind(c.now - 2 * DAY),
+    env.DB.prepare("DELETE FROM verdicts WHERE at < ?").bind(c.cutoff),
+    env.DB.prepare("DELETE FROM votes WHERE at < ?").bind(c.now - keepMs - 7 * DAY2),
+    env.DB.prepare("DELETE FROM src_health WHERE day < ?").bind(dayOf(c.now - 30 * DAY2)),
+    env.DB.prepare("DELETE FROM rate WHERE reset < ?").bind(c.now),
+    env.DB.prepare("DELETE FROM jobs WHERE run_id IN (SELECT id FROM runs WHERE started_at < ?)").bind(c.now - 2 * DAY2),
     env.DB.prepare("DELETE FROM runs WHERE started_at < ?").bind(c.now - keepMs)
   ]);
 }
-var STEP_LABEL = { source: "\u6293\u53D6", search: "\u641C\u7D22", judge: "\u5224\u5B9A", cleanup: "\u6E05\u7406", mail: "\u63A8\u9001" };
+var DEAD_RE = /活动已结束|活动结束|已结束|已失效|已下架|已领完|已抢光|已售罄|已停止|已关闭注册|停止注册|页面不存在|帖子不存在|主题不存在|内容已删除|已被删除|404 not found|page not found|has ended|giveaway ended|offer expired|no longer available|expired/i;
+var SKIP_CHECK = /(^|\.)(t\.me|telegram\.me|github\.com|raw\.githubusercontent\.com|store\.epicgames\.com|reddit\.com|x\.com|twitter\.com)$/i;
+async function checkLink(url) {
+  let host = "";
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return null;
+  }
+  if (SKIP_CHECK.test(host)) return null;
+  try {
+    const r = await fetch(url, { redirect: "follow", headers: { "User-Agent": UA, Accept: "text/html,*/*" }, signal: AbortSignal.timeout(1e4) });
+    if (r.status === 404 || r.status === 410) {
+      r.body?.cancel().catch(() => {
+      });
+      return 1;
+    }
+    if (!r.ok || !/html/i.test(r.headers.get("content-type") || "")) {
+      r.body?.cancel().catch(() => {
+      });
+      return null;
+    }
+    const reader = r.body.getReader();
+    let html2 = "", size = 0;
+    while (size < 3e4) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      html2 += new TextDecoder().decode(value, { stream: true });
+    }
+    reader.cancel().catch(() => {
+    });
+    const pick2 = [/<title[^>]*>([\s\S]{0,300}?)<\/title>/i, /<meta[^>]+(?:name|property)=["'](?:description|og:title|og:description)["'][^>]+content=["']([^"']{0,300})/i, /<h1[^>]*>([\s\S]{0,300}?)<\/h1>/i].map((re) => (re.exec(html2) || [])[1] || "").join(" ");
+    return DEAD_RE.test(cleanText(pick2)) ? 1 : 0;
+  } catch {
+    return null;
+  }
+}
+async function checkStep(env, c, stats, log) {
+  if (c.s.link_check === "false") return false;
+  const n = Math.min(30, Math.max(1, Number(c.s.link_check_per_run) || 12));
+  const info = Object.keys(CAT_MAP).filter((k) => isInfoCat(k));
+  const { results: rows } = await env.DB.prepare(
+    `SELECT id, url FROM items WHERE status = 'approved' AND (checked_at IS NULL OR checked_at < ?) AND (category IS NULL OR category NOT IN (${info.map(() => "?").join(",")})) ORDER BY checked_at IS NOT NULL, checked_at, published_at DESC LIMIT ?`
+  ).bind(c.now - 3 * DAY2, ...info, n).all();
+  if (!rows?.length) return false;
+  const res = await Promise.all(rows.map((r) => checkLink(r.url)));
+  const now = Date.now();
+  await env.DB.batch(rows.map((r, i) => env.DB.prepare("UPDATE items SET checked_at = ?, dead = CASE WHEN ? IS NULL THEN dead ELSE ? END WHERE id = ?").bind(now, res[i], res[i] ?? 0, r.id)));
+  const dead = res.filter((x) => x === 1).length;
+  stats.dead += dead;
+  log.push(`\u2713 \u5931\u6548\u68C0\u6D4B\uFF1A\u62BD\u67E5 ${rows.length} \u6761\uFF0C${dead} \u6761\u7591\u4F3C\u5931\u6548\uFF0C${res.filter((x) => x === null).length} \u6761\u6253\u4E0D\u5F00\uFF08\u4E0D\u8BA1\u5165\uFF09`);
+  return false;
+}
+async function watchStep(env, c, stats, log) {
+  const s = c.s;
+  const kws = lines(s.watch_keywords);
+  if (s.watch_enabled === "false" || !kws.length) return false;
+  const since = Number(await getMeta(env, "watch_last")) || c.now - DAY2;
+  const now = Date.now();
+  const { results: rows } = await env.DB.prepare("SELECT id, title, name, summary, url, category, obtain, expires_at FROM items WHERE status = 'approved' AND judged_at > ? ORDER BY judged_at DESC LIMIT 300").bind(since).all();
+  await setMeta(env, "watch_last", now);
+  const hits = [];
+  for (const r of rows || []) {
+    const t = `${r.name || ""} ${r.title} ${r.summary || ""}`.toLowerCase();
+    const k = kws.find((w) => kwHit(t, w));
+    if (k) hits.push({ ...r, summary: `\u3010${k}\u3011${r.summary || ""}` });
+  }
+  if (!hits.length) return false;
+  stats.watched += hits.length;
+  try {
+    const r = await deliver(env, s, { kind: "alert", title: `\u5173\u952E\u8BCD\u63D0\u9192\uFF1A${[...new Set(hits.map((h) => /^【([^】]+)】/.exec(h.summary)[1]))].join("\u3001")}\uFF08${hits.length} \u6761\uFF09`, items: hits.slice(0, 20) });
+    log.push(r.skipped ? `\u2013 \u5173\u952E\u8BCD\u63D0\u9192\uFF1A${r.skipped}` : `\u2713 \u5173\u952E\u8BCD\u63D0\u9192\uFF1A${hits.length} \u6761 \u2192 ${r.providers.join(" + ")}${r.errors.length ? "\n\u2717 " + r.errors.join("\n\u2717 ") : ""}`);
+  } catch (e) {
+    log.push(`\u2717 \u5173\u952E\u8BCD\u63D0\u9192\u53D1\u9001\u5931\u8D25\uFF1A${e.message}`);
+  }
+  return false;
+}
+var STEP_LABEL = { source: "\u6293\u53D6", search: "\u641C\u7D22", radar: "AI \u798F\u5229\u96F7\u8FBE", judge: "\u5224\u5B9A", cleanup: "\u6E05\u7406", mail: "\u63A8\u9001", check: "\u5931\u6548\u68C0\u6D4B", watch: "\u5173\u952E\u8BCD\u63D0\u9192" };
 async function planRun(env, trigger = "cron", opts = {}) {
   const now = Date.now();
   const active = await env.DB.prepare("SELECT id, started_at FROM runs WHERE finished_at IS NULL ORDER BY id DESC LIMIT 1").first();
@@ -1691,7 +2568,16 @@ async function planRun(env, trigger = "cron", opts = {}) {
   const s = await getSettings(env);
   const log = [];
   const aiReady = aiReadyOf(s);
-  const sources = listSources(s, aiReady, log);
+  let sources = listSources(s, aiReady, log);
+  if (trigger !== "manual" && sources.some((x) => Number(x.every) > 0)) {
+    const { results: rows } = await env.DB.prepare("SELECT name, MAX(last_at) AS t FROM src_health GROUP BY name").all();
+    const last = Object.fromEntries((rows || []).map((r2) => [r2.name, r2.t || 0]));
+    const skip = sources.filter((x) => Number(x.every) > 0 && now - (last[x.name] || 0) < Number(x.every) * 36e5 - 30 * 6e4);
+    if (skip.length) {
+      log.push(`\u2013 \u9519\u5CF0\uFF1A${skip.length} \u4E2A\u6E90\u8FD8\u6CA1\u5230\u6293\u53D6\u95F4\u9694\uFF0C\u8FD9\u4E00\u8F6E\u8DF3\u8FC7`);
+      sources = sources.filter((x) => !skip.includes(x));
+    }
+  }
   const steps = opts.only === "judge" ? [] : sources.map((src) => ["source", { src }]);
   if (opts.only === "judge") {
     steps.push(["judge", { cap: opts.cap || 0 }]);
@@ -1700,7 +2586,9 @@ async function planRun(env, trigger = "cron", opts = {}) {
     const perBackend = Math.max(1, Number(s.search_max_queries) || 8);
     const group = Math.max(1, Math.min(2, Math.floor(40 / perBackend)));
     for (let i = 0; i < ready.length; i += group) steps.push(["search", { engines: ready.slice(i, i + group) }]);
-    steps.push(["judge", {}], ["cleanup", {}]);
+    const cats = enabledCats(s);
+    if (s.aifree_radar !== "false" && ready.length && (cats.includes("ai") || cats.includes("aideal"))) steps.push(["radar", { engines: ready.slice(0, 2) }]);
+    steps.push(["judge", {}], ["cleanup", {}], ["check", {}], ["watch", {}]);
   }
   if (!aiReady) log.push("\u672A\u914D\u7F6E AI\uFF0C\u4F7F\u7528\u5173\u952E\u8BCD\u5224\u5B9A");
   const r = await env.DB.prepare("INSERT INTO runs (trigger, started_at, finished_at, stats, log) VALUES (?, ?, NULL, ?, ?) RETURNING id").bind(trigger, now, JSON.stringify(ZERO_STATS()), log.join("\n")).first();
@@ -1714,13 +2602,17 @@ async function runJob(env, job, c, stats, log, runStats) {
   switch (job.kind) {
     case "source": {
       const src = p.src;
+      const day = dayOf(Date.now());
       try {
         const items = await fetchSource(src, c.cutoff, env);
         log.push(`\u2713 ${src.name}: ${items.length} \u6761`);
         await ingest(env, c, src, items, stats, log);
+        await env.DB.prepare("INSERT INTO src_health (name, day, fetched, added, errors, last_at) VALUES (?, ?, ?, ?, 0, ?) ON CONFLICT(name, day) DO UPDATE SET fetched = fetched + excluded.fetched, added = added + excluded.added, last_at = excluded.last_at").bind(src.name || src.type, day, items.length, stats.new, Date.now()).run();
       } catch (e) {
         stats.errors++;
         log.push(`\u2717 ${src.name}: ${e.message}`);
+        await env.DB.prepare("INSERT INTO src_health (name, day, errors, last_err) VALUES (?, ?, 1, ?) ON CONFLICT(name, day) DO UPDATE SET errors = errors + 1, last_err = excluded.last_err").bind(src.name || src.type, day, String(e.message).slice(0, 200)).run().catch(() => {
+        });
       }
       return false;
     }
@@ -1744,11 +2636,36 @@ async function runJob(env, job, c, stats, log, runStats) {
       }
       return false;
     }
+    case "radar": {
+      const round = Number(await getMeta(env, "radar_round")) || 0;
+      await setMeta(env, "radar_round", round + 1);
+      const queries = radarQueries(c.s, round);
+      const days = Math.min(c.maxAgeDays, Math.max(1, Number(c.s.aifree_days) || 30));
+      const allow = ["ai", "aideal"].filter((k) => c.cats.includes(k));
+      const results = await Promise.all((p.engines || []).map((id) => runBackend({ ...c.s, search_queries: queries.join("\n"), search_lang: "any", search_max_queries: String(queries.length), [`${id}_cats`]: allow.join(",") }, id, days).then((r) => ({ id, r }), (e) => ({ id, e }))));
+      for (const { id, r, e } of results) {
+        const name = "AI \u798F\u5229\u96F7\u8FBE \xB7 " + (BACKEND_MAP[id]?.name || id);
+        if (e) {
+          stats.errors++;
+          log.push(`\u2717 ${name}: ${e.message}`);
+          continue;
+        }
+        for (const x of r.errors) log.push(`! ${name} \u90E8\u5206\u67E5\u8BE2\u5931\u8D25\uFF1A${x}`);
+        log.push(`\u2713 ${name}: ${r.items.length} \u6761\uFF08${queries.join(" / ")}\uFF09`);
+        for (const it of r.items) it.source = name;
+        await ingest(env, c, { name, isSearch: true, radar: true, cats: allow, hint: "aideal" }, r.items, stats, log);
+      }
+      return false;
+    }
     case "judge":
-      return judgeStep(env, c, stats, log, runStats.judged || 0, p.cap);
+      return judgeStep(env, c, stats, log, Math.max(0, (runStats.judged || 0) - (runStats.auto || 0) - (runStats.cached || 0)), p.cap);
     case "cleanup":
       await cleanupStep(env, c, stats);
       return false;
+    case "check":
+      return checkStep(env, c, stats, log);
+    case "watch":
+      return watchStep(env, c, stats, log);
     case "mail": {
       try {
         const r = await sendDigest(env);
@@ -1785,7 +2702,7 @@ async function tick(env, maxSteps = 1) {
       break;
     }
     const pl = JSON.parse(job.payload || "{}");
-    current = STEP_LABEL[job.kind] + (job.kind === "source" ? "\uFF1A" + (pl.src?.name || "") : job.kind === "search" ? "\uFF1A" + (pl.engines || [pl.engine]).map((id) => BACKEND_MAP[id]?.name || id).join(" + ") : "");
+    current = STEP_LABEL[job.kind] + (job.kind === "source" ? "\uFF1A" + (pl.src?.name || "") : job.kind === "search" || job.kind === "radar" ? "\uFF1A" + (pl.engines || [pl.engine]).map((id) => BACKEND_MAP[id]?.name || id).join(" + ") : "");
     const stats = ZERO_STATS();
     let again = false;
     try {
@@ -1833,14 +2750,16 @@ var reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function sourceKey(x) {
   const t = x.type || "rss";
   if (t === "rss") {
+    const tg = x.tags || x.skip_tags ? "#" + [].concat(x.tags || []).join(",") + "!" + [].concat(x.skip_tags || []).join(",") : "";
     try {
       const u = new URL(x.url);
-      return "rss:" + u.hostname.replace(/^www\./, "").toLowerCase() + u.pathname.replace(/\/+$/, "") + u.search;
+      return "rss:" + u.hostname.replace(/^www\./, "").toLowerCase() + u.pathname.replace(/\/+$/, "") + u.search + tg;
     } catch {
-      return "rss:" + x.url;
+      return "rss:" + x.url + tg;
     }
   }
   if (t === "v2ex") return "v2ex:" + (x.node || "free");
+  if (t === "repo") return "repo:" + String(x.repo || "").toLowerCase();
   if (t === "telegram") return "tg:" + String(x.channel || "").toLowerCase();
   if (t === "gamerpower") return "gamerpower:" + (x.kind || "game");
   return t + ":" + String(x.query || "").toLowerCase();
@@ -2028,12 +2947,12 @@ var ago = (t) => {
   return d <= 0 ? "\u4ECA\u5929\u66F4\u65B0" : d + " \u5929\u524D\u66F4\u65B0";
 };
 async function probeOne(raw) {
-  const line = raw.trim();
-  if (/^\{/.test(line)) {
-    const x = JSON.parse(line);
+  const line2 = raw.trim();
+  if (/^\{/.test(line2)) {
+    const x = JSON.parse(line2);
     return { src: { enabled: true, ...x }, note: "JSON" };
   }
-  const tg = /^(?:https?:\/\/)?t\.me\/(?:s\/)?([A-Za-z0-9_]{4,})/.exec(line) || /^@([A-Za-z0-9_]{4,})$/.exec(line);
+  const tg = /^(?:https?:\/\/)?t\.me\/(?:s\/)?([A-Za-z0-9_]{4,})/.exec(line2) || /^@([A-Za-z0-9_]{4,})$/.exec(line2);
   if (tg) {
     const { text } = await getHead(`https://t.me/s/${tg[1]}`, 3e5);
     const n = (text.match(/tgme_widget_message_text/g) || []).length;
@@ -2043,8 +2962,21 @@ async function probeOne(raw) {
     const dates = [...text.matchAll(/datetime="([^"]+)"/g)].map((m) => Date.parse(m[1])).filter(Boolean);
     return { src: { name: `TG \xB7 ${title}`, type: "telegram", channel: tg[1], enabled: true }, zh: texts.filter((t) => CJK3.test(t)).length >= texts.length / 2, count: n, latest: dates.length ? Math.max(...dates) : null };
   }
-  if (!/^https?:\/\//.test(line)) throw new Error("\u4E0D\u662F\u7F51\u5740\u3001t.me \u94FE\u63A5\u6216 @\u9891\u9053");
-  const page = await getHead(line);
+  const gh = /^(?:https?:\/\/)?github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/.*)?$/i.exec(line2);
+  if (gh && !/^(orgs|topics|search|settings|marketplace)\//.test(gh[1])) {
+    const commits = await ghCommits(gh[1]);
+    if (!commits.length) throw new Error("\u4ED3\u5E93\u6CA1\u6709\u516C\u5F00\u63D0\u4EA4\u8BB0\u5F55");
+    const subLike = commits.slice(0, 5).filter((c) => /节点|订阅|node|sub|proxy|v2ray|clash/i.test(c.title)).length >= 3;
+    return {
+      src: subLike ? { name: gh[1], type: "repo", repo: gh[1], mode: "sub", category: "proxy", trusted: true, subs: [], enabled: true } : { name: `GitHub \xB7 ${gh[1]}`, type: "repo", repo: gh[1], mode: "diff", enabled: true },
+      zh: commits.some((c) => CJK3.test(c.title)),
+      count: commits.length,
+      latest: commits[0].date,
+      sample: commits.slice(0, 3).map((c) => c.title.slice(0, 40))
+    };
+  }
+  if (!/^https?:\/\//.test(line2)) throw new Error("\u4E0D\u662F\u7F51\u5740\u3001t.me \u94FE\u63A5\u3001GitHub \u4ED3\u5E93\u6216 @\u9891\u9053");
+  const page = await getHead(line2);
   let info = feedInfo(page.text), feed = page.url;
   if (!info) {
     const alts = [...page.text.matchAll(/<link[^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]*>/gi)].map((m) => (/href=["']([^"']+)["']/.exec(m[0]) || [])[1]).filter(Boolean).filter((h2) => !/comments/.test(h2));
@@ -2107,12 +3039,12 @@ var admin_default = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>\u7BA1\u7406 \xB7 \u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</title>
 <meta name="theme-color" content="#f7f7fb" />
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%234f46e5'/><stop offset='1' stop-color='%23312e81'/></linearGradient></defs><rect width='32' height='32' rx='9' fill='url(%23g)'/><circle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2' opacity='.4'/><circle cx='16' cy='16' r='4' fill='%23fff'/></svg>" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%234f46e5'/><circle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2' opacity='.5'/><circle cx='16' cy='16' r='4' fill='%23fff'/></svg>" />
 <style>
   :root {
     --bg:#f7f7fb; --rail:#f2f2f8; --surface:#fff; --hover:#f6f6fb; --muted:#f1f1f7; --line:#e7e7ef; --line-2:#d6d7e2;
     --ink:#14151c; --ink-2:#3a3d4a; --ink-3:#5f6372; --ink-4:#8a8e9c;
-    --brand:#14151c; --accent:#4f46e5; --accent-2:#312e81; --accent-bg:#eef0ff; --accent-line:#c9cdfb;
+    --brand:#14151c; --accent:#4f46e5; --accent-2:#4338ca; --accent-bg:#eef0ff; --accent-line:#c7cbfb;
     --deal:#047857; --deal-bg:#e8f8f0; --cond:#9a5b0b; --cond-bg:#fdf3e1; --alert:#dc2626; --alert-bg:#fef2f2; --warn:#b45309; --warn-bg:#fff7e6;
     --shadow:0 1px 2px rgba(20,21,28,.04), 0 6px 20px rgba(20,21,28,.06);
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -2131,7 +3063,7 @@ var admin_default = `<!doctype html>
   .brand { display:flex; align-items:center; gap:11px; padding:0 6px 20px; color:var(--ink); }
   .brand:hover { text-decoration:none; }
   .brand:hover b { color:var(--accent); }
-  .logo { width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,#6366f1,#312e81); display:grid; place-items:center; flex:none; box-shadow:0 4px 12px rgba(79,70,229,.28); }
+  .logo { width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,#6366f1,#3730a3); display:grid; place-items:center; flex:none; box-shadow:0 4px 12px rgba(79,70,229,.25); }
   .logo i { width:9px; height:9px; border-radius:50%; background:#fff; box-shadow:0 0 0 5px rgba(255,255,255,.25); }
   .brand b { display:block; font-size:14.5px; font-weight:700; transition:color .12s; }
   .brand small { display:block; font-size:12px; color:var(--ink-4); }
@@ -2263,6 +3195,15 @@ var admin_default = `<!doctype html>
   .tag.zh { background:var(--accent-bg); color:var(--accent-2); }
   .tag.on { background:var(--deal-bg); color:var(--deal); }
   .tag.off { background:var(--muted); color:var(--ink-4); }
+  .tag.bad { background:var(--alert-bg); color:var(--alert); }
+  .tag.warn { background:var(--warn-bg); color:var(--warn); }
+  .shealth { font-size:11.5px; color:var(--ink-4); white-space:nowrap; }
+  .shealth.bad { color:var(--alert); }
+  .pushrow { display:grid; grid-template-columns:150px minmax(0,1fr) auto; gap:10px; align-items:center; padding:10px 0; border-top:1px solid var(--line); }
+  .pushrow:first-child { border-top:none; padding-top:0; }
+  .pushrow .nm { font-weight:600; font-size:13.5px; display:flex; flex-direction:column; gap:4px; }
+  .pushrow .in { display:grid; gap:6px; }
+  @media (max-width:760px) { .pushrow { grid-template-columns:1fr; } }
   .chk { display:inline-flex; align-items:center; gap:7px; margin:4px 16px 4px 0; font-size:13.5px; color:var(--ink-2); cursor:pointer; }
   .chk input { width:16px; height:16px; accent-color:var(--accent); }
   .callout { background:var(--accent-bg); border:1px solid var(--accent-line); color:var(--accent-2); border-radius:10px; padding:10px 14px; font-size:13px; line-height:1.65; }
@@ -2280,6 +3221,11 @@ var admin_default = `<!doctype html>
   .cat .ck { position:absolute; right:10px; top:11px; width:18px; height:18px; border-radius:6px; border:1.5px solid var(--line-2); display:grid; place-items:center; font-size:11px; color:transparent; transition:.12s; }
   .cat:has(input:checked) { border-color:var(--accent-line); background:var(--accent-bg); }
   .cat:has(input:checked) .ck { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .cgrps { display:flex; flex-direction:column; gap:14px; }
+  .cgh { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .cgh b { font-size:13.5px; }
+  .cgh .btn { margin-left:auto; }
+  .cgrp.off .cats { opacity:.7; }
   .cats.mini { grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); }
   .cats.mini .cat { padding:8px 10px; }
   .cats.mini .cat .ic { margin-top:5px; }
@@ -2436,7 +3382,7 @@ var admin_default = `<!doctype html>
         <div class="section">
           <header><h2>\u6536\u96C6\u54EA\u4E9B\u5206\u7C7B</h2><span class="hint" id="catCount"></span></header>
           <div class="body">
-            <div class="cats" data-csv="enabled_categories" id="catBox"></div>
+            <div class="cgrps" data-csv="enabled_categories" id="catBox"></div>
             <div class="row">
               <button class="btn sm" onclick="catAll('#catBox', true)">\u5168\u9009</button>
               <button class="btn sm" onclick="catAll('#catBox', false)">\u5168\u4E0D\u9009</button>
@@ -2469,6 +3415,34 @@ var admin_default = `<!doctype html>
               <div><label class="f">\u53EA\u8981\u6700\u8FD1\u591A\u5C11\u5929\u53D1\u5E03\u7684</label><input type="number" data-key="max_age_days" min="1" /></div>
               <div><label class="f">\u6570\u636E\u4FDD\u7559\u5929\u6570\uFF08\u5230\u671F\u81EA\u52A8\u6E05\u7406\uFF09</label><input type="number" data-key="retention_days" min="1" max="365" /></div>
             </div>
+            <div class="grid2">
+              <div><label class="f">\u53D1\u5E03\u8D85\u8FC7\u591A\u5C11\u5929\u7B97\u300C\u8F83\u65E9\u53D1\u5E03\u300D</label><input type="number" data-key="fresh_days" min="1" max="365" /></div>
+              <div class="hint" style="align-self:end;padding-bottom:8px">\u8D44\u6E90\u9875\u6309\u53D1\u5E03\u65F6\u95F4\u6392\u5E8F\uFF0C\u8D85\u8FC7\u8FD9\u4E2A\u5929\u6570\u7684\u5355\u72EC\u6298\u53E0\u5728\u6700\u540E\uFF1B\u90AE\u4EF6\u91CC\u4E5F\u5355\u72EC\u6210\u7EC4\u3002</div>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>\u8D28\u91CF\u63A7\u5236</h2></header>
+          <div class="body">
+            <div class="row" style="gap:22px">
+              <label class="sw"><input type="checkbox" data-key="link_check" />\u5931\u6548\u68C0\u6D4B</label>
+              <label class="sw"><input type="checkbox" data-key="search_strict" />\u641C\u7D22\u7ED3\u679C\u6807\u9898\u5FC5\u987B\u5199\u660E\u514D\u8D39</label>
+            </div>
+            <div class="grid3">
+              <div><label class="f">\u6BCF\u6B21\u6293\u53D6\u540E\u62BD\u67E5\u51E0\u6761\u94FE\u63A5</label><input type="number" data-key="link_check_per_run" min="1" max="30" /></div>
+              <div><label class="f">\u300C\u4E0D\u503C\u300D\u6BD4\u300C\u503C\u300D\u591A\u51E0\u7968\u81EA\u52A8\u9690\u85CF\uFF080 = \u4E0D\u9690\u85CF\uFF09</label><input type="number" data-key="vote_hide" min="0" max="100" /></div>
+              <div class="hint" style="align-self:end;padding-bottom:8px">\u62BD\u67E5\u6253\u4E0D\u5F00\uFF08404\uFF09\u6216\u6807\u9898\u5199\u7740\u5DF2\u7ED3\u675F / \u5DF2\u5931\u6548\u7684\uFF0C\u6807\u4E3A\u300C\u53EF\u80FD\u5931\u6548\u300D\u6C89\u5230\u6700\u540E\u3002</div>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>\u8D44\u6E90\u9875\u677F\u5757</h2></header>
+          <div class="body">
+            <div class="grid2">
+              <div><label class="f">\u7B7E\u5230\u6E05\u5355\uFF08\u6BCF\u884C\uFF1A\u540D\u79F0 | \u5730\u5740 | \u5907\u6CE8\uFF09</label><textarea data-key="checkin_sites" style="min-height:110px" placeholder="\u67D0\u67D0\u516C\u76CA\u7AD9 | https://example.com | \u6BCF\u5929\u7B7E\u5230\u9001 $1"></textarea></div>
+              <div><label class="f">\u5B66\u751F / \u5F00\u53D1\u8005\u4E13\u533A\u8FFD\u52A0\uFF08\u6BCF\u884C\uFF1A\u540D\u79F0 | \u5730\u5740 | \u8BF4\u660E | \u5B66\u751F \u6216 \u5F00\u53D1\u8005\uFF09</label><textarea data-key="perks_extra" style="min-height:110px" placeholder="\u963F\u91CC\u4E91\u9AD8\u6821\u8BA1\u5212 | https://\u2026 | \u5B66\u751F\u8BA4\u8BC1\u9001\u4E91\u670D\u52A1\u5668 | \u5B66\u751F"></textarea></div>
+            </div>
+            <div class="hint">\u300C\u7B7E\u5230\u300D\u9875\u9664\u4E86\u8FD9\u4EFD\u6E05\u5355\uFF0C\u8FD8\u4F1A\u81EA\u52A8\u5217\u51FA\u6700\u8FD1\u6536\u5F55\u7684\u7B7E\u5230\u7C7B\u8D44\u6E90\uFF1B\u8BBF\u5BA2\u53EF\u4EE5\u5728\u9875\u9762\u4E0A\u52FE\u9009\u4ECA\u5929\u7B7E\u8FC7\u7684\uFF0C\u8BB0\u5728\u81EA\u5DF1\u7684\u6D4F\u89C8\u5668\u91CC\u3002\u4E13\u533A\u5DF2\u5185\u7F6E GitHub \u5B66\u751F\u5305\u3001JetBrains\u3001Cloudflare\u3001Oracle \u7B49\u957F\u671F\u6743\u76CA\u3002</div>
           </div>
         </div>
         <div class="section">
@@ -2501,7 +3475,7 @@ var admin_default = `<!doctype html>
         <div class="section">
           <header><h2>\u6570\u636E\u6E90</h2><span class="hint" id="srcCount"></span><span class="sp"></span><button class="btn sm" onclick="openSync(this)" title="\u4ECE\u5185\u7F6E\u63A8\u8350\u548C freebie-radar \u7B49\u5730\u5740\u62C9\u53D6\u65B0\u6E90">\u21BB \u66F4\u65B0\u6E90</button><button class="btn sm" onclick="openDiscover()" title="\u7528\u5DF2\u5F00\u542F\u7684\u641C\u7D22\u540E\u7AEF\u627E\u65B0\u7684\u8BA2\u9605\u6E90">\u2315 \u53D1\u73B0\u65B0\u6E90</button><button class="btn sm" onclick="openBatch()" title="\u4E00\u6B21\u7C98\u8D34\u591A\u4E2A\u7F51\u5740 / t.me \u94FE\u63A5 / @\u9891\u9053">\uFF0B \u6279\u91CF\u6DFB\u52A0</button></header>
           <div class="body" style="padding-top:12px">
-            <div class="srcbar"><input type="text" id="srcQ" placeholder="\u641C\u7D22\u6E90\u540D\u79F0 / \u5730\u5740" oninput="renderSources()" /><select id="srcF" onchange="renderSources()"><option value="">\u5168\u90E8</option><option value="on">\u5DF2\u542F\u7528</option><option value="off">\u5DF2\u505C\u7528</option><option value="limited">\u9650\u5B9A\u4E86\u5206\u7C7B</option></select></div>
+            <div class="srcbar"><input type="text" id="srcQ" placeholder="\u641C\u7D22\u6E90\u540D\u79F0 / \u5730\u5740" oninput="renderSources()" /><select id="srcF" onchange="renderSources()"><option value="">\u5168\u90E8</option><option value="on">\u5DF2\u542F\u7528</option><option value="off">\u5DF2\u505C\u7528</option><option value="limited">\u9650\u5B9A\u4E86\u5206\u7C7B</option><option value="bad">\u8FD1 7 \u5929\u6709\u95EE\u9898</option></select><button class="btn sm" id="offBad" onclick="disableBad()" style="display:none">\u505C\u7528\u6709\u95EE\u9898\u7684\u6E90</button></div>
             <div class="srclist" id="srcList"></div>
             <div class="hint">\u70B9\u300C\u5206\u7C7B\u300D\u9650\u5B9A\u8FD9\u4E2A\u6E90\u53EA\u6536\u54EA\u4E9B\u5206\u7C7B\uFF0C\u5176\u5B83\u5206\u7C7B\u7684\u5185\u5BB9\u76F4\u63A5\u4E22\u5F03\uFF1B\u6CA1\u8BBE\u7F6E\u5C31\u8DDF\u968F\u4E0A\u9762\u52FE\u9009\u7684\u5206\u7C7B\u3002\u300C\u9ED8\u8BA4\u5206\u7C7B\u300D\u7528\u4E8E\u5173\u952E\u8BCD\u5F52\u4E0D\u4E86\u7C7B\u7684\u65F6\u5019\uFF08\u6BD4\u5982\u4E3B\u673A\u535A\u5BA2\u9ED8\u8BA4\u5F52\u5230\u4E3B\u673A / VPS\uFF09\u3002\u6293\u5230\u7684\u5185\u5BB9\u7167\u5E38\u7ECF\u8FC7\u65F6\u95F4\u3001\u4E2D\u6587\u3001\u566A\u97F3\u3001\u5C4F\u853D\u89C4\u5219\u3001\u5173\u952E\u8BCD\u548C AI \u8FC7\u6EE4\u3002</div>
             <details class="adv"><summary>\u66F4\u65B0\u6E90\u7684\u5730\u5740 / \u4EE5 JSON \u7F16\u8F91</summary>
@@ -2509,7 +3483,7 @@ var admin_default = `<!doctype html>
               <textarea data-key="source_sync_urls" style="min-height:64px"></textarea>
               <label class="f" style="margin-top:12px">\u5168\u90E8\u6570\u636E\u6E90\uFF08JSON\uFF09</label>
               <textarea data-key="sources" id="srcJson" style="min-height:260px"></textarea>
-              <div class="hint">type\uFF1Arss\uFF08url\uFF09/ telegram\uFF08channel\uFF09/ v2ex\uFF08node\uFF09/ hn\uFF08query\uFF09/ reddit\uFF08query, subreddit\uFF09/ github\uFF08query\uFF09/ epic / gamerpower / openrouter_free\u3002cats\uFF1A\u53EA\u6536\u8FD9\u4E9B\u5206\u7C7B\uFF1Bhint\uFF1A\u9ED8\u8BA4\u5206\u7C7B\uFF1Binclude\uFF1A\u6807\u9898\u5FC5\u987B\u5339\u914D\u7684\u6B63\u5219\uFF1Btrusted:true + category\uFF1A\u76F4\u63A5\u5165\u5E93\u4E0D\u9001 AI\uFF1Bai_only\uFF1A\u53EA\u5728\u914D\u7F6E\u4E86 AI \u65F6\u6293\u3002</div>
+              <div class="hint">type\uFF1Arss\uFF08url\uFF09/ telegram\uFF08channel\uFF09/ repo\uFF08repo, mode: diff / sub\uFF09/ v2ex\uFF08node\uFF09/ hn\uFF08query\uFF09/ reddit\uFF08query, subreddit\uFF09/ github\uFF08query\uFF09/ epic / gamerpower / openrouter_free\u3002limit\uFF1A\u6BCF\u6B21\u6700\u591A\u53D6\u51E0\u6761\uFF1Bevery\uFF1A\u81F3\u5C11\u9694\u51E0\u5C0F\u65F6\u624D\u6293\u4E00\u6B21\uFF08\u9519\u5CF0\uFF09\u3002cats\uFF1A\u53EA\u6536\u8FD9\u4E9B\u5206\u7C7B\uFF1Bhint\uFF1A\u9ED8\u8BA4\u5206\u7C7B\uFF1Binclude\uFF1A\u6807\u9898\u5FC5\u987B\u5339\u914D\u7684\u6B63\u5219\uFF1Btrusted:true + category\uFF1A\u76F4\u63A5\u5165\u5E93\u4E0D\u9001 AI\uFF1Bai_only\uFF1A\u53EA\u5728\u914D\u7F6E\u4E86 AI \u65F6\u6293\u3002</div>
             </details>
           </div>
         </div>
@@ -2535,6 +3509,10 @@ var admin_default = `<!doctype html>
                 <button class="btn" onclick="testModel('ai', this)">\u6D4B\u8BD5</button>
               </div>
             </div>
+            <div class="grid2">
+              <div><label class="f">\u5BA1\u6838\u65B9\u5F0F</label><select data-key="ai_review"><option value="smart">\u667A\u80FD\uFF08\u63A8\u8350\uFF09\uFF1A\u628A\u63E1\u5927\u7684\u81EA\u52A8\u5B9A\uFF0C\u62FF\u4E0D\u51C6\u7684\u624D\u95EE AI</option><option value="all">\u4E25\u683C\uFF1A\u6BCF\u4E00\u6761\u90FD\u4EA4\u7ED9 AI</option></select></div>
+              <div class="hint" style="align-self:end;padding-bottom:8px">\u667A\u80FD\u6A21\u5F0F\u4E0B\uFF0C\u6807\u9898\u5199\u660E\u514D\u8D39\u3001\u80FD\u5F52\u7C7B\u3001\u6CA1\u6709\u4EF7\u683C / \u62BD\u5956 / \u63A8\u5E7F\u5B57\u6837\u7684\u76F4\u63A5\u901A\u8FC7\uFF0C\u63D0\u95EE\u5E16\u548C\u660E\u786E\u4ED8\u8D39\u7684\u76F4\u63A5\u62D2\u7EDD\uFF0C\u5176\u4F59\u624D\u6D88\u8017 AI \u989D\u5EA6\u3002</div>
+            </div>
             <details>
               <summary class="hint" style="cursor:pointer">\u66F4\u591A\uFF1A\u6279\u91CF\u5927\u5C0F\u3001\u5224\u5B9A\u4E0A\u9650\u3001\u901A\u8FC7\u5206\u6570\u3001\u91CD\u65B0\u5224\u5B9A</summary>
               <div class="grid3" style="margin-top:12px">
@@ -2542,6 +3520,7 @@ var admin_default = `<!doctype html>
                 <div><label class="f">\u6BCF\u6B21\u8FD0\u884C\u6700\u591A\u5224\u5B9A</label><input type="number" data-key="ai_max_items" min="1" /></div>
                 <div><label class="f">\u6700\u4F4E\u901A\u8FC7\u5206\u6570</label><input type="number" data-key="ai_min_score" min="0" max="100" /></div>
               </div>
+              <label class="sw" style="margin-top:12px"><input type="checkbox" data-key="ai_cache" />\u540C\u4E00\u4E2A\u76EE\u6807\u5730\u5740\u5224\u8FC7\u4E00\u6B21\u5C31\u590D\u7528\u7ED3\u8BBA\uFF08\u7701\u989D\u5EA6\uFF09</label>
               <div class="row" style="margin-top:12px"><button class="btn" onclick="rejudge(this)">\u7528 AI \u91CD\u65B0\u5224\u5B9A</button><span class="hint">\u628A\u4E4B\u524D\u7528\u5173\u952E\u8BCD\u5224\u8FC7\u7684\u6761\u76EE\u4EA4\u7ED9 AI \u518D\u5224\u4E00\u904D\u3002</span></div>
             </details>
           </div>
@@ -2563,6 +3542,21 @@ var admin_default = `<!doctype html>
               <div><label class="f">\u5C4F\u853D\u7AD9\u70B9\uFF08\u6BCF\u884C\u4E00\u4E2A\u57DF\u540D\uFF0C\u5BF9\u6240\u6709\u6765\u6E90\u751F\u6548\uFF09</label><textarea data-key="search_block_domains"></textarea></div>
             </div>
             <div class="hint">\u5F00\u542F\u7684\u51E0\u5BB6\u5E76\u884C\u641C\u7D22\uFF08\u514D\u8D39\u7248\u6BCF\u6B65\u5E76\u884C 2 \u5BB6\uFF09\u3002\u63A5\u53E3\u8D44\u6599\u53C2\u8003 <a href="https://github.com/bestnite/search" target="_blank" rel="noopener">bestnite/search</a>\u3002</div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>AI \u798F\u5229\u96F7\u8FBE</h2><label class="sw"><input type="checkbox" data-key="aifree_radar" />\u542F\u7528</label></header>
+          <div class="body">
+            <div class="callout">\u6BCF\u6B21\u6293\u53D6\u989D\u5916\u8DD1\u4E00\u6B65\uFF1A\u7528\u4E0A\u9762\u5F00\u542F\u7684\u641C\u7D22\u540E\u7AEF\uFF0C\u6309\u300C\u798F\u5229\u8BCD + \u8F6E\u5230\u7684\u51E0\u4E2A\u5382\u5546\u300D\u53BB\u641C\uFF0C\u7ED3\u679C\u53EA\u6536\u8FDB\u300CAI \u514D\u8D39\u989D\u5EA6 / AI \u9650\u65F6\u798F\u5229\u300D\uFF0C\u518D\u7ECF\u8FC7\u514D\u8D39\u8BCD\u3001\u4E2D\u6587\u3001\u5C4F\u853D\u89C4\u5219\u548C AI \u5224\u5B9A\uFF0C\u6574\u7406\u6210 \u5382\u5546 \xB7 \u798F\u5229\u7C7B\u578B \xB7 \u600E\u4E48\u9886 \xB7 \u622A\u6B62\u65F6\u95F4\u3002\u914D\u4E86 AI \u6548\u679C\u6700\u597D\u3002</div>
+            <div class="grid2">
+              <div><label class="f">\u798F\u5229\u641C\u7D22\u8BCD\uFF08\u6BCF\u884C\u4E00\u4E2A\uFF0C\u6BCF\u8F6E\u8F6E\u6362\u7740\u7528\uFF09</label><textarea data-key="aifree_queries" style="min-height:130px"></textarea></div>
+              <div><label class="f">\u5173\u6CE8\u7684\u5382\u5546 / \u4EA7\u54C1\uFF08\u6BCF\u884C\u4E00\u4E2A\uFF0C\u6BCF\u8F6E\u8F6E\u5230\u51E0\u4E2A\uFF0C\u641C\u300Cxx \u514D\u8D39 \u989D\u5EA6 \u798F\u5229\u300D\uFF09</label><textarea data-key="aifree_vendors" style="min-height:130px"></textarea></div>
+            </div>
+            <div class="grid3">
+              <div><label class="f">\u6BCF\u8F6E\u8F6E\u5230\u51E0\u4E2A\u5382\u5546</label><input type="number" data-key="aifree_vendors_per_run" min="0" max="8" /></div>
+              <div><label class="f">\u53EA\u8981\u6700\u8FD1\u591A\u5C11\u5929\u7684</label><input type="number" data-key="aifree_days" min="1" max="180" /></div>
+              <div class="hint" style="align-self:end;padding-bottom:8px">\u6BCF\u8F6E\u7684\u641C\u7D22\u8BCD\u603B\u6570\u8DDF\u300C\u6BCF\u6B21\u6700\u591A\u67E5\u51E0\u4E2A\u8BCD\u300D\u4E00\u81F4\uFF0C\u514D\u8D39\u7248\u5EFA\u8BAE\u4E0D\u8D85\u8FC7 6\u3002</div>
+            </div>
           </div>
         </div>
       </div>
@@ -2625,13 +3619,34 @@ var admin_default = `<!doctype html>
           </div>
         </div>
         <div class="section">
+          <header><h2>\u5FAE\u4FE1 / \u9489\u9489 / \u98DE\u4E66 / Bark \u7B49\u673A\u5668\u4EBA</h2></header>
+          <div class="body"><div id="pushRows"></div><div class="hint">\u586B\u4E86\u5730\u5740\u5C31\u4F1A\u5728\u63A8\u9001\u65F6\u95F4\u4E00\u8D77\u63A8\u9001\uFF1B\u5F00\u5173\u53EF\u4EE5\u5355\u72EC\u505C\u7528\u67D0\u4E2A\u6E20\u9053\u3002\u5730\u5740\u548C Key \u548C\u5176\u5B83\u5BC6\u94A5\u4E00\u6837\u6253\u7801\u4FDD\u5B58\u3002</div></div>
+        </div>
+        <div class="section">
+          <header><h2>\u5173\u952E\u8BCD\u63D0\u9192</h2><label class="sw"><input type="checkbox" data-key="watch_enabled" />\u542F\u7528</label></header>
+          <div class="body">
+            <div><label class="f">\u5173\u6CE8\u7684\u5173\u952E\u8BCD\uFF08\u6BCF\u884C\u4E00\u4E2A\uFF09</label><textarea data-key="watch_keywords" style="min-height:90px" placeholder="Claude&#10;\u57DF\u540D&#10;VPS"></textarea></div>
+            <div class="hint">\u6BCF\u6B21\u6293\u53D6\u7ED3\u675F\u540E\uFF0C\u65B0\u901A\u8FC7\u7684\u6761\u76EE\u53EA\u8981\u6807\u9898\u3001\u540D\u79F0\u6216\u7B80\u4ECB\u91CC\u6709\u8FD9\u4E9B\u8BCD\uFF0C\u5C31\u7ACB\u523B\u5355\u72EC\u63A8\u9001\u4E00\u6B21\uFF0C\u4E0D\u7528\u7B49\u65E5\u62A5\u3002</div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>\u6BCF\u5468\u7CBE\u9009</h2><label class="sw"><input type="checkbox" data-key="weekly_enabled" />\u542F\u7528</label></header>
+          <div class="body">
+            <div class="grid2">
+              <div><label class="f">\u6BCF\u5468\u51E0\u63A8\u9001\uFF08\u968F\u5F53\u5929\u7B2C\u4E00\u6B21\u63A8\u9001\u4E00\u8D77\u53D1\uFF09</label><select data-key="weekly_weekday"><option value="1">\u5468\u4E00</option><option value="2">\u5468\u4E8C</option><option value="3">\u5468\u4E09</option><option value="4">\u5468\u56DB</option><option value="5">\u5468\u4E94</option><option value="6">\u5468\u516D</option><option value="0">\u5468\u65E5</option></select></div>
+              <div class="hint" style="align-self:end;padding-bottom:8px">\u8FD1 7 \u5929\u91CC\u6309 AI \u8BC4\u5206\u3001\u300C\u503C / \u4E0D\u503C\u300D\u6295\u7968\u3001\u88AB\u51E0\u4E2A\u6765\u6E90\u63D0\u5230\u6311\u51FA 10 \u6761\uFF0C\u6BCF\u4E2A\u5206\u7C7B\u6700\u591A 3 \u6761\u3002\u8D44\u6E90\u9875\u7684\u300C\u5468\u62A5\u300D\u9875\u7B7E\u4E5F\u662F\u8FD9\u4E00\u4EFD\u3002</div>
+            </div>
+            <div class="row"><button class="btn" onclick="weeklyAction(this)">\u7ACB\u5373\u63A8\u9001\u4E00\u4EFD\u672C\u5468\u7CBE\u9009</button></div>
+          </div>
+        </div>
+        <div class="section">
           <header><h2>\u63A8\u9001\u5185\u5BB9</h2></header>
           <div class="body">
             <div class="row" style="gap:22px">
               <label class="sw"><input type="checkbox" data-key="mail_only_new" />\u53EA\u63A8\u4E0A\u6B21\u4E4B\u540E\u65B0\u901A\u8FC7\u7684</label>
               <label class="sw"><input type="checkbox" data-key="mail_send_empty" />\u6CA1\u6709\u65B0\u5185\u5BB9\u4E5F\u63A8</label>
             </div>
-            <div><label class="f">\u63A8\u9001\u54EA\u4E9B\u5206\u7C7B\uFF08\u90FD\u4E0D\u52FE = \u4E0E\u6536\u96C6\u7684\u76F8\u540C\uFF09</label><div class="cats mini" data-csv="mail_categories" id="mailCatBox"></div></div>
+            <div><label class="f">\u63A8\u9001\u54EA\u4E9B\u5206\u7C7B\uFF08\u90FD\u4E0D\u52FE = \u4E0E\u6536\u96C6\u7684\u76F8\u540C\uFF09</label><div class="cgrps" data-csv="mail_categories" id="mailCatBox"></div></div>
             <div><label class="f">\u8D44\u6E90\u9875\u5730\u5740\uFF08\u90AE\u4EF6\u5E95\u90E8\u201C\u67E5\u770B\u5168\u90E8\u201D\uFF0C\u9996\u6B21\u767B\u5F55\u540E\u53F0\u65F6\u81EA\u52A8\u586B\u5199\uFF09</label><input type="text" data-key="mail_site_url" placeholder="https://xxx.workers.dev" /></div>
             <div class="row"><button class="btn pri" onclick="pushAction('send', null, this)">\u7ACB\u5373\u63A8\u9001\u65E5\u62A5</button><span class="hint">\u5230\u4E86\u63A8\u9001\u65F6\u95F4\u6309\u542F\u7528\u7684\u6E20\u9053\u81EA\u52A8\u63A8\u9001\u3002</span></div>
           </div>
@@ -2683,6 +3698,28 @@ var admin_default = `<!doctype html>
           </div>
         </div>
         <div class="section">
+          <header><h2>\u767B\u5F55\u4E0E\u63A5\u53E3\u4FDD\u62A4</h2></header>
+          <div class="body">
+            <div class="grid2">
+              <div><label class="f">\u540C\u4E00 IP 15 \u5206\u949F\u5185\u5BC6\u7801\u9519\u51E0\u6B21\u5C31\u9501\u5B9A</label><input type="number" data-key="login_max_fails" min="3" max="100" /></div>
+              <div><label class="f">\u516C\u5F00\u63A5\u53E3\u6BCF\u4E2A IP \u6BCF\u5206\u949F\u6700\u591A\u8BF7\u6C42\uFF080 = \u4E0D\u9650\uFF09</label><input type="number" data-key="api_rate_per_min" min="0" max="10000" /></div>
+            </div>
+            <div class="hint">\u540E\u53F0\u548C\u8D44\u6E90\u9875\u8BBF\u95EE\u5BC6\u7801\u90FD\u53D7\u9501\u5B9A\u4FDD\u62A4\u3002\u6295\u7968\u63A5\u53E3\u53E6\u5916\u9650\u5236\u6BCF\u5206\u949F 30 \u6B21\u3002</div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>\u5907\u4EFD\u4E0E\u8FC1\u79FB</h2></header>
+          <div class="body">
+            <div class="row">
+              <button class="btn" onclick="exportCfg(this, false)">\u5BFC\u51FA\u8BBE\u7F6E</button>
+              <button class="btn" onclick="exportCfg(this, true)">\u5BFC\u51FA\u8BBE\u7F6E\uFF08\u542B\u5BC6\u94A5\uFF09</button>
+              <button class="btn" onclick="$('#importFile').click()">\u5BFC\u5165\u5907\u4EFD\u2026</button>
+              <input type="file" id="importFile" accept="application/json,.json" style="display:none" onchange="importCfg(this)" />
+            </div>
+            <div class="hint">\u5BFC\u51FA\u7684\u662F\u5168\u90E8\u8BBE\u7F6E\u548C\u6570\u636E\u6E90\uFF08JSON \u6587\u4EF6\uFF09\uFF0C\u6362\u8D26\u53F7\u6216\u91CD\u65B0\u90E8\u7F72\u540E\u5BFC\u5165\u5373\u53EF\uFF0C\u4E0D\u7528\u91CD\u65B0\u914D\u7F6E\u3002\u542B\u5BC6\u94A5\u7684\u6587\u4EF6\u91CC\u6709 AI Key\u3001\u90AE\u7BB1\u6388\u6743\u7801\u7B49\uFF0C\u8BF7\u59A5\u5584\u4FDD\u7BA1\u3002\u8D44\u6E90\u6570\u636E\u4E0D\u5728\u5907\u4EFD\u91CC\uFF0C\u91CD\u65B0\u6293\u53D6\u4E00\u6B21\u5C31\u6709\u3002</div>
+          </div>
+        </div>
+        <div class="section">
           <header><h2>\u5B58\u50A8</h2></header>
           <div class="body">
             <div id="storageInfo" class="hint"></div>
@@ -2716,8 +3753,10 @@ const TITLES = { items: '\u8D44\u6E90\u5BA1\u6838', collect: '\u91C7\u96C6\u4E0E
 const ALIAS = { ai: 'engine', search: 'engine', cats: 'collect' };
 const CATS = /*__CATS__*/[];
 const BACKENDS = /*__BACKENDS__*/[];
+const GROUPS = /*__GROUPS__*/[];
+const PUSH = /*__PUSH__*/[];
 const CAT = Object.fromEntries(CATS.map((c) => [c.key, c.label]));
-const REC = ['domain', 'hosting', 'cloud', 'ai', 'software', 'dev', 'game', 'edu'];
+const REC = ['domain', 'hosting', 'cloud', 'ai', 'aideal', 'aitool', 'software', 'dev', 'game', 'edu', 'ainews', 'news', 'proxy'];
 const OB = { free: '\u76F4\u63A5\u767D\u5AD6', conditional: '\u6709\u6761\u4EF6', lottery: '\u62BD\u5956', trial: '\u8BD5\u7528', promo: '\u63A8\u5E7F', paid: '\u9700\u4ED8\u8D39' };
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
@@ -2767,10 +3806,25 @@ function backendStates() {
 function renderCats() {
   const tile = (c, mini) => '<label class="cat" title="' + esc(c.kw.join(' \xB7 ')) + '"><input type="checkbox" value="' + c.key + '"><span class="ic" style="background:' + c.color + '"></span><span class="tx"><b>' + c.label + '</b>' + (mini ? '' : '<small>' + esc(c.kw.join(' \xB7 ') || '\u5176\u5B83\u672A\u5F52\u7C7B\u7684\u514D\u8D39\u8D44\u6E90') + '</small>') + '</span><span class="ck">\u2713</span></label>';
   const list = CATS.filter((c) => c.key !== 'other');
-  $('#catBox').innerHTML = list.map((c) => tile(c, false)).join('');
-  $('#mailCatBox').innerHTML = list.map((c) => tile(c, true)).join('');
+  // \u6309\u680F\u76EE\u5206\u7EC4\uFF0C\u6BCF\u7EC4\u53EF\u4EE5\u6574\u7EC4\u52FE\u9009
+  const grouped = (mini) => GROUPS.map((g) => {
+    const cs = list.filter((c) => c.group === g.key);
+    if (!cs.length) return '';
+    return '<div class="cgrp"><div class="cgh"><b>' + esc(g.label) + '</b><span class="hint">' + cs.length + ' \u4E2A\u5206\u7C7B</span><button type="button" class="btn sm" onclick="grpToggle(this)">\u6574\u7EC4\u52FE\u9009</button></div><div class="cats' + (mini ? ' mini' : '') + '">' + cs.map((c) => tile(c, mini)).join('') + '</div></div>';
+  }).join('');
+  $('#catBox').innerHTML = grouped(false);
+  $('#mailCatBox').innerHTML = grouped(true);
+  grpLabels();
 }
-function catCount() { $('#catCount').textContent = '\u5DF2\u9009 ' + $$('#catBox input:checked').length + ' / ' + $$('#catBox input').length; }
+function grpToggle(btn) {
+  const box = btn.closest('.cgrp');
+  const ins = [...box.querySelectorAll('input')];
+  const on = !ins.every((i) => i.checked);
+  ins.forEach((i) => (i.checked = on));
+  onEdit();
+}
+function grpLabels() { $$('.cgrp').forEach((g) => { const ins = [...g.querySelectorAll('input')]; const n = ins.filter((i) => i.checked).length; g.querySelector('.cgh .btn').textContent = n === ins.length ? '\u6574\u7EC4\u53D6\u6D88' : '\u6574\u7EC4\u52FE\u9009'; g.querySelector('.cgh .hint').textContent = '\u5DF2\u9009 ' + n + ' / ' + ins.length; g.classList.toggle('off', !n); }); }
+function catCount() { grpLabels(); $('#catCount').textContent = '\u5DF2\u9009 ' + $$('#catBox input:checked').length + ' / ' + $$('#catBox input').length; }
 function catAll(sel, on) { $$(sel + ' input').forEach((i) => (i.checked = on)); onEdit(); }
 function catPreset() { $$('#catBox input').forEach((i) => (i.checked = REC.includes(i.value))); onEdit(); }
 
@@ -2839,7 +3893,7 @@ function route() {
   $('#title').textContent = TITLES[key];
   drawer(false);
   if (key === 'runs' && TOKEN) loadRuns();
-  if (key === 'collect' && TOKEN) loadCronKey();
+  if (key === 'collect' && TOKEN) { loadCronKey(); loadHealth(); }
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);
@@ -2903,8 +3957,8 @@ function catPills(sel, onChange) {
 let SRC_OPEN = -1;
 function srcList() { try { const l = JSON.parse(field('sources').value); return Array.isArray(l) ? l : []; } catch { return null; } }
 function setSrc(list) { field('sources').value = JSON.stringify(list, null, 2); onEdit(); renderSources(); }
-const TYPE_ZH = { rss: 'RSS', telegram: 'TG', v2ex: 'V2EX', hn: 'HN', reddit: 'Reddit', github: 'GitHub', epic: 'Epic', gamerpower: 'GamerPower', openrouter_free: 'OpenRouter' };
-function srcWhere(x) { if (x.url) { try { const u = new URL(x.url); return u.hostname.replace(/^www\\./, '') + (u.pathname.length > 1 ? u.pathname : ''); } catch { return x.url; } } return x.channel ? '@' + x.channel : x.node ? 'node/' + x.node : x.query || ''; }
+const TYPE_ZH = { rss: 'RSS', telegram: 'TG', v2ex: 'V2EX', hn: 'HN', reddit: 'Reddit', github: 'GitHub \u641C\u7D22', repo: 'GitHub \u4ED3\u5E93', epic: 'Epic', gamerpower: 'GamerPower', openrouter_free: 'OpenRouter' };
+function srcWhere(x) { if (x.url) { try { const u = new URL(x.url); return u.hostname.replace(/^www\\./, '') + (u.pathname.length > 1 ? u.pathname : ''); } catch { return x.url; } } return x.repo ? x.repo + (x.mode === 'sub' ? ' \xB7 \u8282\u70B9\u8BA2\u9605' : ' \xB7 \u540C\u6B65\u65B0\u589E') : x.channel ? '@' + x.channel : x.node ? 'node/' + x.node : x.query || ''; }
 function renderSources() {
   const list = srcList(), box = $('#srcList');
   if (!list) { box.innerHTML = '<div class="empty" style="padding:18px">JSON \u683C\u5F0F\u6709\u8BEF\uFF0C\u5C55\u5F00\u4E0B\u65B9\u300C\u4EE5 JSON \u7F16\u8F91\u300D\u4FEE\u6B63</div>'; return; }
@@ -2914,7 +3968,7 @@ function renderSources() {
   list.forEach((x, i) => {
     const on = x.enabled !== false, cats = Array.isArray(x.cats) ? x.cats : x.cats ? String(x.cats).split(',') : [];
     if (q && !(String(x.name) + ' ' + srcWhere(x)).toLowerCase().includes(q)) return;
-    if ((f === 'on' && !on) || (f === 'off' && on) || (f === 'limited' && !cats.length && !x.category)) return;
+    if ((f === 'on' && !on) || (f === 'off' && on) || (f === 'limited' && !cats.length && !x.category) || (f === 'bad' && !healthOf(x)?.bad)) return;
     const row = document.createElement('div');
     row.className = 'srow' + (on ? '' : ' off');
     const fixed = x.category && x.category !== 'auto';
@@ -2922,7 +3976,7 @@ function renderSources() {
       : cats.length ? cats.map((k) => { const c = CATS.find((y) => y.key === k); return c ? '<span class="tag c" style="--cc:' + c.color + (en.includes(k) ? '' : ';opacity:.45') + '">' + esc(c.label) + '</span>' : ''; }).join('')
       : '<span class="tag">\u5168\u90E8\u5206\u7C7B</span>';
     row.innerHTML = '<label class="sw"><input type="checkbox"' + (on ? ' checked' : '') + ' /></label>' +
-      '<div class="snm">' + esc(x.name || '\u672A\u547D\u540D') + '<span class="tag">' + (TYPE_ZH[x.type || 'rss'] || x.type) + '</span>' + (x.trusted ? '<span class="tag free">\u514D\u5BA1</span>' : '') + (x.include ? '<span class="tag" title="\u6807\u9898\u9700\u5339\u914D\uFF1A' + esc(x.include) + '">\u6709\u6807\u9898\u7B5B\u9009</span>' : '') + '<small>' + esc(srcWhere(x)) + '</small></div>' +
+      '<div class="snm">' + esc(x.name || '\u672A\u547D\u540D') + '<span class="tag">' + (TYPE_ZH[x.type || 'rss'] || x.type) + '</span>' + (x.trusted ? '<span class="tag free">\u514D\u5BA1</span>' : '') + (x.include ? '<span class="tag" title="\u6807\u9898\u9700\u5339\u914D\uFF1A' + esc(x.include) + '">\u6709\u6807\u9898\u7B5B\u9009</span>' : '') + '<small>' + esc(srcWhere(x)) + (x.every ? ' \xB7 \u6BCF ' + x.every + ' \u5C0F\u65F6' : '') + '</small>' + healthHtml(x) + '</div>' +
       '<div class="scats" title="\u70B9\u51FB\u8BBE\u7F6E\u5206\u7C7B">' + chips + (x.hint && !fixed ? '<span class="tag" title="\u9ED8\u8BA4\u5206\u7C7B">\u9ED8\u8BA4 ' + esc(CAT[x.hint] || x.hint) + '</span>' : '') + '</div>' +
       '<button class="sdel" title="\u5220\u9664">\xD7</button>';
     row.querySelector('input').onchange = (e) => { const l = srcList(); l[i].enabled = e.target.checked; setSrc(l); };
@@ -2944,7 +3998,69 @@ function renderSources() {
     box.appendChild(row);
   });
   if (!box.children.length) box.innerHTML = '<div class="empty" style="padding:18px">\u6CA1\u6709\u5339\u914D\u7684\u6E90</div>';
+  const nBad = list.filter((x) => healthOf(x)?.bad).length;
+  $('#offBad').style.display = nBad ? '' : 'none';
+  $('#offBad').textContent = '\u505C\u7528\u6709\u95EE\u9898\u7684\u6E90\uFF08' + nBad + '\uFF09';
 }
+// ---- \u6765\u6E90\u5065\u5EB7 ----
+let HEALTH = {};
+async function loadHealth() { HEALTH = await api('/api/admin/sources/health').catch(() => ({})); renderSources(); }
+function healthOf(x) {
+  const h = HEALTH[x.name];
+  if (!h) return null;
+  const bad = x.enabled !== false && (h.errors >= 3 || (h.fetched === 0 && h.errors > 0));
+  return { ...h, bad };
+}
+function healthHtml(x) {
+  const h = healthOf(x);
+  if (!h) return '';
+  const t = '\u8FD1 7 \u5929\uFF1A\u6293\u5230 ' + h.fetched + ' \xB7 \u65B0\u589E ' + h.added + (h.errors ? ' \xB7 \u5931\u8D25 ' + h.errors + ' \u6B21' : '') + (h.last_at ? ' \xB7 \u6700\u8FD1\u6210\u529F ' + ago(h.last_at) : ' \xB7 \u4E00\u76F4\u6CA1\u6210\u529F');
+  return '<span class="shealth' + (h.bad ? ' bad' : '') + '" title="' + esc(h.last_err ? '\u6700\u8FD1\u7684\u9519\u8BEF\uFF1A' + h.last_err : t) + '">' + (h.bad ? '\u26A0 ' : '') + esc(t) + '</span>';
+}
+function disableBad() {
+  const l = srcList(); if (!l) return;
+  const bad = l.filter((x) => healthOf(x)?.bad);
+  if (!bad.length) return toast('\u6CA1\u6709\u6709\u95EE\u9898\u7684\u6E90', 2000);
+  if (!confirm('\u505C\u7528\u8FD9 ' + bad.length + ' \u4E2A\u6E90\uFF1F\\n' + bad.map((x) => x.name).join('\\n'))) return;
+  for (const x of bad) x.enabled = false;
+  setSrc(l); toast('\u5DF2\u505C\u7528 ' + bad.length + ' \u4E2A\uFF0C\u8BB0\u5F97\u4FDD\u5B58', 3000, 'ok');
+}
+
+// ---- Webhook \u63A8\u9001\u6E20\u9053 ----
+function renderPush() {
+  $('#pushRows').innerHTML = PUSH.map((c) => '<div class="pushrow"><div class="nm">' + esc(c.name) + '<label class="sw"><input type="checkbox" data-key="' + c.id + '_enabled" />\u542F\u7528</label></div>' +
+    '<div class="in"><input type="password" data-key="' + c.key + '" autocomplete="off" placeholder="' + esc(c.id === 'bark' ? 'https://api.day.app/\u4F60\u7684Key' : c.id === 'serverchan' ? 'SendKey' : c.id === 'pushplus' ? 'token' : 'Webhook \u5730\u5740') + '" />' +
+    (c.secret ? '<input type="password" data-key="' + c.secret + '" autocomplete="off" placeholder="\u52A0\u7B7E\u5BC6\u94A5\uFF08\u53EF\u9009\uFF09" />' : '') + '<span class="hint">' + esc(c.hint) + '</span></div>' +
+    '<button class="btn sm" onclick="pushAction(\\'test\\', \\'push:' + c.id + '\\', this)">\u6D4B\u8BD5</button></div>').join('');
+}
+function weeklyAction(btn) {
+  return busy(btn, async () => {
+    const r = await api('/api/admin/weekly/send', { method: 'POST', body: JSON.stringify({ test: false }) });
+    toast(r.skipped ? '\u672A\u53D1\u9001\uFF1A' + r.skipped : '\u5DF2\u63A8\u9001\u672C\u5468\u7CBE\u9009 ' + r.sent + ' \u6761\uFF08' + r.providers.join(' + ') + '\uFF09' + (r.errors && r.errors.length ? '\uFF1B\u5931\u8D25\uFF1A' + r.errors.join('\uFF1B') : ''), 7000, r.skipped ? '' : 'ok');
+  });
+}
+
+// ---- \u5907\u4EFD\u4E0E\u8FC1\u79FB ----
+function exportCfg(btn, secrets) {
+  if (secrets && !confirm('\u5BFC\u51FA\u7684\u6587\u4EF6\u91CC\u4F1A\u5305\u542B AI Key\u3001\u90AE\u7BB1\u6388\u6743\u7801\u7B49\u5BC6\u94A5\uFF0C\u786E\u5B9A\u5BFC\u51FA\uFF1F')) return;
+  return busy(btn, async () => {
+    const r = await fetch('/api/admin/export' + (secrets ? '?secrets=1' : ''), { headers: { authorization: 'Bearer ' + TOKEN } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await r.blob());
+    a.download = 'free-resource-radar-' + new Date().toISOString().slice(0, 10) + (secrets ? '-\u542B\u5BC6\u94A5' : '') + '.json';
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  });
+}
+async function importCfg(input) {
+  const f = input.files[0]; input.value = '';
+  if (!f) return;
+  let j;
+  try { j = JSON.parse(await f.text()); } catch { return toast('\u6587\u4EF6\u4E0D\u662F\u6709\u6548\u7684 JSON', 4000, 'err'); }
+  if (!confirm('\u5BFC\u5165\u540E\u4F1A\u8986\u76D6\u5907\u4EFD\u91CC\u5305\u542B\u7684 ' + Object.keys(j.settings || {}).length + ' \u9879\u8BBE\u7F6E\uFF08\u5305\u62EC\u6570\u636E\u6E90\uFF09\uFF0C\u786E\u5B9A\uFF1F')) return;
+  await busy(null, async () => { const r = await api('/api/admin/import', { method: 'POST', body: JSON.stringify(j) }); fill(r.settings); toast('\u5DF2\u5BFC\u5165 ' + r.count + ' \u9879\u8BBE\u7F6E', 3000, 'ok'); });
+}
+
 function addSource() {
   const url = prompt('RSS \u5730\u5740\uFF0C\u6216 Telegram \u9891\u9053\uFF08@\u9891\u9053\u540D\uFF09\uFF1A');
   if (!url) return;
@@ -2987,7 +4103,7 @@ async function openSync(btn) {
   });
 }
 function openBatch(prefill, auto) {
-  syncOpen('batch', '\u6279\u91CF\u6DFB\u52A0', '<textarea id="batchIn" placeholder="https://www.example.com/\\nhttps://example.com/feed\\nt.me/abskoop\\n@zaihuapd"></textarea><div class="row"><span class="hint">\u4E00\u6B21\u6700\u591A 15 \u4E2A\uFF0C\u4F1A\u9010\u4E2A\u68C0\u6D4B\u80FD\u4E0D\u80FD\u6293\u5230\u5185\u5BB9</span><span class="sp" style="flex:1"></span><button class="btn pri" id="batchGo" onclick="runBatch(this)">\u68C0\u6D4B</button></div>');
+  syncOpen('batch', '\u6279\u91CF\u6DFB\u52A0', '<textarea id="batchIn" placeholder="https://www.example.com/\\nhttps://example.com/feed\\nt.me/abskoop\\n@zaihuapd\\ngithub.com/owner/repo"></textarea><div class="row"><span class="hint">\u4E00\u6B21\u6700\u591A 15 \u4E2A\uFF0C\u4F1A\u9010\u4E2A\u68C0\u6D4B\u80FD\u4E0D\u80FD\u6293\u5230\u5185\u5BB9</span><span class="sp" style="flex:1"></span><button class="btn pri" id="batchGo" onclick="runBatch(this)">\u68C0\u6D4B</button></div>');
   if (prefill) $('#batchIn').value = prefill;
   setTimeout(() => (auto ? runBatch($('#batchGo')) : $('#batchIn').focus()), 0);
 }
@@ -3210,10 +4326,11 @@ function runSteps(btn, endpoint, label, doing) {
     const s = r.stats;
     prog.style.width = '100%';
     $('#runTitle').textContent = plan.reset != null ? '\u5224\u5B9A\u5B8C\u6210\uFF1A\u901A\u8FC7 ' + s.approved : '\u6293\u53D6\u5B8C\u6210\uFF1A\u65B0\u589E ' + s.new + '\uFF0C\u901A\u8FC7 ' + s.approved;
-    out.textContent = '\u6293\u5230 ' + s.fetched + ' \xB7 \u5019\u9009 ' + s.candidates + ' \xB7 \u65B0\u589E ' + s.new + '\uFF08\u4E13\u6E90\u76F4\u901A ' + (s.trusted || 0) + '\uFF09\xB7 \u5224\u5B9A ' + s.judged + ' \xB7 \u901A\u8FC7 ' + s.approved + ' \xB7 \u9519\u8BEF ' + s.errors +
+    out.textContent = '\u6293\u5230 ' + s.fetched + ' \xB7 \u5019\u9009 ' + s.candidates + ' \xB7 \u65B0\u589E ' + s.new + '\uFF08\u4E13\u6E90\u76F4\u901A ' + (s.trusted || 0) + '\uFF09\xB7 \u5224\u5B9A ' + s.judged + '\uFF08\u81EA\u52A8\u5B9A ' + (s.auto || 0) + '\uFF0C\u7EC6\u5BA1 ' + Math.max(0, s.judged - (s.auto || 0) - (s.cached || 0)) + '\uFF0C\u590D\u7528 ' + (s.cached || 0) + '\uFF09\xB7 \u901A\u8FC7 ' + s.approved + ' \xB7 \u5408\u5E76 ' + (s.merged || 0) + ' \xB7 \u7591\u4F3C\u5931\u6548 ' + (s.dead || 0) + ' \xB7 \u5173\u952E\u8BCD\u63D0\u9192 ' + (s.watched || 0) + ' \xB7 \u9519\u8BEF ' + s.errors +
       '\\n\u8FC7\u6EE4\uFF1A\u8D85\u671F ' + s.too_old + ' \xB7 \u65E0\u65E5\u671F ' + s.undated + ' \xB7 \u975E\u4E2D\u6587 ' + (s.non_zh || 0) + ' \xB7 \u4E0D\u76F8\u5173 ' + s.off_topic + ' \xB7 \u566A\u97F3 ' + s.noise + ' \xB7 \u5C4F\u853D ' + (s.block_rule + s.blocked) + ' \xB7 \u91CD\u590D\u6807\u9898 ' + s.dup_title + '\\n\\n' + lines.join('\\n');
     toast($('#runTitle').textContent, 4000, 'ok');
     loadItems(CUR);
+    if (Object.keys(HEALTH).length || location.hash === '#collect') loadHealth();
   });
 }
 function pushAction(kind, channel, btn) {
@@ -3243,7 +4360,9 @@ async function loadItems(st) {
   $$('.tabs [data-st]').forEach((b) => (b.querySelector('.n').textContent = r.counts[b.dataset.st] || 0));
   $('#navPending').textContent = r.counts.pending || '';
   $('#items').innerHTML = r.items.length ? r.items.map((it) => {
-    const ob = it.obtain ? '<span class="ob ' + (it.obtain === 'free' ? 'free' : 'cond') + '">' + OB[it.obtain] + '</span>' : '';
+    const ob = (it.obtain ? '<span class="ob ' + (it.obtain === 'free' ? 'free' : 'cond') + '">' + OB[it.obtain] + '</span>' : '') +
+      (it.dead ? ' <span class="tag bad">\u53EF\u80FD\u5931\u6548</span>' : '') + (it.expires_at ? ' <span class="tag ' + (it.expires_at < Date.now() ? 'bad' : 'warn') + '">\u622A\u6B62 ' + new Date(it.expires_at).toLocaleDateString('zh-CN') + '</span>' : '') +
+      (it.up || it.down ? ' <span class="tag" title="\u8D44\u6E90\u9875\u4E0A\u7684 \u503C / \u4E0D\u503C \u6295\u7968">\u503C ' + (it.up || 0) + ' \xB7 \u4E0D\u503C ' + (it.down || 0) + '</span>' : '');
     return '<div class="item" id="it-' + it.id + '"><div class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '\u2014') + '</div><div>' +
       '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + esc(it.name || it.title) + '</a>' + ob +
       (it.summary ? '<div class="sum">' + esc(it.summary) + '</div>' : '') +
@@ -3278,7 +4397,7 @@ async function loadRuns() {
 }
 
 async function init() {
-  if (!$('#catBox').children.length) { renderCats(); renderBackends(); }
+  if (!$('#catBox').children.length) { renderCats(); renderBackends(); renderPush(); }
   route();
   STATUS = await fetch('/api/admin/status').then((r) => r.json()).catch(() => STATUS);
   const where = STATUS.storage === 'kv' ? 'Cloudflare KV' : 'D1 \u72EC\u7ACB\u7684 secrets \u8868';
@@ -3305,240 +4424,276 @@ var public_default = `<!doctype html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE \xB7 \u6BCF\u65E5\u767D\u5AD6\u60C5\u62A5</title>
-<meta name="description" content="\u6BCF\u5929\u81EA\u52A8\u6536\u96C6\u514D\u8D39\u57DF\u540D\u3001\u4E3B\u673A\u3001\u4E91\u670D\u52A1\u3001AI \u989D\u5EA6\u3001\u9650\u514D\u8F6F\u4EF6\u4E0E\u6E38\u620F\u7B49\u767D\u5AD6\u8D44\u6E90" />
-<meta name="theme-color" content="#f7f7fb" media="(prefers-color-scheme: light)" />
-<meta name="theme-color" content="#0c0d12" media="(prefers-color-scheme: dark)" />
+<meta name="description" content="\u6BCF\u5929\u81EA\u52A8\u6536\u96C6\u514D\u8D39\u57DF\u540D\u3001\u4E3B\u673A\u3001\u4E91\u670D\u52A1\u3001AI \u989D\u5EA6\u3001\u9650\u514D\u8F6F\u4EF6\u4E0E\u6E38\u620F\u3001\u79D1\u6280\u8D44\u8BAF\u548C\u514D\u8D39\u8282\u70B9\u8BA2\u9605" />
+<meta name="theme-color" content="#ffffff" />
 <link rel="alternate" type="application/rss+xml" title="RSS" href="/feed.xml" />
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%234f46e5'/><stop offset='1' stop-color='%23312e81'/></linearGradient></defs><rect width='32' height='32' rx='9' fill='url(%23g)'/><circle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2' opacity='.4'/><circle cx='16' cy='16' r='4' fill='%23fff'/></svg>" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%234f46e5'/><circle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2' opacity='.5'/><circle cx='16' cy='16' r='4' fill='%23fff'/></svg>" />
 <style>
+  /* \u7248\u5F0F\u53C2\u8003\u4EC0\u4E48\u503C\u5F97\u4E70 / \u7EBF\u62A5\u9177\u8FD9\u7C7B\u7F8A\u6BDB\u7AD9\uFF08\u680F\u76EE\u9875\u7B7E + \u4FE1\u606F\u6D41\u5361\u7247 + \u53F3\u4FA7\u680F\uFF09\uFF0C\u914D\u8272\u6CBF\u7528\u539F\u6765\u7684\u975B\u84DD + \u6D45\u7070 */
   :root {
-    --bg:#f7f7fb; --rail:#f2f2f8; --surface:#fff; --hover:#f6f6fb; --line:#e7e7ef; --line-2:#d6d7e2;
-    --ink:#14151c; --ink-2:#3a3d4a; --ink-3:#5f6372; --ink-4:#8a8e9c;
-    --accent:#4f46e5; --accent-2:#312e81; --accent-bg:#eef0ff; --accent-line:#c9cdfb;
-    --deal:#047857; --deal-bg:#e8f8f0; --cond:#9a5b0b; --cond-bg:#fdf3e1; --new:#c2410c; --new-bg:#fff1e8;
-    --shadow:0 1px 2px rgba(20,21,28,.04), 0 6px 20px rgba(20,21,28,.06);
+    --brand:#4f46e5; --brand-2:#4338ca; --brand-bg:#eef0ff; --brand-line:#c7cbfb; --deep:#312e81;
+    --bg:#f6f7f9; --surface:#fff; --hover:#f9fafb; --line:#e6e8ec; --line-2:#d5d9e0;
+    --ink:#111318; --ink-2:#374151; --ink-3:#5b6472; --ink-4:#8a93a1;
+    --deal:#047857; --deal-bg:#e8f8f0; --cond:#92400e; --cond-bg:#fef3c7; --new:#dc2626; --alert:#b91c1c; --alert-bg:#fef2f2;
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    --top:60px; --r:12px;
+    --r:8px; --head:56px;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg:#0c0d12; --rail:#101118; --surface:#14151d; --hover:#1a1b25; --line:#242633; --line-2:#323546;
-      --ink:#eef0f6; --ink-2:#cdd0da; --ink-3:#a2a6b4; --ink-4:#7a7e8d;
-      --accent:#8b8cf8; --accent-2:#a5b4fc; --accent-bg:#1d1e38; --accent-line:#3a3d82;
-      --deal:#34d399; --deal-bg:#0f2a21; --cond:#fbbf24; --cond-bg:#2a2110; --new:#fb923c; --new-bg:#2b1a10;
-      --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+      --brand:#818cf8; --brand-2:#a5b4fc; --brand-bg:#1e1b4b; --brand-line:#3730a3; --deep:#c7d2fe;
+      --bg:#0d0f13; --surface:#15181e; --hover:#1b1f26; --line:#252a33; --line-2:#333a45;
+      --ink:#eef0f4; --ink-2:#cfd4dc; --ink-3:#9aa3b1; --ink-4:#6f7887;
+      --deal:#34d399; --deal-bg:#0f2a20; --cond:#fbbf24; --cond-bg:#2a2210; --alert:#f87171; --alert-bg:#2a1414;
     }
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  html { -webkit-text-size-adjust:100%; scroll-padding-top:calc(var(--top) + 48px); }
-  body { margin:0; font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; color:var(--ink); background:var(--bg); -webkit-font-smoothing:antialiased; }
-  ::selection { background:var(--accent-bg); }
+  html { -webkit-text-size-adjust:100%; }
+  body { margin:0; font:14px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Segoe UI",Roboto,sans-serif; color:var(--ink); background:var(--bg); -webkit-font-smoothing:antialiased; }
   a { color:inherit; text-decoration:none; }
   button { font:inherit; color:inherit; cursor:pointer; }
-  :focus-visible { outline:2px solid var(--accent-line); outline-offset:2px; border-radius:6px; }
-  .press { transition:transform .08s ease, background-color .12s, border-color .12s, color .12s; }
-  .press:active { transform:scale(.97); }
+  :focus-visible { outline:2px solid var(--brand-line); outline-offset:2px; }
+  .wrap { max-width:1200px; margin:0 auto; padding:0 16px; }
 
-  .app { display:grid; grid-template-columns:260px minmax(0,1fr); min-height:100vh; }
+  /* ---------- \u9876\u90E8\u54C1\u724C\u6761 ---------- */
+  .head { background:var(--surface); color:var(--ink); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .head .wrap { height:var(--head); display:flex; align-items:center; gap:18px; }
+  .logo { display:flex; align-items:center; gap:9px; font-weight:800; font-size:18px; letter-spacing:.02em; white-space:nowrap; }
+  .logo i { width:30px; height:30px; border-radius:9px; background:linear-gradient(135deg,#6366f1,#3730a3); display:grid; place-items:center; flex:none; }
+  .logo i::after { content:""; width:9px; height:9px; border-radius:50%; background:#fff; box-shadow:0 0 0 4px rgba(255,255,255,.25); }
+  .logo small { font-weight:500; font-size:12px; color:var(--ink-4); margin-left:2px; }
+  .search { flex:1; max-width:520px; position:relative; }
+  .search input { width:100%; height:36px; border:1px solid var(--line); border-radius:18px; padding:0 72px 0 16px; font:inherit; font-size:13.5px; background:var(--bg); color:var(--ink); outline:none; transition:border-color .12s, background-color .12s; }
+  .search input:focus { border-color:var(--brand-line); background:var(--surface); }
+  .search button { position:absolute; right:3px; top:3px; height:30px; border:none; border-radius:15px; padding:0 16px; background:var(--brand); color:#fff; font-size:13px; font-weight:600; }
+  .head .links { display:flex; gap:16px; font-size:13px; white-space:nowrap; }
+  .head .links a { color:var(--ink-3); }
+  .head .links a:hover { color:var(--brand); }
 
-  /* ---------- \u4FA7\u680F ---------- */
-  .rail { background:var(--rail); border-right:1px solid var(--line); padding:20px 14px 28px; position:sticky; top:0; height:100vh; overflow:auto; scrollbar-width:thin; }
-  .brand { display:flex; align-items:center; gap:11px; padding:0 6px 18px; }
-  .logo { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg,#6366f1,#312e81); display:grid; place-items:center; flex:none; box-shadow:0 4px 12px rgba(79,70,229,.3); }
-  .logo i { width:10px; height:10px; border-radius:50%; background:#fff; box-shadow:0 0 0 5px rgba(255,255,255,.25); }
-  .brand b { font-size:15px; font-weight:700; display:block; letter-spacing:.01em; }
-  .brand small { font-size:12px; color:var(--ink-4); }
-  .search { position:relative; margin:0 2px 6px; }
-  .search svg { position:absolute; left:11px; top:11px; color:var(--ink-4); }
-  .search input { width:100%; height:38px; border:1px solid var(--line); border-radius:10px; padding:0 34px 0 34px; font:inherit; font-size:13px; background:var(--surface); color:var(--ink); outline:none; transition:border-color .12s, box-shadow .12s; }
-  .search input:focus { border-color:var(--accent-line); box-shadow:0 0 0 4px var(--accent-bg); }
-  .search kbd { position:absolute; right:9px; top:10px; font:600 11px var(--mono); color:var(--ink-4); border:1px solid var(--line); border-radius:5px; padding:0 5px; background:var(--rail); }
-  .nav-title { font-size:12px; font-weight:600; color:var(--ink-4); padding:18px 10px 6px; }
-  .nav a { display:flex; align-items:center; gap:10px; padding:7px 10px; border-radius:9px; color:var(--ink-2); cursor:pointer; user-select:none; font-size:13.5px; }
-  .nav a .ic { width:16px; display:grid; place-items:center; flex:none; color:var(--ink-4); }
-  .nav a .lb { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .nav a:hover { background:color-mix(in srgb, var(--ink) 5%, transparent); }
-  .nav a.on { background:var(--surface); color:var(--ink); font-weight:600; box-shadow:var(--shadow); }
-  .nav a.on .ic { color:var(--accent); }
-  .nav .n { font:600 11.5px var(--mono); color:var(--ink-4); font-variant-numeric:tabular-nums; }
-  .cdot { display:inline-block; width:9px; height:9px; border-radius:50%; flex:none; box-shadow:0 0 0 3px color-mix(in srgb, currentColor 0%, transparent); }
-  .about { color:var(--ink-4); font-size:12px; padding:20px 10px 0; line-height:1.75; }
+  /* ---------- \u680F\u76EE\u9875\u7B7E ---------- */
+  .tabs { background:var(--surface); border-bottom:1px solid var(--line); position:sticky; top:var(--head); z-index:15; }
+  .tabs .wrap { display:flex; gap:4px; overflow-x:auto; scrollbar-width:none; }
+  .tabs .wrap::-webkit-scrollbar { display:none; }
+  .tab { flex:none; border:none; background:none; padding:12px 13px 11px; font-size:14.5px; color:var(--ink-2); border-bottom:3px solid transparent; display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+  .tab:hover { color:var(--brand); }
+  .tab.on { color:var(--brand); font-weight:700; border-bottom-color:var(--brand); }
+  .tab .n { font:600 11px/17px var(--mono); color:var(--ink-4); background:var(--bg); border-radius:9px; padding:0 6px; }
+  .tab .n:empty { display:none; }
+  .tabs .sep { flex:none; width:1px; background:var(--line); margin:12px 6px; }
+  .tab.on .n { color:var(--brand); background:var(--brand-bg); }
 
-  /* ---------- \u9876\u680F ---------- */
-  .main { min-width:0; }
-  .top { position:sticky; top:0; z-index:10; height:var(--top); background:color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter:saturate(1.6) blur(14px); -webkit-backdrop-filter:saturate(1.6) blur(14px); border-bottom:1px solid var(--line); padding:0 32px; display:flex; align-items:center; gap:12px; }
-  .top h1 { font-size:18px; font-weight:700; margin:0; white-space:nowrap; letter-spacing:.01em; }
-  .top .count { color:var(--ink-4); font:600 12px var(--mono); flex:1; white-space:nowrap; }
-  .seg { display:inline-flex; border:1px solid var(--line); border-radius:10px; padding:3px; gap:2px; background:var(--surface); }
-  .seg button { border:none; background:transparent; padding:5px 12px; font-size:12.5px; color:var(--ink-3); border-radius:7px; display:inline-flex; align-items:center; gap:5px; }
-  .seg button.on { background:var(--accent-bg); color:var(--accent-2); font-weight:600; }
-  .m-only { display:none !important; }
-  .icon-btn { width:36px; height:36px; border-radius:10px; border:1px solid var(--line); background:var(--surface); display:grid; place-items:center; color:var(--ink-2); }
-  .bar { position:fixed; top:0; left:0; height:2px; width:0; background:linear-gradient(90deg,#6366f1,#a855f7); z-index:50; transition:width .3s ease, opacity .3s; opacity:0; }
-  .bar.on { opacity:1; }
+  /* ---------- \u4E3B\u4F53 ---------- */
+  .main { display:grid; grid-template-columns:minmax(0,1fr) 290px; gap:16px; padding-top:14px; padding-bottom:80px; }
+  .main > section, .aside { min-width:0; }
+  .filters { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:10px 14px; display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+  .frow { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .frow > b { font-size:12.5px; color:var(--ink-4); font-weight:500; width:60px; flex:none; }
+  .chip { border:1px solid transparent; background:none; border-radius:4px; padding:2px 10px; font-size:13px; color:var(--ink-2); display:inline-flex; align-items:center; gap:5px; }
+  .chip:hover { color:var(--brand); }
+  .chip.on { color:var(--brand); border-color:var(--brand-line); background:var(--brand-bg); font-weight:600; }
+  .chip .d { width:7px; height:7px; border-radius:50%; }
+  .chip .n { font:11px var(--mono); color:var(--ink-4); }
 
-  /* ---------- \u6982\u89C8 ---------- */
-  .hero { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; padding:22px 32px 6px; }
-  .stat { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:14px 16px; position:relative; overflow:hidden; }
-  .stat b { display:block; font:700 24px/1.15 var(--mono); font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
-  .stat span { color:var(--ink-4); font-size:12.5px; }
-  .stat.hl { background:linear-gradient(135deg, var(--accent-bg), var(--surface) 70%); border-color:var(--accent-line); }
-  .stat.hl b { color:var(--accent-2); }
-  .stat.ok b { color:var(--deal); }
-  .stat .sm { font:500 13px/1.4 inherit; color:var(--ink-2); font-family:inherit; letter-spacing:0; padding-top:4px; }
-  .chipbar { display:none; }
-
-  /* ---------- \u5217\u8868 ---------- */
-  .list { padding:6px 32px 90px; transition:opacity .12s; }
-  .list.fade { opacity:.35; }
-  .dayh { display:flex; align-items:baseline; gap:8px; padding:22px 4px 10px; position:sticky; top:var(--top); background:var(--bg); z-index:2; }
-  .dayh b { font-size:14px; font-weight:700; }
-  .dayh span { font:600 11.5px var(--mono); color:var(--ink-4); }
-  .box { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); overflow:hidden; }
-  .row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:14px; align-items:start; padding:14px 18px 14px 20px; border-top:1px solid var(--line); position:relative; transition:background-color .12s; }
-  .row:first-child { border-top:none; }
-  .row::before { content:""; position:absolute; left:0; top:14px; bottom:14px; width:3px; border-radius:0 3px 3px 0; background:var(--c, var(--line-2)); opacity:.85; }
-  .row:hover { background:var(--hover); }
-  .t { font-size:15px; font-weight:600; line-height:1.45; word-break:break-word; }
-  a.t:hover { color:var(--accent); }
-  .tags { display:inline-flex; gap:5px; margin-left:8px; vertical-align:2px; }
-  .chip { font:600 11px/19px inherit; font-family:inherit; color:var(--cond); background:var(--cond-bg); border-radius:999px; padding:0 8px; white-space:nowrap; }
-  .chip.free { color:var(--deal); background:var(--deal-bg); }
-  .chip.new { color:var(--new); background:var(--new-bg); }
-  .sum { color:var(--ink-3); margin-top:4px; line-height:1.6; font-size:13.5px; }
-  .meta { color:var(--ink-4); font-size:12.5px; margin-top:6px; display:flex; flex-wrap:wrap; align-items:center; gap:2px 0; }
-  .meta i { font-style:normal; margin:0 7px; color:var(--line-2); }
-  .meta .cat { display:inline-flex; align-items:center; gap:6px; color:var(--ink-3); }
+  .dayh { display:flex; align-items:center; gap:10px; margin:16px 2px 8px; font-size:13px; color:var(--ink-3); }
+  .dayh b { color:var(--ink); font-size:14px; }
+  .dayh::after { content:""; flex:1; height:1px; background:var(--line); }
+  .feed { display:flex; flex-direction:column; gap:10px; }
+  .item { background:var(--surface); border-radius:var(--r); padding:14px 16px; display:grid; grid-template-columns:62px minmax(0,1fr) auto; gap:14px; align-items:start; border:1px solid var(--line); transition:border-color .12s; }
+  .item:hover { border-color:var(--line-2); }
+  .item.read .t { color:var(--ink-3); font-weight:500; }
+  .item.dead { opacity:.6; }
+  .item.dead .t { text-decoration:line-through; text-decoration-color:var(--ink-4); }
+  .badge { width:62px; height:62px; border-radius:8px; display:grid; place-items:center; color:#fff; font-weight:800; font-size:17px; letter-spacing:.02em; background:var(--c,#999); position:relative; overflow:hidden; text-align:center; line-height:1.15; padding:4px; }
+  .badge::after { content:""; position:absolute; inset:0; background:linear-gradient(135deg,rgba(255,255,255,.18),transparent 60%); }
+  .t { font-size:15.5px; font-weight:600; line-height:1.5; word-break:break-word; color:var(--ink); }
+  a.t:hover { color:var(--brand); }
+  .tags { display:inline-flex; gap:4px; margin-left:6px; vertical-align:2px; }
+  .tg { font-size:11px; line-height:18px; border-radius:3px; padding:0 6px; white-space:nowrap; color:var(--cond); background:var(--cond-bg); font-weight:600; }
+  .tg.free { color:var(--deal); background:var(--deal-bg); }
+  .tg.new { color:#fff; background:var(--new); }
+  .tg.soon { color:var(--alert); background:var(--alert-bg); }
+  .tg.dead { color:var(--ink-3); background:var(--bg); }
+  .tg.hot { color:var(--brand-2); background:var(--brand-bg); }
+  .tg.old { color:var(--ink-3); background:var(--bg); }
+  .sum { color:var(--ink-3); margin-top:4px; font-size:13.5px; line-height:1.65; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .meta { color:var(--ink-4); font-size:12.5px; margin-top:7px; display:flex; flex-wrap:wrap; align-items:center; gap:2px 12px; }
+  .meta .cat { color:var(--c); font-weight:600; }
   .meta .host { font-family:var(--mono); font-size:11.5px; }
-  .side { display:flex; flex-direction:column; align-items:flex-end; gap:8px; }
-  .time { font:12px var(--mono); color:var(--ink-4); white-space:nowrap; font-variant-numeric:tabular-nums; }
-  .copy { border:1px solid var(--line); background:var(--surface); border-radius:8px; font-size:12px; padding:3px 9px; color:var(--ink-3); opacity:0; }
-  .row:hover .copy, .copy:focus-visible { opacity:1; }
-  .copy.done { color:var(--deal); border-color:var(--deal); opacity:1; }
-  mark { background:color-mix(in srgb, #facc15 40%, transparent); color:inherit; border-radius:3px; padding:0 1px; }
+  .srcs { color:var(--brand-2); }
+  .srcs a { text-decoration:underline dotted; text-underline-offset:2px; }
+  .side { display:flex; flex-direction:column; align-items:flex-end; gap:8px; min-width:92px; }
+  .time { font-size:12px; color:var(--ink-4); white-space:nowrap; }
+  .go { background:var(--brand); color:#fff; border-radius:15px; padding:4px 14px; font-size:13px; font-weight:600; white-space:nowrap; border:none; }
+  .how { margin-top:5px; font-size:13px; color:var(--ink-2); }
+  .how b { color:var(--ink-4); font-weight:500; }
+  .codes { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .code { display:inline-flex; align-items:center; gap:6px; border:1px dashed var(--brand-line); background:var(--brand-bg); color:var(--deep); border-radius:6px; padding:1px 4px 1px 8px; font:600 12.5px var(--mono); }
+  .code button { border:none; background:var(--surface); border-radius:4px; font-size:11px; padding:0 6px; color:var(--brand-2); }
+  .acts { display:flex; gap:6px; align-items:center; }
+  .vb { border:1px solid var(--line); background:var(--surface); border-radius:13px; font-size:12px; padding:1px 9px; color:var(--ink-3); display:inline-flex; gap:4px; align-items:center; }
+  .vb:hover { border-color:var(--brand-line); color:var(--brand); }
+  .vb.on { border-color:var(--brand); color:var(--brand); background:var(--brand-bg); font-weight:600; }
+  .vb.no.on { border-color:var(--ink-4); color:var(--ink-2); background:var(--bg); }
+  .star { border:none; background:none; font-size:17px; line-height:1; color:var(--ink-4); padding:0 2px; }
+  .star.on { color:#f59e0b; }
+  .vhead { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:12px 16px; margin-bottom:12px; font-size:13px; color:var(--ink-3); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .vhead b { color:var(--ink); font-size:15px; }
+  .vhead .sp { flex:1; }
+  .rankn { position:absolute; left:6px; top:4px; font:800 12px var(--mono); color:#fff; opacity:.9; z-index:1; }
+  .ck { display:grid; grid-template-columns:24px minmax(0,1fr) auto; gap:10px; align-items:center; background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:11px 14px; }
+  .ck input { width:18px; height:18px; accent-color:var(--brand); margin:0; }
+  .ck.done { opacity:.6; }
+  .ck.done .nm { text-decoration:line-through; }
+  .ck .nm { font-weight:600; font-size:14.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; }
+  .ck small { color:var(--ink-4); font-size:12.5px; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ckbar { height:6px; border-radius:3px; background:var(--bg); overflow:hidden; flex:1; min-width:120px; max-width:260px; }
+  .ckbar i { display:block; height:100%; background:var(--deal); }
+  .perks { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .perk { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:13px 15px; display:flex; flex-direction:column; gap:4px; }
+  .perk:hover { border-color:var(--brand-line); }
+  .perk b { font-size:14.5px; }
+  .perk span { font-size:13px; color:var(--ink-3); line-height:1.6; }
+  .perk em { font-style:normal; font:11.5px var(--mono); color:var(--ink-4); }
+  .go:hover { background:var(--brand-2); }
+  .copy { border:1px solid var(--line-2); background:var(--surface); border-radius:15px; font-size:12px; padding:2px 11px; color:var(--ink-3); }
+  .copy:hover { border-color:var(--brand); color:var(--brand); }
+  .copy.done { color:var(--deal); border-color:var(--deal); }
+  mark { background:#fde68a; color:inherit; border-radius:2px; padding:0 1px; }
 
-  /* \u5361\u7247\u89C6\u56FE */
-  .cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
-  .card { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:16px 16px 14px; display:flex; flex-direction:column; gap:7px; min-height:168px; position:relative; transition:transform .15s ease, box-shadow .15s ease, border-color .15s; }
-  .card::before { content:""; position:absolute; left:16px; right:16px; top:0; height:3px; border-radius:0 0 3px 3px; background:var(--c, var(--line-2)); }
-  .card:hover { transform:translateY(-2px); box-shadow:var(--shadow); border-color:var(--line-2); }
-  .card:active { transform:scale(.985); }
-  .card .head { display:flex; gap:6px; align-items:center; font-size:12px; color:var(--ink-4); }
-  .card .head .sp { flex:1; }
-  .card .head .tags { margin:0; }
-  .card .sum { flex:1; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; margin:0; }
-  .card .meta { margin-top:0; }
+  /* \u8F83\u65E9\u53D1\u5E03 */
+  .oldbar { margin:22px 0 4px; display:flex; align-items:center; gap:12px; color:var(--ink-3); font-size:13px; }
+  .oldbar::before, .oldbar::after { content:""; flex:1; height:1px; background:var(--line-2); }
+  .oldbar button { border:1px solid var(--line-2); background:var(--surface); border-radius:16px; padding:5px 14px; font-size:13px; color:var(--ink-2); }
+  .oldbar button:hover { border-color:var(--brand); color:var(--brand); }
+  .feed.old .item { opacity:.82; }
 
-  .more { display:block; margin:18px auto 0; border:1px solid var(--line); background:var(--surface); border-radius:10px; padding:9px 18px; color:var(--ink-3); font-size:13px; }
-  .empty { color:var(--ink-4); text-align:center; padding:80px 20px; line-height:1.9; }
-  .empty .em { font-size:34px; display:block; margin-bottom:6px; }
+  /* \u8282\u70B9\u8BA2\u9605 */
+  .warn { background:var(--cond-bg); color:var(--cond); border-radius:var(--r); padding:10px 14px; font-size:13px; margin-bottom:12px; line-height:1.7; }
+  .subs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+  .sub { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:14px 16px; display:flex; flex-direction:column; gap:8px; }
+  .sub .hd { display:flex; align-items:center; gap:8px; }
+  .sub .hd b { font-size:15px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sub .hd .time { flex:none; }
+  .sub .msg { color:var(--ink-4); font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sub .ln { display:flex; gap:8px; align-items:center; }
+  .sub .ln span { font-size:12px; font-weight:600; color:var(--ink-2); width:72px; flex:none; }
+  .sub .ln code { flex:1; min-width:0; font:11.5px var(--mono); color:var(--ink-3); background:var(--bg); border-radius:4px; padding:3px 7px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fresh { width:8px; height:8px; border-radius:50%; background:var(--deal); flex:none; }
+  .fresh.stale { background:var(--ink-4); }
+
+  /* ---------- \u53F3\u4FA7\u680F ---------- */
+  .aside { display:flex; flex-direction:column; gap:12px; position:sticky; top:calc(var(--head) + 60px); align-self:start; }
+  .box { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:14px 16px; }
+  .box h3 { margin:0 0 10px; font-size:14px; display:flex; align-items:center; gap:6px; }
+  .box h3::before { content:""; width:3px; height:14px; border-radius:2px; background:var(--brand); }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); text-align:center; }
+  .stats b { display:block; font:700 20px/1.2 var(--mono); color:var(--brand); }
+  .stats span { font-size:12px; color:var(--ink-4); }
+  .upd { font-size:12px; color:var(--ink-4); margin-top:10px; text-align:center; }
+  .rank a { display:flex; align-items:center; gap:8px; padding:5px 0; font-size:13px; color:var(--ink-2); cursor:pointer; }
+  .rank a:hover { color:var(--brand); }
+  .rank i { font-style:normal; width:18px; height:18px; border-radius:4px; background:var(--bg); color:var(--ink-4); font:600 11px/18px var(--mono); text-align:center; flex:none; }
+  .rank a:nth-child(-n+3) i { background:var(--brand); color:#fff; }
+  .rank span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rank em { font-style:normal; font:11px var(--mono); color:var(--ink-4); }
+  .rss a { display:block; text-align:center; border:1px solid var(--brand-line); color:var(--brand); border-radius:6px; padding:7px 0; font-size:13px; font-weight:600; margin-top:8px; }
+  .rss p { margin:0; font-size:12.5px; color:var(--ink-3); line-height:1.7; }
+
+  .more { display:block; margin:16px auto 0; border:1px solid var(--line-2); background:var(--surface); border-radius:18px; padding:7px 20px; color:var(--ink-3); font-size:13px; }
+  .empty { background:var(--surface); border:1px solid var(--line); border-radius:var(--r); color:var(--ink-4); text-align:center; padding:70px 20px; line-height:1.9; }
   .empty b { display:block; color:var(--ink); font-size:16px; margin-bottom:2px; }
-  .empty a { color:var(--accent); font-weight:600; }
-  .skel { height:84px; border-top:1px solid var(--line); background:linear-gradient(90deg,transparent,var(--hover),transparent); background-size:200% 100%; animation:sk 1.1s infinite; }
+  .empty a { color:var(--brand); font-weight:600; }
+  .skel { height:92px; border-radius:var(--r); background:linear-gradient(90deg,var(--surface),var(--hover),var(--surface)); background-size:200% 100%; animation:sk 1.1s infinite; }
   @keyframes sk { to { background-position:-200% 0; } }
-  .toast { position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom)); transform:translate(-50%,8px); background:var(--ink); color:var(--surface); padding:9px 16px; border-radius:10px; font-size:13px; opacity:0; transition:opacity .15s, transform .15s; pointer-events:none; z-index:60; box-shadow:var(--shadow); }
+  .toast { position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom)); transform:translate(-50%,8px); background:#222; color:#fff; padding:8px 16px; border-radius:18px; font-size:13px; opacity:0; transition:opacity .15s, transform .15s; pointer-events:none; z-index:60; }
   .toast.on { opacity:1; transform:translate(-50%,0); }
+  .top-btn { position:fixed; right:18px; bottom:calc(22px + env(safe-area-inset-bottom)); width:40px; height:40px; border-radius:50%; border:1px solid var(--line-2); background:var(--surface); color:var(--ink-3); display:none; font-size:16px; z-index:30; }
+  .top-btn.on { display:block; }
 
-  /* ---------- \u624B\u673A ---------- */
-  .sheet-bg { position:fixed; inset:0; background:rgba(10,10,20,.4); opacity:0; pointer-events:none; transition:opacity .18s; z-index:40; }
-  @media (max-width:1180px) { .cards { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-  @media (max-width:760px) {
-    :root { --top:56px; }
-    .app { grid-template-columns:1fr; }
-    .m-only { display:grid !important; }
-    .msearch.m-only { display:block !important; }
-    .top h1 { flex:1; min-width:0; }
-    .search kbd { display:none; }
-    .d-only { display:none !important; }
-    /* \u4FA7\u680F\u53D8\u6210\u5E95\u90E8\u62BD\u5C49 */
-    .rail { position:fixed; left:0; right:0; bottom:0; top:auto; height:auto; max-height:78vh; border-right:none; border-radius:18px 18px 0 0; padding:10px 14px calc(18px + env(safe-area-inset-bottom)); transform:translateY(105%); transition:transform .22s cubic-bezier(.2,.8,.2,1); z-index:45; box-shadow:0 -10px 40px rgba(0,0,0,.18); }
-    .rail::before { content:""; display:block; width:38px; height:4px; border-radius:4px; background:var(--line-2); margin:0 auto 10px; }
-    body.sheet .rail { transform:none; }
-    body.sheet .sheet-bg { opacity:1; pointer-events:auto; }
-    .rail .brand, .rail .search, .rail #catsWrap { display:none; }
-    .nav-title:first-of-type { padding-top:4px; }
-    .rail .nav.flow { display:flex; flex-wrap:wrap; gap:6px; }
-    .rail .nav.flow a { border:1px solid var(--line); background:var(--surface); padding:7px 12px; }
-    .rail .nav.flow a.on { border-color:var(--accent-line); background:var(--accent-bg); color:var(--accent-2); box-shadow:none; }
-    .rail .nav.flow a .n { margin-left:2px; }
-    .top { padding:0 14px; gap:8px; }
-    .top h1 { font-size:17px; display:flex; align-items:center; gap:9px; }
-    .top h1 .logo { width:28px; height:28px; border-radius:8px; box-shadow:none; }
-    .top h1 .logo i { width:8px; height:8px; box-shadow:0 0 0 4px rgba(255,255,255,.25); }
-    .top .count { display:none; }
-    .msearch { position:sticky; top:var(--top); z-index:9; background:var(--bg); padding:10px 14px 0; }
-    .msearch .search { margin:0; }
-    .chipbar { display:flex; gap:7px; overflow-x:auto; padding:10px 14px 10px; scrollbar-width:none; position:sticky; top:calc(var(--top) + 48px); z-index:8; background:var(--bg); border-bottom:1px solid var(--line); }
-    .chipbar::-webkit-scrollbar { display:none; }
-    .chipbar a { flex:none; display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:999px; border:1px solid var(--line); background:var(--surface); font-size:13px; color:var(--ink-2); white-space:nowrap; }
-    .chipbar a .n { font:600 11px var(--mono); color:var(--ink-4); }
-    .chipbar a.on { background:var(--ink); border-color:var(--ink); color:var(--bg); }
-    .chipbar a.on .n { color:color-mix(in srgb, var(--bg) 70%, transparent); }
-    .hero { grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; padding:12px 14px 2px; }
-    .hero .stat.upd { display:none; }
-    .stat { padding:10px 12px; border-radius:10px; }
-    .stat b { font-size:19px; }
-    .stat span { font-size:11.5px; }
-    .list { padding:2px 14px calc(90px + env(safe-area-inset-bottom)); }
-    .dayh { top:calc(var(--top) + 48px + 51px); padding:16px 2px 8px; }
-    .row { grid-template-columns:minmax(0,1fr); gap:6px; padding:13px 14px 13px 16px; }
-    .row .side { flex-direction:row; align-items:center; justify-content:space-between; }
-    .copy { opacity:1; padding:4px 10px; }
+  @media (max-width:980px) {
+    .main { grid-template-columns:minmax(0,1fr); }
+    .aside { position:static; order:-1; }
+    .aside .box:not(.sbox) { display:none; }
+    .subs, .perks { grid-template-columns:1fr; }
+  }
+  @media (max-width:640px) {
+    :root { --head:52px; }
+    .wrap { padding:0 10px; }
+    .head .wrap { gap:10px; }
+    .logo small, .head .links a.d { display:none; }
+    .logo { font-size:16px; }
+    .logo i { width:26px; height:26px; }
+    .search input { height:32px; padding-right:12px; }
+    .search button { display:none; }
+    .tab { padding:10px 12px 9px; font-size:14px; }
+    .filters { padding:8px 10px; }
+    .frow { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
+    .frow::-webkit-scrollbar { display:none; }
+    .frow > b { width:auto; margin-right:2px; }
+    .chip { flex:none; }
+    .item { grid-template-columns:44px minmax(0,1fr); gap:10px; padding:12px; }
+    .badge { width:44px; height:44px; font-size:13px; border-radius:6px; }
+    .side { grid-column:1 / -1; flex-direction:row; align-items:center; justify-content:flex-end; min-width:0; }
+    .side .time { margin-right:auto; }
+    .side { flex-wrap:wrap; }
     .t { font-size:15px; }
-    .cards { grid-template-columns:1fr; gap:10px; }
-    .card { min-height:0; }
-    .card:hover { transform:none; }
+    .stats b { font-size:18px; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
-  .srcs { color:var(--accent-2, #312e81); }
-  .srcs a { color:inherit; text-decoration:underline dotted; text-underline-offset:2px; }
 </style>
 </head>
 <body>
-<div class="bar" id="bar"></div>
-<div class="sheet-bg" onclick="sheet(false)"></div>
-<div class="app">
-  <aside class="rail" id="rail">
-    <a class="brand" href="/" title="\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE"><span class="logo"><i></i></span><div><b>\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE</b><small>\u6BCF\u65E5\u767D\u5AD6\u60C5\u62A5</small></div></a>
-    <div class="search d-only" id="searchHome"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" placeholder="\u641C\u7D22\u8D44\u6E90\u3001\u6765\u6E90\u2026" aria-label="\u641C\u7D22" autocomplete="off" /><kbd>/</kbd></div>
-    <div id="catsWrap"><div class="nav-title">\u5206\u7C7B</div><nav class="nav" id="cats"></nav></div>
-    <div class="nav-title">\u83B7\u53D6\u65B9\u5F0F</div>
-    <nav class="nav flow" id="obs"></nav>
-    <div class="nav-title">\u65E5\u671F</div>
-    <nav class="nav flow" id="days"></nav>
-    <div class="nav-title">\u8BA2\u9605</div>
-    <nav class="nav flow">
-      <a href="/feed.xml" target="_blank" class="press"><span class="ic">\u25C9</span><span class="lb">RSS \u8BA2\u9605</span></a>
-      <a href="/admin" class="press"><span class="ic">\u2699</span><span class="lb">\u7BA1\u7406\u540E\u53F0</span></a>
-    </nav>
-    <div class="about d-only">\u6BCF\u5929\u81EA\u52A8\u6536\u96C6\u534A\u5E74\u5185\u53D1\u5E03\u3001\u6CE8\u518C\u7B80\u5355\u7684\u514D\u8D39\u8D44\u6E90\u3002\u6570\u636E\u4FDD\u7559 <span id="ret">15</span> \u5929\uFF0C\u8FC7\u671F\u81EA\u52A8\u6E05\u7406\u3002</div>
+<header class="head">
+  <div class="wrap">
+    <a class="logo" href="/"><i></i>\u514D\u8D39\u8D44\u6E90\u96F7\u8FBE<small>\u6BCF\u65E5\u767D\u5AD6\u60C5\u62A5</small></a>
+    <form class="search" onsubmit="event.preventDefault();go({ q: $('#q').value.trim() })"><input id="q" placeholder="\u641C\u8D44\u6E90\u3001\u6765\u6E90\u3001\u7F51\u5740" aria-label="\u641C\u7D22" autocomplete="off" /><button>\u641C\u7D22</button></form>
+    <nav class="links"><a href="/feed.xml" target="_blank" class="d">RSS</a><a href="/admin">\u540E\u53F0</a></nav>
+  </div>
+</header>
+<nav class="tabs"><div class="wrap" id="tabs"></div></nav>
+<div class="wrap main">
+  <section>
+    <div class="filters" id="filters"></div>
+    <div id="list"><div class="feed"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></div>
+  </section>
+  <aside class="aside">
+    <div class="box sbox"><h3>\u4ECA\u65E5\u60C5\u62A5</h3><div class="stats" id="stats"></div><div class="upd" id="upd"></div></div>
+    <div class="box"><h3>\u6D3B\u8DC3\u6765\u6E90</h3><div class="rank" id="rank"></div></div>
+    <div class="box rss"><h3>\u8BA2\u9605</h3><p>\u6BCF\u5929\u81EA\u52A8\u6536\u96C6\u534A\u5E74\u5185\u53D1\u5E03\u7684\u514D\u8D39\u8D44\u6E90\u3001AI \u989D\u5EA6\u3001\u79D1\u6280\u8D44\u8BAF\u548C\u516C\u5171\u8282\u70B9\u3002\u6570\u636E\u4FDD\u7559 <b id="ret">15</b> \u5929\u3002\u6536\u85CF\u3001\u5DF2\u8BFB\u548C\u7B7E\u5230\u8BB0\u5F55\u53EA\u5B58\u5728\u4F60\u7684\u6D4F\u89C8\u5668\u91CC\u3002</p><a href="/feed.xml" target="_blank">\u25C9 RSS \u8BA2\u9605</a></div>
   </aside>
-  <main class="main">
-    <div class="top">
-      <h1><a class="logo m-only" href="/"><i></i></a><span id="title">\u5168\u90E8\u8D44\u6E90</span></h1>
-      <span class="count" id="count"></span>
-      <div class="seg" id="view" role="tablist"><button class="press" data-v="list">\u5217\u8868</button><button class="press" data-v="grid">\u5361\u7247</button></div>
-      <button class="icon-btn m-only press" onclick="sheet(true)" aria-label="\u7B5B\u9009"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg></button>
-    </div>
-    <div class="msearch m-only" id="searchMobile"></div>
-    <nav class="chipbar" id="chipbar"></nav>
-    <div class="hero" id="hero"></div>
-    <div class="list" id="list"><div class="box"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></div>
-  </main>
 </div>
+<button class="top-btn" id="topBtn" onclick="scrollTo({ top: 0, behavior: 'smooth' })" aria-label="\u56DE\u5230\u9876\u90E8">\u2191</button>
 <div class="toast" id="toast"></div>
 <script>
 const BOOT = /*__BOOT__*/null;
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const OB = { free: '\u76F4\u63A5\u767D\u5AD6', conditional: '\u6709\u6761\u4EF6', lottery: '\u62BD\u5956', trial: '\u8BD5\u7528', promo: '\u63A8\u5E7F', paid: '\u9700\u4ED8\u8D39' };
 const $ = (s) => document.querySelector(s);
-const $$ = (s) => document.querySelectorAll(s);
-const PAGE = 60;
-const state = { cat: '', ob: '', day: '', q: '', view: localStorage.getItem('frr_view') || 'list', shown: PAGE, data: null, list: [], cat_map: {} };
+const PAGE = 50, DAY = 86400000;
+// \u865A\u62DF\u680F\u76EE\uFF1A\u4E0D\u6309\u5206\u7C7B\uFF0C\u800C\u662F\u6309\u201C\u7528\u9014\u201D\u6311\u6761\u76EE
+const VIEWS = [
+  { key: 'v:weekly', label: '\u672C\u5468\u7CBE\u9009' },
+  { key: 'v:soon', label: '\u5373\u5C06\u622A\u6B62' },
+  { key: 'v:codes', label: '\u5151\u6362\u7801' },
+  { key: 'v:checkin', label: '\u7B7E\u5230' },
+  { key: 'v:perks', label: '\u5B66\u751F / \u5F00\u53D1\u8005' },
+  { key: 'v:fav', label: '\u6211\u7684\u6536\u85CF' },
+];
+const CHECKIN_RE = /\u7B7E\u5230|\u6BCF\u65E5\u9886\u53D6|\u6BCF\u5929\u9886\u53D6|\u6BCF\u65E5\u767B\u5F55|daily\\s*check-?in|\u6BCF\u65E5\u989D\u5EA6/i;
+const state = { grp: localStorage.getItem('frr_grp') || '', cat: '', ob: '', src: '', vendor: '', perk: '', q: '', shown: PAGE, showOld: false, data: null, list: [], oldItems: null, oldLoading: false, cat_map: {} };
 
-// \u624B\u673A\uFF1A\u641C\u7D22\u6846\u632A\u5230\u9876\u90E8
-if (matchMedia('(max-width:760px)').matches) $('#searchMobile').appendChild($('#searchHome')), $('#searchHome').classList.remove('d-only');
+// ---- \u672C\u5730\u5B58\u50A8\uFF1A\u6536\u85CF\u3001\u5DF2\u8BFB\u3001\u6295\u7968\u3001\u7B7E\u5230 ----
+const ls = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+let FAV = ls('frr_fav', {});        // id \u2192 \u6761\u76EE\u5FEB\u7167\uFF08\u6761\u76EE\u88AB\u6E05\u7406\u540E\u6536\u85CF\u8FD8\u5728\uFF09
+let READ = new Set(ls('frr_read', []));
+let VOTES = ls('frr_votes', {});    // id \u2192 1 / -1
+let MYCK = ls('frr_myck', []);      // \u81EA\u5DF1\u52A0\u7684\u7B7E\u5230 [{name, url}]
+const bjDay = (t) => (t ? new Date(t + 8 * 3600000).toISOString().slice(0, 10) : '');
+const ckKey = () => 'frr_ck_' + bjDay(Date.now());
+let CKD = ls(ckKey(), {});          // \u4ECA\u5929\u7B7E\u8FC7\u7684 url \u2192 true
+function markRead(id) { if (READ.has(id)) return; READ.add(id); lsSet('frr_read', [...READ].slice(-3000)); const el = document.getElementById('i-' + id); if (el) el.classList.add('read'); }
 
+const pubOf = (it) => it.published_at || it.fetched_at || 0;
 function ago(t) {
   if (!t) return '';
   const m = Math.round((Date.now() - t) / 60000);
@@ -3548,7 +4703,6 @@ function ago(t) {
   return new Date(t).toLocaleDateString('zh-CN');
 }
 const host = (u) => { try { return new URL(u).hostname.replace(/^www\\./, ''); } catch { return ''; } };
-const dot = (c) => '<span class="cdot" style="background:' + ((c && c.color) || '#9ca3af') + '"></span>';
 function hl(s) {
   const t = esc(s);
   if (!state.q) return t;
@@ -3557,161 +4711,333 @@ function hl(s) {
 }
 function sched(d) { return d.every && d.every < 24 ? '\u6BCF ' + d.every + ' \u5C0F\u65F6\u6293\u53D6' : '\u6BCF\u5929 ' + d.run_hour + ':00 \u6293\u53D6'; }
 function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('on'), 1500); }
-function sheet(on) { document.body.classList.toggle('sheet', on); }
 function dayLabel(d) {
-  if (!d) return '\u66F4\u65E9';
+  if (!d) return '\u53D1\u5E03\u65F6\u95F4\u4E0D\u8BE6';
   const [, m, dd] = d.split('-').map(Number);
-  const diff = state.data ? Math.round((Date.parse(state.data.today) - Date.parse(d)) / 86400000) : -1;
-  return (diff === 0 ? '\u4ECA\u5929 \xB7 ' : diff === 1 ? '\u6628\u5929 \xB7 ' : '') + m + '\u6708' + dd + '\u65E5';
+  const diff = Math.round((Date.parse(bjDay(Date.now())) - Date.parse(d)) / DAY);
+  return (diff === 0 ? '\u4ECA\u5929 \xB7 ' : diff === 1 ? '\u6628\u5929 \xB7 ' : diff === 2 ? '\u524D\u5929 \xB7 ' : '') + m + '\u6708' + dd + '\u65E5';
 }
-const isNew = (it) => state.multiDay && it.day === state.data.today;
-function chips(it) {
-  const c = [];
-  if (isNew(it)) c.push('<span class="chip new">NEW</span>');
-  if (it.obtain && OB[it.obtain]) c.push('<span class="chip ' + (it.obtain === 'free' ? 'free' : '') + '">' + OB[it.obtain] + '</span>');
-  return c.length ? '<span class="tags">' + c.join('') + '</span>' : '';
+function leftText(t) {
+  const d = Math.ceil((t - Date.now()) / DAY);
+  if (t < Date.now()) return '\u5DF2\u622A\u6B62';
+  if (bjDay(t) === bjDay(Date.now())) return '\u4ECA\u5929\u622A\u6B62';
+  return d <= 1 ? '\u660E\u5929\u622A\u6B62' : '\u5269 ' + d + ' \u5929';
 }
-function rowHtml(it, i) {
-  const c = state.cat_map[it.category] || { label: '\u5176\u5B83' };
-  return '<div class="row" style="--c:' + (c.color || '') + '"><div>' +
-    '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + hl(it.name || it.title) + '</a>' + chips(it) +
+const catOf = (it) => state.cat_map[it.category] || { label: '\u5176\u5B83', color: '#8a93a1', group: 'fuli' };
+const SHORT = { domain: '\u57DF\u540D', hosting: '\u4E3B\u673A', cloud: '\u4E91\u670D\u52A1', ai: 'AI', aideal: '\u798F\u5229', aitool: '\u5DE5\u5177', software: '\u8F6F\u4EF6', dev: '\u5F00\u53D1', game: '\u6E38\u620F', media: '\u5F71\u97F3', design: '\u7D20\u6750', edu: '\u5B66\u751F', course: '\u7F51\u8BFE', pan: '\u7F51\u76D8', goods: '\u5B9E\u7269', invite: '\u9080\u8BF7', ainews: 'AI\u8BAF', news: '\u8D44\u8BAF', proxy: '\u8282\u70B9', other: '\u5176\u5B83' };
+const short = (it, label) => SHORT[it.category] || label.replace(/[\\s/\xB7]+/g, '').slice(0, 2);
+function copyText(t, btn) {
+  navigator.clipboard?.writeText(t).then(() => { if (btn) { const o = btn.textContent; btn.textContent = '\u5DF2\u590D\u5236'; btn.classList.add('done'); setTimeout(() => { btn.textContent = o; btn.classList.remove('done'); }, 1300); } else toast('\u5DF2\u590D\u5236'); }, () => toast('\u590D\u5236\u5931\u8D25\uFF0C\u8BF7\u957F\u6309\u590D\u5236'));
+}
+const codesOf = (it) => (it.extra && it.extra.codes) || [];
+const isSub = (it) => !!(it.extra && it.extra.subs);
+
+function itemHtml(it, i, opt = {}) {
+  const c = catOf(it);
+  const old = opt.old;
+  const isNew = !!it.published_at && Date.now() - it.published_at < DAY && !old;
+  const tags = [];
+  if (isNew) tags.push('<span class="tg new">\u65B0</span>');
+  if (it.dead) tags.push('<span class="tg dead" title="\u62BD\u67E5\u65F6\u6253\u4E0D\u5F00\uFF0C\u6216\u9875\u9762\u5199\u7740\u5DF2\u7ED3\u675F">\u53EF\u80FD\u5931\u6548</span>');
+  else if (it.expires_at) tags.push('<span class="tg ' + (it.expires_at - Date.now() < 3 * DAY ? 'soon' : 'old') + '" title="\u622A\u6B62 ' + esc(new Date(it.expires_at).toLocaleString('zh-CN')) + '">' + leftText(it.expires_at) + '</span>');
+  if (old) tags.push('<span class="tg old">' + Math.round((Date.now() - pubOf(it)) / DAY) + ' \u5929\u524D\u53D1\u5E03</span>');
+  if (it.extra && it.extra.perk) tags.push('<span class="tg hot">' + esc(it.extra.perk) + '</span>');
+  if (!c.info && it.obtain && OB[it.obtain] && !(it.extra && it.extra.perk && it.obtain === 'free')) tags.push('<span class="tg ' + (it.obtain === 'free' ? 'free' : '') + '">' + OB[it.obtain] + '</span>');
+  const srcs = it.srcs
+    ? '<span class="srcs" title="\u540C\u4E00\u4E2A\u5730\u5740\u88AB\u591A\u4E2A\u6765\u6E90\u63D0\u5230">' + it.srcs.length + ' \u4E2A\u6765\u6E90\uFF1A' + it.srcs.map((x) => '<a href="' + esc(x.u) + '" target="_blank" rel="noopener">' + hl(x.n || '') + '</a>').join(' / ') + '</span>'
+    : '<span>' + hl(it.source || '') + '</span>';
+  const how = it.extra && it.extra.how;
+  const codes = codesOf(it);
+  const mv = VOTES[it.id] || 0;
+  return '<article class="item' + (READ.has(it.id) ? ' read' : '') + (it.dead ? ' dead' : '') + '" id="i-' + it.id + '" style="--c:' + c.color + '">' +
+    '<div class="badge">' + (opt.rank ? '<span class="rankn">' + opt.rank + '</span>' : '') + esc(short(it, c.label)) + '</div>' +
+    '<div><a class="t" data-read="' + it.id + '" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + hl(it.name || it.title) + '</a>' + (tags.length ? '<span class="tags">' + tags.join('') + '</span>' : '') +
     (it.summary ? '<div class="sum">' + hl(it.summary) + '</div>' : '') +
-    '<div class="meta">' + ['<span class="cat">' + dot(c) + esc(c.label) + '</span>', it.signup ? '\u6CE8\u518C\uFF1A' + esc(it.signup) : '', '<span class="host">' + esc(host(it.url)) + '</span>', (it.srcs ? '<span class="srcs" title="' + esc(it.srcs.map((x) => x.n).join('\u3001')) + '">' + it.srcs.length + ' \u4E2A\u6765\u6E90\uFF1A' + it.srcs.map((x) => '<a href="' + esc(x.u) + '" target="_blank" rel="noopener">' + hl(x.n || '') + '</a>').join(' / ') + '</span>' : hl(it.source || ''))].filter(Boolean).join('<i>\xB7</i>') + '</div></div>' +
-    '<div class="side"><span class="time">' + ago(it.published_at) + '</span><button class="copy press" data-i="' + i + '">\u590D\u5236\u94FE\u63A5</button></div></div>';
+    (how ? '<div class="how"><b>\u600E\u4E48\u9886\uFF1A</b>' + hl(how) + '</div>' : '') +
+    (codes.length ? '<div class="codes">' + codes.map((x) => '<span class="code">' + esc(x) + '<button data-copy="' + esc(x) + '">\u590D\u5236</button></span>').join('') + '</div>' : '') +
+    '<div class="meta"><span class="cat">' + esc(c.label) + '</span>' + (it.extra && it.extra.vendor ? '<a data-vd="' + esc(it.extra.vendor) + '" title="\u53EA\u770B\u8FD9\u4E2A\u5382\u5546">\u5382\u5546\uFF1A' + esc(it.extra.vendor) + '</a>' : '') + srcs + (it.signup ? '<span>\u6CE8\u518C\uFF1A' + esc(it.signup) + '</span>' : '') + '<span class="host">' + esc(host(it.url)) + '</span></div></div>' +
+    '<div class="side"><span class="time" title="' + esc(new Date(pubOf(it)).toLocaleString('zh-CN')) + '">' + (it.published_at ? '' : '\u6536\u5F55\u4E8E ') + ago(pubOf(it)) + '</span>' +
+    '<a class="go" data-read="' + it.id + '" href="' + esc(it.url) + '" target="_blank" rel="noopener">\u76F4\u8FBE\u94FE\u63A5</a>' +
+    '<div class="acts">' + (c.info ? '' : '<button class="vb' + (mv === 1 ? ' on' : '') + '" data-vote="' + it.id + '" data-v="1" title="\u503C\u5F97\u4E00\u9886">\u503C ' + (it.up || 0) + '</button><button class="vb no' + (mv === -1 ? ' on' : '') + '" data-vote="' + it.id + '" data-v="-1" title="\u4E0D\u503C / \u6709\u5751">\u4E0D\u503C' + (it.down ? ' ' + it.down : '') + '</button>') +
+    '<button class="star' + (FAV[it.id] ? ' on' : '') + '" data-fav="' + it.id + '" title="' + (FAV[it.id] ? '\u53D6\u6D88\u6536\u85CF' : '\u6536\u85CF') + '">' + (FAV[it.id] ? '\u2605' : '\u2606') + '</button></div></div></article>';
 }
-function cardHtml(it) {
-  const c = state.cat_map[it.category] || { label: '\u5176\u5B83' };
-  return '<a class="card" style="--c:' + (c.color || '') + '" href="' + esc(it.url) + '" target="_blank" rel="noopener">' +
-    '<div class="head">' + dot(c) + '<span>' + esc(c.label) + '</span><span class="sp"></span>' + chips(it) + '</div>' +
-    '<div class="t">' + hl(it.name || it.title) + '</div>' +
-    '<div class="sum">' + hl(it.summary || '') + '</div>' +
-    '<div class="meta">' + [it.signup ? '\u6CE8\u518C\uFF1A' + esc(it.signup) : '', esc(host(it.url)), ago(it.published_at)].filter(Boolean).join('<i>\xB7</i>') + '</div></a>';
+function subHtml(it) {
+  const subs = (it.extra && it.extra.subs) || [];
+  const age = Date.now() - pubOf(it);
+  const nodes = it.extra && it.extra.nodes;
+  return '<div class="sub"><div class="hd"><span class="fresh' + (age > 3 * DAY ? ' stale' : '') + '" title="' + (age > 3 * DAY ? '3 \u5929\u4EE5\u4E0A\u6CA1\u66F4\u65B0\uFF0C\u53EF\u80FD\u5927\u591A\u5DF2\u5931\u6548' : '\u8FD1 3 \u5929\u6709\u66F4\u65B0') + '"></span><b>' + hl(it.name || it.title) + '</b><span class="time">' + ago(pubOf(it)) + '\u66F4\u65B0</span></div>' +
+    '<div class="msg">' + (nodes != null ? '\u7EA6 ' + nodes + (it.extra.nodes_more ? '+' : '') + ' \u4E2A\u8282\u70B9 \xB7 ' : '') + esc(it.summary || '') + '</div>' +
+    subs.map((s) => '<div class="ln"><span>' + esc(s[0]) + '</span><code title="' + esc(s[1]) + '">' + esc(s[1]) + '</code><button class="copy" data-copy="' + esc(s[1]) + '">\u590D\u5236</button></div>').join('') +
+    '<div class="ln" style="justify-content:flex-end"><a class="copy" href="' + esc(it.url) + '" target="_blank" rel="noopener">\u4ED3\u5E93</a>' + (it.extra && it.extra.commit ? '<a class="copy" href="' + esc(it.extra.commit) + '" target="_blank" rel="noopener">\u6700\u8FD1\u63D0\u4EA4</a>' : '') + '</div></div>';
 }
 
-// ---- \u672C\u5730\u7B5B\u9009\uFF1A\u6570\u636E\u4E00\u6B21\u62FF\u5168\uFF0C\u70B9\u51FB\u5373\u65F6\u54CD\u5E94 ----
+// ---- \u672C\u5730\u7B5B\u9009 ----
 function matches(it, skip) {
+  const c = catOf(it);
+  const g = state.grp;
+  if (skip !== 'grp' && g && !g.startsWith('v:') && c.group !== g) return false;
   if (skip !== 'cat' && state.cat && it.category !== state.cat) return false;
   if (skip !== 'ob' && state.ob && it.obtain !== state.ob) return false;
-  if (skip !== 'day' && state.day && it.day !== state.day) return false;
+  if (skip !== 'vendor' && state.vendor && !(it.extra && it.extra.vendor === state.vendor)) return false;
+  if (skip !== 'perk' && state.perk && !(it.extra && it.extra.perk === state.perk)) return false;
+  if (skip !== 'src' && state.src && !(it.source === state.src || (it.srcs && it.srcs.some((x) => x.n === state.src)))) return false;
   if (state.q) {
     const q = state.q.toLowerCase();
-    if (!((it.name || '') + ' ' + it.title + ' ' + (it.summary || '') + ' ' + (it.srcs ? it.srcs.map((x) => x.n).join(' ') : it.source || '') + ' ' + it.url).toLowerCase().includes(q)) return false;
+    if (!((it.name || '') + ' ' + it.title + ' ' + (it.summary || '') + ' ' + codesOf(it).join(' ') + ' ' + (it.srcs ? it.srcs.map((x) => x.n).join(' ') : it.source || '') + ' ' + it.url).toLowerCase().includes(q)) return false;
   }
   return true;
 }
-function countBy(field, skip) {
-  const m = { '': 0 };
-  for (const it of state.data.items) if (matches(it, skip)) { m[''] += 1; m[it[field] || ''] = (m[it[field] || ''] || 0) + 1; }
-  return m;
+function count(fn, skip) { const m = {}; let all = 0; for (const it of state.data.items) if (matches(it, skip)) { all++; const k = fn(it); m[k] = (m[k] || 0) + 1; } m[''] = all; return m; }
+const liveNow = (it) => !it.dead && !(it.expires_at && it.expires_at < Date.now());
+// \u5404\u865A\u62DF\u680F\u76EE\u7684\u6761\u76EE
+function viewItems(key) {
+  const d = state.data, items = d.items;
+  if (key === 'v:weekly') { const by = new Map(items.map((x) => [x.id, x])); return d.weekly.map((id) => by.get(id)).filter(Boolean); }
+  if (key === 'v:soon') return items.filter((x) => x.expires_at && x.expires_at > Date.now() && !x.dead).sort((a, b) => a.expires_at - b.expires_at);
+  if (key === 'v:codes') return items.filter((x) => codesOf(x).length && liveNow(x));
+  if (key === 'v:checkin') return items.filter((x) => !isSub(x) && !catOf(x).info && CHECKIN_RE.test((x.name || '') + ' ' + x.title + ' ' + (x.summary || '')));
+  if (key === 'v:fav') return Object.values(FAV).sort((a, b) => (b._at || 0) - (a._at || 0));
+  return [];
 }
-function navItem(attr, val, icon, label, n, on) {
-  return '<a class="press' + (on ? ' on' : '') + '" data-' + attr + '="' + esc(val) + '"><span class="ic">' + icon + '</span><span class="lb">' + label + '</span><span class="n">' + (n || '') + '</span></a>';
+function viewCount(key) {
+  if (key === 'v:perks') return (state.data.perks || []).length;
+  if (key === 'v:checkin') return (state.data.checkin || []).length + MYCK.length + viewItems(key).length;
+  return viewItems(key).length;
 }
-function renderNav() {
+
+function renderTabs() {
   const d = state.data;
-  const cc = countBy('category', 'cat'), oc = countBy('obtain', 'ob'), dc = countBy('day', 'day');
-  const cats = d.categories.filter((c) => cc[c.key] || state.cat === c.key);
-  const catNav = navItem('c', '', '\u25CE', '\u5168\u90E8', cc[''], !state.cat) + cats.map((c) => navItem('c', c.key, dot(c), esc(c.label), cc[c.key], state.cat === c.key)).join('');
-  $('#cats').innerHTML = catNav;
-  $('#chipbar').innerHTML = catNav;
-  $('#obs').innerHTML = navItem('o', '', '\xB7', '\u4E0D\u9650', '', !state.ob) + ['free', 'conditional'].filter((k) => oc[k] || state.ob === k).map((k) => navItem('o', k, k === 'free' ? '\u2713' : '\u25D0', OB[k], oc[k], state.ob === k)).join('');
-  const days = [...new Set(d.items.map((x) => x.day).filter(Boolean))].sort().reverse();
-  $('#days').innerHTML = navItem('d', '', '\u25A6', '\u5168\u90E8\u65E5\u671F', '', !state.day) + days.slice(0, 15).map((x) => navItem('d', x, '\xB7', dayLabel(x), dc[x], state.day === x)).join('');
+  const gc = count((it) => catOf(it).group, 'grp');
+  const used = new Set(d.categories.map((c) => c.group));
+  const groups = d.groups.filter((g) => used.has(g.key));
+  const tab = (key, label, n) => '<button class="tab' + (state.grp === key ? ' on' : '') + '" data-g="' + key + '">' + esc(label) + '<span class="n">' + (n || '') + '</span></button>';
+  $('#tabs').innerHTML = tab('', '\u5168\u90E8', gc['']) + groups.map((g) => tab(g.key, g.label, gc[g.key])).join('') + '<span class="sep"></span>' +
+    VIEWS.filter((v) => v.key !== 'v:perks' || (d.perks || []).length).map((v) => tab(v.key, v.label, viewCount(v.key))).join('');
 }
-function renderHero() {
+function renderFilters() {
   const d = state.data;
-  const todayN = d.items.filter((x) => x.day === d.today).length;
-  const freeN = d.items.filter((x) => x.obtain === 'free').length;
-  const upd = d.last_run ? ago(d.last_run) : '\u8FD8\u6CA1\u6293\u53D6';
-  $('#hero').innerHTML = d.items.length
-    ? '<div class="stat hl"><b>' + todayN + '</b><span>\u4ECA\u65E5\u65B0\u589E</span></div><div class="stat ok"><b>' + freeN + '</b><span>\u76F4\u63A5\u767D\u5AD6</span></div><div class="stat"><b>' + d.items.length + '</b><span>\u8FD1 ' + d.retention_days + ' \u5929\u5171\u6536\u5F55</span></div><div class="stat upd"><b class="sm">' + upd + '</b><span>\u6700\u8FD1\u66F4\u65B0 \xB7 ' + sched(d) + '</span></div>'
-    : '';
+  if (state.grp.startsWith('v:')) {
+    const rows = state.q ? ['<div class="frow"><b>\u5DF2\u7B5B\u9009</b><button class="chip on" data-q="">\u641C\u7D22\uFF1A' + esc(state.q) + ' \u2715</button></div>'] : [];
+    $('#filters').innerHTML = rows.join(''); $('#filters').style.display = rows.length ? '' : 'none'; return;
+  }
+  const cc = count((it) => it.category, 'cat'), oc = count((it) => it.obtain || '', 'ob');
+  const cats = d.categories.filter((c) => (!state.grp || c.group === state.grp) && (cc[c.key] || state.cat === c.key));
+  const rows = [];
+  if (cats.length > 1 || state.cat) rows.push('<div class="frow"><b>\u5206\u7C7B</b><button class="chip' + (!state.cat ? ' on' : '') + '" data-c="">\u5168\u90E8</button>' + cats.map((c) => '<button class="chip' + (state.cat === c.key ? ' on' : '') + '" data-c="' + c.key + '"><span class="d" style="background:' + c.color + '"></span>' + esc(c.label) + '<span class="n">' + cc[c.key] + '</span></button>').join('') + '</div>');
+  const infoOnly = state.grp && cats.length && cats.every((c) => c.info);
+  if (!infoOnly && (oc.free || oc.conditional || state.ob)) rows.push('<div class="frow"><b>\u83B7\u53D6\u65B9\u5F0F</b><button class="chip' + (!state.ob ? ' on' : '') + '" data-o="">\u4E0D\u9650</button>' + ['free', 'conditional', 'trial'].filter((k) => oc[k] || state.ob === k).map((k) => '<button class="chip' + (state.ob === k ? ' on' : '') + '" data-o="' + k + '">' + OB[k] + '<span class="n">' + oc[k] + '</span></button>').join('') + '</div>');
+  // AI \u798F\u5229\uFF1A\u6309\u5382\u5546\u3001\u798F\u5229\u7C7B\u578B\u7B5B
+  if (state.grp === 'aifree' || state.vendor || state.perk) {
+    const vc = count((it) => (it.extra && it.extra.vendor) || '', 'vendor'), pc = count((it) => (it.extra && it.extra.perk) || '', 'perk');
+    const vs = Object.keys(vc).filter((k) => k && vc[k]).sort((a, b) => vc[b] - vc[a]).slice(0, 16);
+    const ps = Object.keys(pc).filter((k) => k && pc[k]).sort((a, b) => pc[b] - pc[a]);
+    if (ps.length || state.perk) rows.push('<div class="frow"><b>\u798F\u5229\u7C7B\u578B</b><button class="chip' + (!state.perk ? ' on' : '') + '" data-pk="">\u4E0D\u9650</button>' + ps.map((k) => '<button class="chip' + (state.perk === k ? ' on' : '') + '" data-pk="' + esc(k) + '">' + esc(k) + '<span class="n">' + pc[k] + '</span></button>').join('') + '</div>');
+    if (vs.length || state.vendor) rows.push('<div class="frow"><b>\u5382\u5546</b><button class="chip' + (!state.vendor ? ' on' : '') + '" data-vd="">\u5168\u90E8</button>' + vs.map((k) => '<button class="chip' + (state.vendor === k ? ' on' : '') + '" data-vd="' + esc(k) + '">' + esc(k) + '<span class="n">' + vc[k] + '</span></button>').join('') + '</div>');
+  }
+  if (state.src || state.q) rows.push('<div class="frow"><b>\u5DF2\u7B5B\u9009</b>' + (state.src ? '<button class="chip on" data-s="">\u6765\u6E90\uFF1A' + esc(state.src) + ' \u2715</button>' : '') + (state.q ? '<button class="chip on" data-q="">\u641C\u7D22\uFF1A' + esc(state.q) + ' \u2715</button>' : '') + '</div>');
+  $('#filters').innerHTML = rows.join('');
+  $('#filters').style.display = rows.length ? '' : 'none';
 }
-function render(fade) {
+function renderAside() {
   const d = state.data;
-  state.list = d.items.filter((it) => matches(it));
+  const today = bjDay(Date.now());
+  const todayN = d.items.filter((x) => x.published_at && bjDay(x.published_at) === today).length;
+  const freeN = d.items.filter((x) => x.obtain === 'free' && !catOf(x).info).length;
+  const soonN = d.items.filter((x) => x.expires_at && x.expires_at > Date.now() && x.expires_at - Date.now() < 3 * DAY && !x.dead).length;
+  $('#stats').innerHTML = '<div><b>' + todayN + '</b><span>\u4ECA\u65E5\u53D1\u5E03</span></div><div><b>' + freeN + '</b><span>\u76F4\u63A5\u767D\u5AD6</span></div><div><b>' + soonN + '</b><span>3 \u5929\u5185\u622A\u6B62</span></div>';
+  $('#upd').textContent = (d.last_run ? '\u6700\u8FD1\u66F4\u65B0 ' + ago(d.last_run) : '\u8FD8\u6CA1\u6293\u53D6') + ' \xB7 ' + sched(d) + ' \xB7 \u8FD1 ' + d.fresh_days + ' \u5929 ' + d.items.length + ' \u6761';
+  const sc = {};
+  for (const it of d.items) if (matches(it, 'src')) for (const n of it.srcs ? it.srcs.map((x) => x.n) : [it.source]) if (n) sc[n] = (sc[n] || 0) + 1;
+  const top = Object.entries(sc).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  $('#rank').innerHTML = top.length ? top.map(([n, c], i) => '<a data-s="' + esc(n) + '"><i>' + (i + 1) + '</i><span>' + esc(n) + '</span><em>' + c + '</em></a>').join('') : '<span style="color:var(--ink-4);font-size:13px">\u6682\u65E0</span>';
+  $('#ret').textContent = d.retention_days;
+}
+function feedHtml(list, opt = {}) {
+  if (opt.flat) return '<div class="feed' + (opt.old ? ' old' : '') + '">' + list.map((it, i) => itemHtml(it, i, { old: opt.old, rank: opt.ranked ? i + 1 : 0 })).join('') + '</div>';
+  const groups = [];
+  list.forEach((it) => {
+    const k = it.published_at ? bjDay(it.published_at) : '';
+    if (!groups.length || groups[groups.length - 1].d !== k) groups.push({ d: k, list: [] });
+    groups[groups.length - 1].list.push(it);
+  });
+  return groups.map((g) => '<div class="dayh"><b>' + dayLabel(g.d) + '</b><span>' + g.list.length + ' \u6761</span></div><div class="feed">' + g.list.map((it) => itemHtml(it, 0)).join('') + '</div>').join('');
+}
+// ---- \u5404\u865A\u62DF\u680F\u76EE ----
+function renderView(key) {
   const el = $('#list');
-  $('#count').textContent = state.list.length ? state.list.length + ' \u6761' : '';
-  $('#title').textContent = state.cat ? (state.cat_map[state.cat] || {}).label || '\u8D44\u6E90' : state.q ? '\u641C\u7D22\u7ED3\u679C' : '\u5168\u90E8\u8D44\u6E90';
-  renderNav();
-  if (!state.list.length) {
-    const filtered = state.cat || state.ob || state.day || state.q;
-    el.innerHTML = filtered
-      ? '<div class="empty"><span class="em">\u{1F50D}</span><b>\u6CA1\u6709\u7B26\u5408\u6761\u4EF6\u7684\u8D44\u6E90</b>\u6362\u4E2A\u5206\u7C7B\uFF0C\u6216\u6E05\u7A7A\u641C\u7D22\u518D\u8BD5\u8BD5</div>'
-      : '<div class="empty"><span class="em">\u{1F4E1}</span><b>\u8FD8\u6CA1\u6709\u6570\u636E</b>' + sched(d) + '\uFF08\u5317\u4EAC\u65F6\u95F4\uFF09\u3002\u521A\u90E8\u7F72\u597D\uFF1F\u53BB <a href="/admin">\u7BA1\u7406\u540E\u53F0</a> \u70B9\u300C\u7ACB\u5373\u6293\u53D6\u300D\u3002</div>';
+  const d = state.data;
+  const filt = (l) => l.filter((it) => matches(it, 'grp'));
+  if (key === 'v:perks') {
+    const ps = (d.perks || []).filter((p) => !state.q || (p.name + ' ' + (p.note || '')).toLowerCase().includes(state.q.toLowerCase()));
+    const grp = (who) => ps.filter((p) => p.who === who);
+    const block = (who, desc) => grp(who).length ? '<div class="dayh"><b>' + who + '</b><span>' + desc + '</span></div><div class="perks">' + grp(who).map((p) => '<a class="perk" href="' + esc(p.url) + '" target="_blank" rel="noopener"><b>' + hl(p.name) + '</b><span>' + hl(p.note || '') + '</span><em>' + esc(host(p.url)) + '</em></a>').join('') + '</div>' : '';
+    const body = block('\u5B66\u751F', '\u5B66\u6821\u90AE\u7BB1\u6216\u5B66\u751F\u8BA4\u8BC1') + block('\u5F00\u53D1\u8005', '\u957F\u671F\u514D\u8D39\u989D\u5EA6');
+    el.innerHTML = '<div class="vhead"><b>\u5B66\u751F / \u5F00\u53D1\u8005\u4E13\u533A</b>\u957F\u671F\u6709\u6548\u7684\u514D\u8D39\u6743\u76CA\uFF0C\u4E0D\u968F\u6BCF\u5929\u7684\u4FE1\u606F\u6D41\u6EDA\u52A8\u3002</div>' + (body || '<div class="empty"><b>\u6CA1\u6709\u5339\u914D\u7684\u6743\u76CA</b></div>');
     return;
   }
+  if (key === 'v:checkin') {
+    const base = [...(d.checkin || []).map((x) => ({ ...x, own: false })), ...MYCK.map((x) => ({ ...x, own: true }))];
+    const auto = filt(viewItems(key)).filter((it) => !base.some((b) => b.url === it.url));
+    const done = base.filter((b) => CKD[b.url]).length;
+    const ck = (b) => '<label class="ck' + (CKD[b.url] ? ' done' : '') + '"><input type="checkbox" data-ck="' + esc(b.url) + '"' + (CKD[b.url] ? ' checked' : '') + ' /><span><a class="nm" href="' + esc(b.url) + '" target="_blank" rel="noopener">' + esc(b.name) + '</a><small>' + esc(b.note || host(b.url)) + '</small></span>' + (b.own ? '<button class="copy" data-unck="' + esc(b.url) + '">\u79FB\u9664</button>' : '<span></span>') + '</label>';
+    el.innerHTML = '<div class="vhead"><b>\u4ECA\u65E5\u7B7E\u5230</b>\u5DF2\u7B7E ' + done + ' / ' + base.length + '<span class="ckbar"><i style="width:' + (base.length ? Math.round(done / base.length * 100) : 0) + '%"></i></span><span class="sp"></span>\u52FE\u9009\u8BB0\u5728\u4F60\u81EA\u5DF1\u7684\u6D4F\u89C8\u5668\u91CC\uFF0C\u6BCF\u5929\u96F6\u70B9\u6E05\u7A7A</div>' +
+      (base.length ? '<div class="feed">' + base.map(ck).join('') + '</div>' : '<div class="empty" style="padding:30px 20px"><b>\u8FD8\u6CA1\u6709\u7B7E\u5230\u6E05\u5355</b>\u5728\u4E0B\u9762\u7684\u8D44\u6E90\u4E0A\u70B9\u300C\u52A0\u5165\u7B7E\u5230\u300D\uFF0C\u6216\u8005\u8BA9\u7AD9\u957F\u5728\u540E\u53F0\u586B\u5199\u7B7E\u5230\u6E05\u5355\u3002</div>') +
+      (auto.length ? '<div class="dayh"><b>\u6700\u8FD1\u6536\u5F55\u7684\u7B7E\u5230\u7C7B\u8D44\u6E90</b><span>' + auto.length + ' \u6761</span></div><div class="feed">' + auto.map((it) => itemHtml(it, 0).replace('<div class="acts">', '<div class="acts"><button class="vb" data-addck="' + it.id + '">\u52A0\u5165\u7B7E\u5230</button>')).join('') + '</div>' : '');
+    return;
+  }
+  const list = filt(viewItems(key));
+  const head = {
+    'v:weekly': '<b>\u672C\u5468\u7CBE\u9009</b>\u8FD1 7 \u5929\u6309 AI \u8BC4\u5206\u3001\u300C\u503C / \u4E0D\u503C\u300D\u6295\u7968\u548C\u88AB\u51E0\u4E2A\u6765\u6E90\u63D0\u5230\u6311\u51FA\u7684 10 \u6761\uFF0C\u6BCF\u4E2A\u5206\u7C7B\u6700\u591A 3 \u6761\u3002',
+    'v:soon': '<b>\u5373\u5C06\u622A\u6B62</b>\u5199\u660E\u4E86\u622A\u6B62\u65F6\u95F4\u7684\u6D3B\u52A8\uFF0C\u6309\u622A\u6B62\u65F6\u95F4\u5148\u540E\u6392\uFF0C\u8FC7\u671F\u4E00\u5929\u540E\u81EA\u52A8\u4E0B\u67B6\u3002',
+    'v:codes': '<b>\u5151\u6362\u7801</b>\u6B63\u6587\u91CC\u76F4\u63A5\u7ED9\u4E86\u5151\u6362\u7801 / \u6FC0\u6D3B\u7801\u7684\uFF0C\u70B9\u4E00\u4E0B\u5C31\u80FD\u590D\u5236\uFF0C\u5148\u5230\u5148\u5F97\u3002',
+    'v:fav': '<b>\u6211\u7684\u6536\u85CF</b>\u6536\u85CF\u53EA\u5B58\u5728\u8FD9\u4E2A\u6D4F\u89C8\u5668\u91CC\uFF1B\u6761\u76EE\u8FC7\u671F\u6E05\u7406\u540E\u6536\u85CF\u4ECD\u7136\u4FDD\u7559\u3002',
+  }[key];
+  el.innerHTML = '<div class="vhead">' + head + (key === 'v:fav' && list.length ? '<span class="sp"></span><button class="copy" data-clearfav="1">\u6E05\u7A7A\u6536\u85CF</button>' : '') + '</div>' +
+    (list.length ? feedHtml(list, { flat: true, ranked: key === 'v:weekly' }) : '<div class="empty"><b>' + ({ 'v:fav': '\u8FD8\u6CA1\u6709\u6536\u85CF', 'v:weekly': '\u8FD9\u5468\u8FD8\u6CA1\u6709\u53EF\u9009\u7684\u6761\u76EE', 'v:soon': '\u6682\u65F6\u6CA1\u6709\u5199\u660E\u622A\u6B62\u65F6\u95F4\u7684\u6D3B\u52A8', 'v:codes': '\u6682\u65F6\u6CA1\u6709\u5151\u6362\u7801' }[key]) + '</b>' + (key === 'v:fav' ? '\u70B9\u8D44\u6E90\u53F3\u4E0B\u89D2\u7684 \u2606 \u6536\u85CF' : '') + '</div>');
+}
+function render() {
+  const d = state.data;
+  const fresh = Math.max(1, d.fresh_days || 15) * DAY;
+  renderTabs(); renderFilters(); renderAside();
+  if (state.grp.startsWith('v:')) return renderView(state.grp);
+  const all = d.items.filter((it) => matches(it)).sort((a, b) => pubOf(b) - pubOf(a));
+  const el = $('#list');
+  const filtered = state.grp || state.cat || state.ob || state.src || state.q || state.vendor || state.perk;
+  if (!all.length && !d.old_count) {
+    el.innerHTML = filtered
+      ? '<div class="empty"><b>\u8FD9\u4E2A\u680F\u76EE\u6682\u65F6\u6CA1\u6709\u5185\u5BB9</b>\u6362\u4E2A\u680F\u76EE\uFF0C\u6216\u6E05\u7A7A\u641C\u7D22\u518D\u8BD5\u8BD5</div>'
+      : '<div class="empty"><b>\u8FD8\u6CA1\u6709\u6570\u636E</b>' + sched(d) + '\uFF08\u5317\u4EAC\u65F6\u95F4\uFF09\u3002\u521A\u90E8\u7F72\u597D\uFF1F\u53BB <a href="/admin">\u7BA1\u7406\u540E\u53F0</a> \u70B9\u300C\u7ACB\u5373\u6293\u53D6\u300D\u3002</div>';
+    return;
+  }
+  // \u68AF\u5B50\u680F\u76EE\uFF1A\u8BA2\u9605\u5361\u7247\uFF08\u6700\u8FD1\u6709\u66F4\u65B0\u7684\u5728\u524D\uFF09
+  if (state.grp === 'proxy' || (state.cat && catOf({ category: state.cat }).group === 'proxy')) {
+    const subs = all.filter(isSub).sort((a, b) => pubOf(b) - pubOf(a)), rest = all.filter((it) => !isSub(it));
+    state.list = rest;
+    el.innerHTML = '<div class="warn">\u4EE5\u4E0B\u662F GitHub \u4E0A\u81EA\u52A8\u66F4\u65B0\u7684\u516C\u5171\u8282\u70B9\u8BA2\u9605\uFF0C\u4ED3\u5E93\u4E00\u6709\u65B0\u63D0\u4EA4\u8FD9\u91CC\u5C31\u5237\u65B0\uFF1B\u7070\u70B9\u8868\u793A 3 \u5929\u4EE5\u4E0A\u6CA1\u66F4\u65B0\u3002\u516C\u5171\u8282\u70B9\u6765\u8DEF\u4E0D\u660E\u3001\u968F\u65F6\u5931\u6548\uFF0C\u8BF7\u52FF\u7528\u6765\u767B\u5F55\u91CD\u8981\u8D26\u53F7\u6216\u4F20\u8F93\u9690\u79C1\u6570\u636E\u3002</div>' +
+      (subs.length ? '<div class="subs">' + subs.map(subHtml).join('') + '</div>' : '') +
+      (rest.length ? '<div class="dayh"><b>\u76F8\u5173\u5E16\u5B50</b></div><div class="feed">' + rest.map((it) => itemHtml(it, 0)).join('') + '</div>' : '');
+    return;
+  }
+  // \u8282\u70B9\u8BA2\u9605\u5361\u7247\u53EA\u5728\u300C\u514D\u8D39\u68AF\u5B50\u300D\u680F\u76EE\u91CC\u663E\u793A\uFF1B\u7591\u4F3C\u5931\u6548\u7684\u6C89\u5230\u6700\u540E
+  const feed = all.filter((it) => !isSub(it));
+  const now = Date.now();
+  const recent = feed.filter((it) => !it.published_at || now - it.published_at <= fresh);
+  state.list = recent.filter((it) => it.published_at && !it.dead).concat(recent.filter((it) => !it.published_at && !it.dead), recent.filter((it) => it.dead));
   const slice = state.list.slice(0, state.shown);
-  const groups = [];
-  slice.forEach((it, i) => {
-    const k = it.day || '';
-    if (!groups.length || groups[groups.length - 1].d !== k) groups.push({ d: k, list: [] });
-    groups[groups.length - 1].list.push([it, i]);
-  });
-  const dayTotal = {};
-  for (const it of state.list) dayTotal[it.day || ''] = (dayTotal[it.day || ''] || 0) + 1;
-  const html = groups.map((g) => '<div class="dayh"><b>' + dayLabel(g.d) + '</b><span>' + dayTotal[g.d] + ' \u6761</span></div>' +
-    (state.view === 'grid' ? '<div class="cards">' + g.list.map(([it]) => cardHtml(it)).join('') + '</div>' : '<div class="box">' + g.list.map(([it, i]) => rowHtml(it, i)).join('') + '</div>')).join('') +
-    (state.list.length > state.shown ? '<button class="more press" id="more">\u518D\u663E\u793A ' + Math.min(PAGE, state.list.length - state.shown) + ' \u6761\uFF08\u5269 ' + (state.list.length - state.shown) + '\uFF09</button>' : '');
-  if (fade) { el.classList.add('fade'); requestAnimationFrame(() => { el.innerHTML = html; requestAnimationFrame(() => el.classList.remove('fade')); }); }
-  else el.innerHTML = html;
+  let html = slice.length ? feedHtml(slice) : '<div class="empty" style="padding:40px 20px"><b>\u8FD1 ' + d.fresh_days + ' \u5929\u6CA1\u6709\u65B0\u53D1\u5E03\u7684\u5185\u5BB9</b>\u53EF\u4EE5\u770B\u770B\u66F4\u65E9\u53D1\u5E03\u7684</div>';
+  if (state.list.length > state.shown) html += '<button class="more" id="more">\u518D\u663E\u793A ' + Math.min(PAGE, state.list.length - state.shown) + ' \u6761\uFF08\u5269 ' + (state.list.length - state.shown) + '\uFF09</button>';
+  else if (d.old_count) {
+    const oldList = state.oldItems ? state.oldItems.filter((it) => matches(it) && !isSub(it)) : null;
+    const n = oldList ? oldList.length : d.old_count;
+    html += '<div class="oldbar"><button id="oldBtn">' + (state.oldLoading ? '\u52A0\u8F7D\u4E2D\u2026' : (state.showOld ? '\u6536\u8D77' : '\u5C55\u5F00') + ' ' + d.fresh_days + ' \u5929\u524D\u53D1\u5E03\u7684 ' + (oldList ? n : '\u7EA6 ' + n) + ' \u6761') + '</button></div>';
+    if (state.showOld && oldList) html += oldList.length ? feedHtml(oldList.slice(0, 300), { flat: true, old: true }) : '<div class="empty" style="padding:30px 20px">\u6CA1\u6709\u7B26\u5408\u7B5B\u9009\u7684\u8F83\u65E9\u5185\u5BB9</div>';
+  }
+  el.innerHTML = html;
+}
+async function loadOld() {
+  if (state.oldItems || state.oldLoading) return;
+  state.oldLoading = true; render();
+  try { const r = await fetch('/api/data?old=1'); if (!r.ok) throw 0; const j = await r.json(); state.oldItems = j.items || []; } catch { state.showOld = false; toast('\u52A0\u8F7D\u5931\u8D25\uFF0C\u7A0D\u540E\u518D\u8BD5'); }
+  state.oldLoading = false;
 }
 function setData(d) {
   state.data = d;
   state.cat_map = Object.fromEntries(d.categories.map((c) => [c.key, c]));
-  state.multiDay = new Set(d.items.map((x) => x.day)).size > 1;
-  $('#ret').textContent = d.retention_days;
-  renderHero();
+  if (state.grp && !state.grp.startsWith('v:') && !d.categories.some((c) => c.group === state.grp)) state.grp = '';
+  // \u6536\u85CF\u91CC\u7684\u6761\u76EE\u7528\u6700\u65B0\u6570\u636E\u5237\u65B0\uFF08\u6295\u7968\u6570\u3001\u5931\u6548\u72B6\u6001\uFF09
+  for (const it of d.items) if (FAV[it.id]) FAV[it.id] = { ...it, _at: FAV[it.id]._at };
   render();
 }
 function go(patch) {
   Object.assign(state, patch, { shown: PAGE });
-  render(true);
-  if (matchMedia('(max-width:760px)').matches) { sheet(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }
-  else window.scrollTo({ top: 0 });
+  if ('grp' in patch) { localStorage.setItem('frr_grp', state.grp); state.cat = ''; state.ob = ''; state.showOld = false; if (!('vendor' in patch)) state.vendor = ''; state.perk = ''; }
+  if ('q' in patch) $('#q').value = state.q;
+  render();
+  scrollTo({ top: 0 });
 }
+const findItem = (id) => state.data.items.find((x) => x.id === id) || (state.oldItems || []).find((x) => x.id === id) || FAV[id];
 
 // ---- \u4EA4\u4E92 ----
+async function doVote(id, v, btn) {
+  const cur = VOTES[id] || 0, nv = cur === v ? 0 : v;
+  try {
+    const r = await fetch('/api/vote', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, v: nv }) });
+    const j = await r.json();
+    if (!r.ok) return toast(j.error || '\u6295\u7968\u5931\u8D25');
+    if (nv) VOTES[id] = nv; else delete VOTES[id];
+    lsSet('frr_votes', VOTES);
+    const it = findItem(id); if (it) { it.up = j.up; it.down = j.down; }
+    const art = document.getElementById('i-' + id);
+    if (art) { const ups = art.querySelectorAll('[data-vote]'); ups[0].textContent = '\u503C ' + j.up; ups[0].classList.toggle('on', nv === 1); ups[1].textContent = '\u4E0D\u503C' + (j.down ? ' ' + j.down : ''); ups[1].classList.toggle('on', nv === -1); }
+    toast(nv === 1 ? '\u5DF2\u6295\u300C\u503C\u300D' : nv === -1 ? '\u5DF2\u6295\u300C\u4E0D\u503C\u300D\uFF0C\u8C22\u8C22\u53CD\u9988' : '\u5DF2\u53D6\u6D88');
+  } catch { toast('\u7F51\u7EDC\u9519\u8BEF'); }
+}
 document.addEventListener('click', (e) => {
-  const a = e.target.closest('[data-c],[data-o],[data-d]');
-  if (a) { e.preventDefault(); if ('c' in a.dataset) go({ cat: a.dataset.c }); else if ('o' in a.dataset) go({ ob: a.dataset.o }); else go({ day: a.dataset.d }); return; }
-  const cp = e.target.closest('.copy');
-  if (cp) {
-    const it = state.list[Number(cp.dataset.i)];
-    navigator.clipboard?.writeText(it.url).then(() => { cp.textContent = '\u5DF2\u590D\u5236'; cp.classList.add('done'); setTimeout(() => { cp.textContent = '\u590D\u5236\u94FE\u63A5'; cp.classList.remove('done'); }, 1400); }, () => toast('\u590D\u5236\u5931\u8D25\uFF0C\u8BF7\u957F\u6309\u94FE\u63A5\u590D\u5236'));
+  const t = e.target.closest('[data-g],[data-c],[data-o],[data-s],[data-q],[data-vd],[data-pk]');
+  if (t) {
+    e.preventDefault();
+    if ('g' in t.dataset) go({ grp: t.dataset.g });
+    else if ('c' in t.dataset) go({ cat: t.dataset.c });
+    else if ('o' in t.dataset) go({ ob: t.dataset.o });
+    else if ('vd' in t.dataset) go({ vendor: state.vendor === t.dataset.vd && t.closest('.meta') ? '' : t.dataset.vd, grp: state.grp.startsWith('v:') ? '' : state.grp });
+    else if ('pk' in t.dataset) go({ perk: t.dataset.pk });
+    else if ('s' in t.dataset) go({ src: state.src === t.dataset.s ? '' : t.dataset.s, grp: state.grp.startsWith('v:') ? '' : state.grp });
+    else go({ q: '' });
     return;
   }
+  const cp = e.target.closest('[data-copy]');
+  if (cp) { e.preventDefault(); copyText(cp.dataset.copy, cp); return; }
+  const rd = e.target.closest('[data-read]');
+  if (rd) { markRead(rd.dataset.read); return; }
+  const vb = e.target.closest('[data-vote]');
+  if (vb) { doVote(vb.dataset.vote, Number(vb.dataset.v), vb); return; }
+  const fv = e.target.closest('[data-fav]');
+  if (fv) {
+    const id = fv.dataset.fav;
+    if (FAV[id]) { delete FAV[id]; toast('\u5DF2\u53D6\u6D88\u6536\u85CF'); } else { const it = findItem(id); if (it) { FAV[id] = { ...it, _at: Date.now() }; toast('\u5DF2\u6536\u85CF'); } }
+    lsSet('frr_fav', FAV);
+    if (state.grp === 'v:fav') render(); else { fv.classList.toggle('on', !!FAV[id]); fv.textContent = FAV[id] ? '\u2605' : '\u2606'; renderTabs(); }
+    return;
+  }
+  const ad = e.target.closest('[data-addck]');
+  if (ad) { const it = findItem(ad.dataset.addck); if (it && !MYCK.some((x) => x.url === it.url)) { MYCK.push({ name: it.name || it.title.slice(0, 30), url: it.url, note: '\u81EA\u5DF1\u52A0\u7684' }); lsSet('frr_myck', MYCK); toast('\u5DF2\u52A0\u5165\u7B7E\u5230\u6E05\u5355'); render(); } return; }
+  const un = e.target.closest('[data-unck]');
+  if (un) { e.preventDefault(); MYCK = MYCK.filter((x) => x.url !== un.dataset.unck); lsSet('frr_myck', MYCK); render(); return; }
+  if (e.target.closest('[data-clearfav]')) { if (confirm('\u6E05\u7A7A\u5168\u90E8\u6536\u85CF\uFF1F')) { FAV = {}; lsSet('frr_fav', FAV); render(); } return; }
   if (e.target.id === 'more') { state.shown += PAGE; render(); }
+  if (e.target.id === 'oldBtn') { state.showOld = !state.showOld; if (state.showOld && !state.oldItems) loadOld().then(render); else render(); }
 });
-$$('#view button').forEach((b) => {
-  b.classList.toggle('on', b.dataset.v === state.view);
-  b.onclick = () => { state.view = b.dataset.v; localStorage.setItem('frr_view', state.view); $$('#view button').forEach((x) => x.classList.toggle('on', x === b)); render(true); };
+document.addEventListener('change', (e) => {
+  const ck = e.target.closest('[data-ck]');
+  if (!ck) return;
+  CKD = ls(ckKey(), {});
+  if (ck.checked) CKD[ck.dataset.ck] = true; else delete CKD[ck.dataset.ck];
+  lsSet(ckKey(), CKD);
+  for (const k of Object.keys(localStorage)) if (k.startsWith('frr_ck_') && k !== ckKey()) localStorage.removeItem(k);
+  render();
 });
 let qt = 0;
-$('#q').oninput = () => { clearTimeout(qt); qt = setTimeout(() => go({ q: $('#q').value.trim() }), 120); };
+$('#q').oninput = () => { clearTimeout(qt); qt = setTimeout(() => go({ q: $('#q').value.trim() }), 200); };
 document.addEventListener('keydown', (e) => {
   if (e.key === '/' && document.activeElement !== $('#q')) { e.preventDefault(); $('#q').focus(); }
-  if (e.key === 'Escape') { sheet(false); if ($('#q').value) { $('#q').value = ''; go({ q: '' }); } $('#q').blur(); }
+  if (e.key === 'Escape' && $('#q').value) { go({ q: '' }); $('#q').blur(); }
 });
-// \u65E0\u9650\u6EDA\u52A8\uFF1A\u63A5\u8FD1\u5E95\u90E8\u81EA\u52A8\u591A\u663E\u793A\u4E00\u9875
 addEventListener('scroll', () => {
-  if (state.data && state.list.length > state.shown && innerHeight + scrollY > document.body.scrollHeight - 600) { state.shown += PAGE; render(); }
+  $('#topBtn').classList.toggle('on', scrollY > 800);
+  if (state.data && !state.grp.startsWith('v:') && state.list.length > state.shown && innerHeight + scrollY > document.body.scrollHeight - 600) { state.shown += PAGE; render(); }
 }, { passive: true });
 
 // ---- \u6570\u636E\uFF1A\u9875\u9762\u5185\u5D4C\u9996\u5C4F\u6570\u636E\uFF1B\u4E4B\u540E\u9759\u9ED8\u5237\u65B0\uFF08\u6709 ETag\uFF0C\u6CA1\u53D8\u5316\u65F6\u51E0\u4E4E\u4E0D\u8017\u6D41\u91CF\uFF09 ----
-async function refresh(showBar) {
-  const bar = $('#bar');
-  if (showBar) { bar.classList.add('on'); bar.style.width = '60%'; }
+async function refresh() {
   try {
     const r = await fetch('/api/data', { cache: 'no-cache' });
     if (r.status === 401) return location.reload();
-    if (r.ok) { const d = await r.json(); if (!state.data || JSON.stringify(d.items.map((x) => x.id)) !== JSON.stringify(state.data.items.map((x) => x.id)) || d.last_run !== state.data.last_run) setData(d); }
+    if (r.ok) { const d = await r.json(); if (!state.data || JSON.stringify(d.items.map((x) => x.id + pubOf(x) + (x.up || 0) + (x.dead || 0))) !== JSON.stringify(state.data.items.map((x) => x.id + pubOf(x) + (x.up || 0) + (x.dead || 0))) || d.last_run !== state.data.last_run) { state.oldItems = null; setData(d); } }
   } catch {}
-  finally { if (showBar) { bar.style.width = '100%'; setTimeout(() => { bar.classList.remove('on'); bar.style.width = '0'; }, 250); } }
 }
-if (BOOT) setData(BOOT); else refresh(true);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(false); });
-setInterval(() => { if (!document.hidden) refresh(false); }, 5 * 60000);
+if (BOOT) setData(BOOT); else refresh();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { CKD = ls(ckKey(), {}); refresh(); } });
+setInterval(() => { if (!document.hidden) refresh(); }, 5 * 60000);
 </script>
 </body>
 </html>
@@ -3763,31 +5089,109 @@ function cached(req, body, type, extra = {}) {
   return new Response(body, { headers });
 }
 var basic = (env) => memo("basic", 15e3, () => getBasicSettings(env));
-async function publicData(env) {
+var ITEM_COLS = "id, title, url, source, published_at, fetched_at, day, category, name, summary, signup, score, obtain, target, sources, extra, expires_at, up, down, dead";
+var shapeItems = (rows) => foldItems(rows || []).map((it) => {
+  if (it.extra) {
+    try {
+      it.extra = JSON.parse(it.extra);
+    } catch {
+      delete it.extra;
+    }
+  } else delete it.extra;
+  if (it.published_at) delete it.fetched_at;
+  if (it.summary && it.summary.length > 200) it.summary = it.summary.slice(0, 200) + "\u2026";
+  for (const k of ["up", "down", "dead", "expires_at", "signup", "score", "obtain", "name", "summary"]) if (it[k] == null || it[k] === 0) delete it[k];
+  return it;
+});
+async function publicData(env, old = false) {
   const st = await basic(env);
   const ttl = Math.max(0, Number(st.public_cache_seconds) || 0) * 1e3;
-  return memo("data", ttl, async () => {
-    const cutoff = Date.now() - (Number(st.max_age_days) || 180) * 864e5;
-    const [items, last] = await Promise.all([
-      env.DB.prepare("SELECT id, title, url, source, published_at, day, category, name, summary, signup, score, obtain, target, sources FROM items WHERE status = 'approved' AND (published_at IS NULL OR published_at >= ?) ORDER BY day DESC, score DESC, published_at DESC LIMIT 1500").bind(cutoff).all(),
-      env.DB.prepare("SELECT MAX(finished_at) AS t FROM runs WHERE trigger != 'mail'").first()
+  return memo(old ? "data-old" : "data", ttl, async () => {
+    const now = Date.now();
+    const cutoff = now - (Number(st.max_age_days) || 180) * 864e5;
+    const freshDays = Math.max(1, Number(st.fresh_days) || 15);
+    const fresh = now - freshDays * 864e5;
+    const live = `status = 'approved' AND (expires_at IS NULL OR expires_at > ${now - 864e5})`;
+    if (old) {
+      const { results } = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND published_at >= ? AND published_at < ? ORDER BY published_at DESC LIMIT 1500`).bind(cutoff, fresh).all();
+      return JSON.stringify({ items: shapeItems(results) });
+    }
+    const [items, last, oldN] = await Promise.all([
+      // 按发布时间倒序（没有发布时间的按收录时间）
+      env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ORDER BY published_at IS NULL, published_at DESC, fetched_at DESC LIMIT 1200`).bind(fresh).all(),
+      env.DB.prepare("SELECT MAX(finished_at) AS t FROM runs WHERE trigger != 'mail'").first(),
+      env.DB.prepare(`SELECT COUNT(*) AS n FROM items WHERE ${live} AND published_at >= ? AND published_at < ?`).bind(cutoff, fresh).first()
     ]);
+    const list = shapeItems(items.results);
     const data = {
-      today: dayOf(Date.now()),
+      today: dayOf(now),
       retention_days: Number(st.retention_days) || 15,
       run_hour: Number(st.run_hour) || 0,
       every: Math.min(24, Math.max(1, Number(st.crawl_every_hours) || 24)),
       last_run: last?.t || null,
-      categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color })),
-      items: foldItems(items.results || [])
+      fresh_days: freshDays,
+      old_count: oldN?.n || 0,
+      groups: GROUPS,
+      categories: enabledCats(st).map((k) => ({ key: k, label: CAT_MAP[k].label, color: CAT_MAP[k].color, group: CAT_MAP[k].group, info: !!CAT_MAP[k].info })),
+      weekly: weeklyPicks(list, now).map((x) => x.id),
+      perks: perksOf(st),
+      checkin: checkinOf(st),
+      vote: true,
+      items: list
     };
     return JSON.stringify(data);
   });
 }
+var RL = /* @__PURE__ */ new Map();
+function rateOk(key, limit, windowMs = 6e4) {
+  if (!limit) return true;
+  const now = Date.now();
+  let e = RL.get(key);
+  if (!e || e.reset < now) {
+    if (RL.size > 5e3) RL.clear();
+    e = { n: 0, reset: now + windowMs };
+    RL.set(key, e);
+  }
+  return ++e.n <= limit;
+}
+var ipOf = (req) => req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "local";
+var FAIL_WINDOW = 15 * 6e4;
+async function failsOf(env, ip) {
+  const r = await env.DB.prepare("SELECT n, reset FROM rate WHERE k = ?").bind("login:" + ip).first();
+  return r && r.reset > Date.now() ? r.n : 0;
+}
+function addFail(env, ip) {
+  const now = Date.now();
+  return env.DB.prepare("INSERT INTO rate (k, n, reset) VALUES (?, 1, ?) ON CONFLICT(k) DO UPDATE SET n = CASE WHEN rate.reset < ? THEN 1 ELSE rate.n + 1 END, reset = CASE WHEN rate.reset < ? THEN excluded.reset ELSE rate.reset END").bind("login:" + ip, now + FAIL_WINDOW, now, now).run().catch(() => {
+  });
+}
+var tooMany = () => json({ error: "\u5BC6\u7801\u9519\u8BEF\u6B21\u6570\u592A\u591A\uFF0C\u8BF7 15 \u5206\u949F\u540E\u518D\u8BD5" }, 429);
+async function vote(req, env) {
+  const { id, v } = await req.json().catch(() => ({}));
+  const val = Number(v);
+  if (!/^[0-9a-f]{40}$/.test(String(id || "")) || ![1, -1, 0].includes(val)) return json({ error: "\u53C2\u6570\u4E0D\u5BF9" }, 400);
+  const voter = (await sha256("vote:" + ipOf(req))).slice(0, 24);
+  const prev = await env.DB.prepare("SELECT v FROM votes WHERE id = ? AND voter = ?").bind(id, voter).first();
+  const pv = prev?.v || 0;
+  if (pv === val) {
+    const r2 = await env.DB.prepare("SELECT up, down FROM items WHERE id = ?").bind(id).first();
+    return json({ ok: true, up: r2?.up || 0, down: r2?.down || 0, mine: val });
+  }
+  const du = (val === 1) - (pv === 1), dd = (val === -1) - (pv === -1);
+  await env.DB.batch([
+    val ? env.DB.prepare("INSERT INTO votes (id, voter, v, at) VALUES (?, ?, ?, ?) ON CONFLICT(id, voter) DO UPDATE SET v = excluded.v, at = excluded.at").bind(id, voter, val, Date.now()) : env.DB.prepare("DELETE FROM votes WHERE id = ? AND voter = ?").bind(id, voter),
+    env.DB.prepare("UPDATE items SET up = MAX(0, up + ?), down = MAX(0, down + ?) WHERE id = ?").bind(du, dd, id)
+  ]);
+  const r = await env.DB.prepare("SELECT up, down FROM items WHERE id = ?").bind(id).first();
+  const st = await basic(env);
+  const hide = Number(st.vote_hide) || 0;
+  if (r && hide > 0 && r.down - r.up >= hide) await env.DB.prepare("UPDATE items SET status = 'rejected', judged_by = 'votes', judged_at = ? WHERE id = ?").bind(Date.now(), id).run();
+  return json({ ok: true, up: r?.up || 0, down: r?.down || 0, mine: val });
+}
 async function publicItems(env, url) {
   const s = await basic(env);
   const cutoff = Date.now() - (Number(s.max_age_days) || 180) * 864e5;
-  const where = ["status = 'approved'", "(published_at IS NULL OR published_at >= ?)"];
+  const where = ["status = 'approved'", "dead = 0", "(published_at IS NULL OR published_at >= ?)"];
   const args = [cutoff];
   const ob = url.searchParams.get("obtain");
   if (ob) {
@@ -3892,7 +5296,43 @@ async function handleAdmin(req, env, url) {
     if (!kw) return json({ error: "\u8BF7\u8F93\u5165\u5173\u952E\u8BCD" }, 400);
     return json(await discoverSources(current, kw, (qs) => searchForDiscovery(s, qs)));
   }
-  if (p === "/mail/test" && m === "POST") return json(await sendDigest(env, { force: true, test: true, channel: body.channel === "telegram" ? "telegram" : "mail" }));
+  if (p === "/mail/test" && m === "POST") {
+    const ch = body.channel === "telegram" || /^push:\w+$/.test(body.channel || "") ? body.channel : "mail";
+    return json(await sendDigest(env, { force: true, test: true, channel: ch }));
+  }
+  if (p === "/weekly/send" && m === "POST") return json(await sendWeekly(env, { test: !!body.test }));
+  if (p === "/sources/health" && m === "GET") {
+    const since = dayOf(Date.now() - 6 * 864e5);
+    const { results } = await env.DB.prepare("SELECT name, SUM(fetched) AS fetched, SUM(added) AS added, SUM(errors) AS errors, MAX(last_at) AS last_at, COUNT(*) AS days FROM src_health WHERE day >= ? GROUP BY name").bind(since).all();
+    const { results: errs } = await env.DB.prepare("SELECT name, last_err FROM src_health WHERE day >= ? AND last_err IS NOT NULL ORDER BY day DESC").bind(since).all();
+    const out = {};
+    for (const r of results || []) out[r.name] = { fetched: r.fetched || 0, added: r.added || 0, errors: r.errors || 0, last_at: r.last_at || null };
+    for (const r of errs || []) if (out[r.name] && !out[r.name].last_err) out[r.name].last_err = r.last_err;
+    return json(out);
+  }
+  if (p === "/export" && m === "GET") {
+    const s = await getSettings(env);
+    const withSecrets = url.searchParams.get("secrets") === "1";
+    const out = {};
+    for (const k of Object.keys(DEFAULT_SETTINGS)) {
+      if (k === "mail_last_sent_at") continue;
+      if (SECRET_KEYS.includes(k) && !withSecrets) continue;
+      if (s[k] !== DEFAULT_SETTINGS[k] || k === "sources") out[k] = s[k];
+    }
+    return new Response(JSON.stringify({ app: "free-resource-radar", version: 1, exported_at: (/* @__PURE__ */ new Date()).toISOString(), secrets: withSecrets, settings: out }, null, 2), { headers: { "content-type": "application/json; charset=utf-8", "content-disposition": `attachment; filename="free-resource-radar-${dayOf(Date.now())}.json"` } });
+  }
+  if (p === "/import" && m === "POST") {
+    const src = body && body.settings && typeof body.settings === "object" ? body.settings : null;
+    if (!src || body.app !== "free-resource-radar") return json({ error: "\u4E0D\u662F\u672C\u9879\u76EE\u5BFC\u51FA\u7684\u5907\u4EFD\u6587\u4EF6" }, 400);
+    const patch = {};
+    for (const [k, v] of Object.entries(src)) if (k in DEFAULT_SETTINGS && k !== "mail_last_sent_at") patch[k] = String(v ?? "");
+    try {
+      await saveSettings(env, patch);
+    } catch (e) {
+      return json({ error: "\u5BFC\u5165\u5931\u8D25\uFF1A" + e.message }, 400);
+    }
+    return json({ ok: true, count: Object.keys(patch).length, settings: settingsForAdmin(await getSettings(env)) });
+  }
   if (p === "/mail/send" && m === "POST") return json(await sendDigest(env, { force: true }));
   if (p === "/mail/preview" && m === "GET") return html(await previewDigest(env));
   if (p === "/runs" && m === "GET") {
@@ -3961,18 +5401,33 @@ var index_default = {
     if (missing.length) return setupPage(missing, url.pathname.startsWith("/api/"));
     try {
       await ensureSchema(env);
+      const ip = ipOf(req);
       if (url.pathname === "/api/site-login" && req.method === "POST") {
         const h = await getSitePassHash(env);
         const { password } = await req.json().catch(() => ({}));
         if (!h) return json({ ok: true });
-        if (!password || !safeEqual(await sha256("frr-site:" + password), h)) return json({ error: "\u5BC6\u7801\u9519\u8BEF" }, 401);
+        if (await failsOf(env, ip) >= (Number((await basic(env)).login_max_fails) || 10)) return tooMany();
+        if (!password || !safeEqual(await sha256("frr-site:" + password), h)) {
+          await addFail(env, ip);
+          return json({ error: "\u5BC6\u7801\u9519\u8BEF" }, 401);
+        }
         const token = await sha256("cookie:" + h);
         return new Response('{"ok":true}', { headers: { "content-type": "application/json", "set-cookie": `${SITE_COOKIE}=${token}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax` } });
       }
-      if (["/", "/index.html", "/api/items", "/api/stats", "/feed.xml"].includes(url.pathname)) {
+      if (url.pathname.startsWith("/api/") && !url.pathname.startsWith("/api/admin/") && url.pathname !== "/api/cron") {
+        const lim = Number((await basic(env)).api_rate_per_min);
+        if (!rateOk("api:" + ip, Number.isFinite(lim) ? lim : 120) || url.pathname === "/api/vote" && !rateOk("vote:" + ip, 30)) return json({ error: "\u8BF7\u6C42\u592A\u9891\u7E41\uFF0C\u7A0D\u540E\u518D\u8BD5" }, 429);
+      }
+      if (["/", "/index.html", "/api/items", "/api/stats", "/feed.xml", "/api/data", "/api/vote"].includes(url.pathname)) {
         const g = await siteGate(req, env, url);
         if (!g.ok) return url.pathname.startsWith("/api/") || url.pathname === "/feed.xml" ? json({ error: "\u9700\u8981\u8BBF\u95EE\u5BC6\u7801" }, 401) : html(lockPage(), 401);
       }
+      if (url.pathname === "/api/vote" && req.method === "POST") {
+        const r = await vote(req, env);
+        clearMemo();
+        return r;
+      }
+      if (url.pathname === "/api/data" && url.searchParams.get("old") === "1") return cached(req, await publicData(env, true), "application/json; charset=utf-8");
       if (url.pathname === "/" || url.pathname === "/index.html" || url.pathname === "/api/data") {
         maybeVisitTick(env, ctx);
         const data = await publicData(env);
@@ -3984,7 +5439,7 @@ var index_default = {
         if (!key || !safeEqual(key, await memo("cronkey", 6e4, () => getCronKey(env)))) return json({ error: "\u89E6\u53D1\u5BC6\u94A5\u4E0D\u5BF9" }, 403);
         return json(await triggerTick(env, "url"));
       }
-      if (url.pathname === "/admin" || url.pathname === "/admin/") return html(admin_default.replace("/*__CATS__*/[]", JSON.stringify(CATEGORIES.map(({ key, label, color, kw }) => ({ key, label, color, kw: kw.slice(0, 6) })))).replace("/*__BACKENDS__*/[]", JSON.stringify(BACKENDS.map(({ id, name, keyless, free, signup, note, zh }) => ({ id, name, keyless, free, signup, note, zh })))));
+      if (url.pathname === "/admin" || url.pathname === "/admin/") return html(admin_default.replace("/*__CATS__*/[]", JSON.stringify(CATEGORIES.map(({ key, label, color, kw, group, info }) => ({ key, label, color, group, info: !!info, kw: kw.slice(0, 6) })))).replace("/*__GROUPS__*/[]", JSON.stringify(GROUPS)).replace("/*__PUSH__*/[]", JSON.stringify(PUSH_CHANNELS.map(({ id, name, key, secret, hint }) => ({ id, name, key, secret, hint })))).replace("/*__BACKENDS__*/[]", JSON.stringify(BACKENDS.map(({ id, name, keyless, free, signup, note, zh }) => ({ id, name, keyless, free, signup, note, zh })))));
       if (url.pathname === "/api/items") return json(await publicItems(env, url));
       if (url.pathname === "/api/stats") {
         const st = await basic(env);
@@ -4021,7 +5476,12 @@ var index_default = {
           await setAdminHash(env, String(password));
           return json({ ok: true });
         }
-        if (!await isAdmin(req, env)) return json({ error: "\u672A\u6388\u6743" }, 401);
+        const maxFails = Number((await basic(env)).login_max_fails) || 10;
+        if (await failsOf(env, ip) >= maxFails) return tooMany();
+        if (!await isAdmin(req, env)) {
+          if (req.headers.get("authorization")) await addFail(env, ip);
+          return json({ error: "\u672A\u6388\u6743" }, 401);
+        }
         if (req.method !== "GET") clearMemo();
         if (url.pathname === "/api/admin/password" && req.method === "POST") {
           if (envToken(env)) return json({ error: "\u5F53\u524D\u4F7F\u7528\u73AF\u5883\u53D8\u91CF ADMIN_TOKEN\uFF0C\u8BF7\u5728 Cloudflare \u63A7\u5236\u53F0\u4FEE\u6539" }, 400);
@@ -4071,15 +5531,28 @@ async function autoTick(env, trigger) {
       const h = new Date(mailSlot + 8 * 36e5).getUTCHours();
       const label = h < 11 ? "\u65E9\u62A5" : h < 17 ? "\u5348\u62A5" : "\u665A\u62A5";
       const t0 = Date.now();
-      let line;
+      let line2;
       try {
         const r3 = await sendDigest(env, { label });
-        line = r3.skipped ? `\u2013 ${label}\u8DF3\u8FC7\uFF1A${r3.skipped}` : `\u2713 ${label}\u5DF2\u63A8\u9001 ${r3.sent} \u6761\uFF08${r3.providers.join(" + ")}\uFF09\u2192 ${r3.to.join(", ")}${r3.errors.length ? "\n\u2717 " + r3.errors.join("\n\u2717 ") : ""}`;
+        line2 = r3.skipped ? `\u2013 ${label}\u8DF3\u8FC7\uFF1A${r3.skipped}` : `\u2713 ${label}\u5DF2\u63A8\u9001 ${r3.sent} \u6761\uFF08${r3.providers.join(" + ")}\uFF09\u2192 ${r3.to.join(", ")}${r3.errors.length ? "\n\u2717 " + r3.errors.join("\n\u2717 ") : ""}`;
       } catch (e) {
-        line = `\u2717 ${label}\u63A8\u9001\u5931\u8D25\uFF1A${e.message}`;
+        line2 = `\u2717 ${label}\u63A8\u9001\u5931\u8D25\uFF1A${e.message}`;
       }
-      if (!line.includes("\u6CA1\u6709\u53EF\u7528\u7684\u63A8\u9001\u6E20\u9053")) await env.DB.prepare("INSERT INTO runs (trigger, started_at, finished_at, stats, log) VALUES ('mail', ?, ?, '{}', ?)").bind(t0, Date.now(), line).run();
-      return { idle: true, action: "mail", message: line };
+      const bjNow = new Date(now + BJ2);
+      if (s.weekly_enabled === "true" && bjNow.getUTCDay() === (Number(s.weekly_weekday) || 0) % 7 && await getMeta(env, "weekly_day") !== dayOf(now)) {
+        await setMeta(env, "weekly_day", dayOf(now));
+        try {
+          const w = await sendWeekly(env);
+          line2 += w.skipped ? `
+\u2013 \u672C\u5468\u7CBE\u9009\u8DF3\u8FC7\uFF1A${w.skipped}` : `
+\u2713 \u672C\u5468\u7CBE\u9009\u5DF2\u63A8\u9001 ${w.sent} \u6761\uFF08${w.providers.join(" + ")}\uFF09`;
+        } catch (e) {
+          line2 += `
+\u2717 \u672C\u5468\u7CBE\u9009\u63A8\u9001\u5931\u8D25\uFF1A${e.message}`;
+        }
+      }
+      if (!line2.includes("\u6CA1\u6709\u53EF\u7528\u7684\u63A8\u9001\u6E20\u9053")) await env.DB.prepare("INSERT INTO runs (trigger, started_at, finished_at, stats, log) VALUES ('mail', ?, ?, '{}', ?)").bind(t0, Date.now(), line2).run();
+      return { idle: true, action: "mail", message: line2 };
     }
     return { idle: true, action: "wait", message: "\u8FD9\u4E00\u8F6E\u5DF2\u7ECF\u6293\u53D6\u8FC7\u4E86\uFF0C\u4E0B\u4E00\u8F6E\uFF1A" + nextSlotText(now, slotHours(Number(s.run_hour) || 0, every)) };
   }
@@ -4088,7 +5561,7 @@ async function autoTick(env, trigger) {
   clearMemo();
   return { ...r2, action: "started", run_id: plan.run_id, steps: plan.steps };
 }
-var BJ = 8 * 36e5;
+var BJ2 = 8 * 36e5;
 var parseHours = (v) => [...new Set(String(v || "").split(/[,，\s]+/).map(Number).filter((h) => Number.isInteger(h) && h >= 0 && h <= 23))].sort((a, b) => a - b);
 function slotHours(start, every) {
   const out = [];
@@ -4098,12 +5571,12 @@ function slotHours(start, every) {
 function latestSlot(now, hours) {
   if (!hours.length) return 0;
   const day0 = Date.parse(dayOf(now) + "T00:00:00+08:00");
-  const h = new Date(now + BJ).getUTCHours();
+  const h = new Date(now + BJ2).getUTCHours();
   const past = hours.filter((x) => x <= h);
   return past.length ? day0 + past[past.length - 1] * 36e5 : day0 - 864e5 + hours[hours.length - 1] * 36e5;
 }
 function nextSlotText(now, hours) {
-  const h = new Date(now + BJ).getUTCHours();
+  const h = new Date(now + BJ2).getUTCHours();
   const n = hours.find((x) => x > h);
   return n === void 0 ? `\u660E\u5929 ${hours[0]}:00` : `${n}:00`;
 }

@@ -7,17 +7,29 @@
 
 ## 它能做什么
 
-- **14 个分类，后台勾选**：免费域名、主机 / VPS、云服务 / CDN、AI 额度、软件授权、开发工具、游戏、影音会员、设计素材、学生 / 教育、网课教程、网盘资源、实物福利、邀请码。默认开 8 个，推送也可以只选其中几类
+- **五个栏目、19 个分类**：福利羊毛（免费域名、主机 / VPS、云服务 / CDN、软件授权、开发工具、游戏、影音会员、设计素材、学生 / 教育、网课教程、网盘资源、实物福利、邀请码）、AI 福利（AI 免费额度、AI 限时福利）、AI 工具与资讯（AI 工具、AI 资讯）、新闻资讯（科技资讯）、免费梯子（节点订阅）。后台按栏目整组勾选，推送也可以只选其中几类
+- **AI 福利单独成栏**：长期免费额度和限时福利（限时免费开放、注册送额度、优惠码 / 免费月、公益站签到）分开放。来源有 [Ailyre AI 速递](https://www.ailyre.com/news/) 的「福利速递」、赛博鸡蛋、AI 福利雷达、free-llm-intel、LINUX DO 福利频道、OpenRouter 免费模型和 6 个 GitHub 公益站 / 免费额度清单
+- **AI 福利雷达**：每次抓取额外用搜索后端按「福利词 + 轮到的几个厂商」（Claude、Gemini、ChatGPT、DeepSeek、Qwen、Kimi、GLM、豆包、Cursor、Copilot、OpenRouter、硅基流动……可自己改）去搜，选购指南、对比、问答类文章直接丢掉，剩下的交给 AI 整理成「厂商 · 福利类型（免费额度 / 限时免费 / 赠金 / 优惠码 / 免费会员 / 公益站）· 怎么领 · 截止时间」。资源页的 AI 福利栏目可以按厂商和福利类型筛
+- **六个用途板块**：本周精选（近 7 天综合评分前 10）、即将截止（按截止时间排）、兑换码（一键复制）、签到（每天勾选，记在自己浏览器里）、学生 / 开发者专区（GitHub 学生包、JetBrains、Cloudflare、Oracle 等长期权益）、我的收藏
+- **值 / 不值投票**：每条都能投，参与排序；「不值」明显多的自动隐藏，也会作为反例告诉 AI
+- **失效检测**：每次抓取后抽查一批链接，打不开（404）或写着已结束的标为「可能失效」沉到最后；写明截止时间的过期一天后自动下架
+- **关键词提醒**：设几个关注的词（如 Claude、域名），新资源命中就立刻单独推送，不等日报
+- **GitHub 同类清单自动同步**：内置 6 个持续更新的中文 AI 免费额度 / 公益站清单仓库，仓库一有新提交，就把新增的条目同步过来；批量添加里贴 `github.com/作者/仓库` 也能加
+- **免费梯子**：8 个 GitHub 上自动更新的公共节点订阅仓库，每个仓库一张卡片，显示最近更新时间，订阅地址一键复制。公共节点来路不明，别用来登录重要账号
+- **新闻资讯**：量子位、free-llm-intel 厂商动态、Solidot、爱范儿、cnBeta、极客公园、阮一峰周刊，每个源每次只取最新几条
 - **可选英文来源**：LowEndTalk、LowEndSpirit、Hacker News、GitHub、Reddit（默认关闭）
 - **白嫖专源直通**：反斗限免、IT之家喜加一 / 限免、Epic 每周免费游戏、GamerPower、OpenRouter 免费模型、SharewareOnSale，本身就是免费资源，不经 AI 直接入库，省额度
 - **中文来源**：V2EX、NodeSeek、NodeLoc、小众软件、如有乐享、异次元软件世界、蓝点网
 - **联网搜索**：AnySearch、Keenable 免 Key 默认开启，另支持 Tavily、Exa、Brave、百度千帆、火山引擎，多家并行
 - **过滤**：半年以上丢弃 → 屏蔽站点 → 求助 / 吐槽类标题 → 关键词与正则屏蔽 → 跨来源去重 → AI 判定
 - **AI 判定**：任意 OpenAI 兼容接口，后台填地址和 Key，一键拉取模型列表。输出分类、获取方式（直接白嫖 / 有条件 / 试用 / 抽奖 / 推广 / 付费）、注册要求和简介
-- **推送**：邮件日报（默认 QQ 邮箱，也支持 Resend / Brevo / Cloudflare Email Routing）和 Telegram，适配 Gmail、Outlook、QQ、163、Apple Mail 和手机
-- **按日期归档**：首页按天分组浏览，默认保留 15 天，自动清理
+- **智能审核，省 AI 额度**：默认只把拿不准的交给 AI。标题写明免费、归得进分类、没有价格 / 抽奖 / 推广字样的自动通过；提问帖和明确付费的自动拒绝。想每条都过 AI，后台「审核方式」改成严格
+- **推送**：邮件日报（默认 QQ 邮箱，也支持 Resend / Brevo / Cloudflare Email Routing）、Telegram、企业微信、钉钉、飞书、Server 酱、PushPlus、Bark 和通用 Webhook；可选每周精选
+- **按发布时间排序**：首页按发布日期分组，最新的在最前；发布超过 15 天的单独折叠在最后（天数可调），邮件里也单独成组。默认保留 15 天，自动清理
 - **只要中文**：默认过滤纯英文内容（标题和正文都没有中文就丢弃），可在后台关闭
 - **访问密码（可选）**：资源页和 RSS 可以加密码，不想公开就设一个
+- **更省额度、更整齐**：同一个目标地址判过一次就复用 AI 结论；标题自动去掉「【转】」「- 某某社区」这类前后缀；AI 摘要固定成「送什么 + 限制」，另给「怎么领」和截止日期；搜索结果标题必须写明免费；资讯和 GitHub 源可以设抓取间隔（错峰）
+- **安全与迁移**：密码错太多次锁定 15 分钟，公开接口按 IP 限频；后台一键导出 / 导入全部设置
 - **界面**：资源页 `/`、管理后台 `/admin`、RSS `/feed.xml`、JSON `/api/items`
 
 ## 一键部署（推荐）
@@ -119,7 +131,7 @@
 
 **三种加源方式**：「↻ 更新源」拉内置推荐和 freebie-radar；「⌕ 发现新源」用已开启的搜索后端搜关键词，自动找结果网站的 RSS 并检测条目数、更新时间、是不是中文；「＋ 批量添加」一次贴最多 15 个网址 / t.me 链接 / @频道，网页会自动找订阅地址。资源审核里每条都有「订阅此站」，一键把来源网站加进来。
 
-**同一资源多个来源自动合并**：比较目标链接（TG 频道消息取它指向的原文链接），相同就折叠成一条，标注「N 个来源」，每个来源都能点开；邮件里也合并显示。
+**同一资源多个来源自动合并**：链接相同、TG 消息指向同一篇原文、正文里指向同一个外部地址（邀请参数不同也算同一个），或者标题几乎一样，都会折叠成一条，标注「N 个来源」，每个来源都能点开；邮件里也合并显示。同一个站每篇都带的页脚 / 赞助链接不算。
 
 内置了 20 多个 2026 年 11 月实测可用的中文源：零度解说、A姐分享（网站 + TG 频道）、福利吧、少数派（只收限免）、果核剥壳、异星软件空间、克隆窝、翻应用、FreeGroup、其乐、VPS 精选网、老左笔记、主机百科、VPS 侦探、VEIDC、VPSGO、xiaoz 博客等，主机类博客默认只收主机 / 域名 / 云服务。
 
@@ -158,11 +170,26 @@
 - `trusted: true` + `category`：内容本身就是免费资源，直接入库，不送 AI
 - `include`：标题必须匹配的正则
 - `ai_only: true`：只有配置了 AI 时才抓（噪音大的源）
-- 内置类型：`rss`、`v2ex`（`node`）、`hn`、`github`、`reddit`、`epic`、`gamerpower`、`openrouter_free`
+- `limit`：每次最多收几条（资讯类源用）
+- `every`：至少隔几小时才抓一次（错峰，手动抓取不受限）
+- `tags` / `skip_tags`：按 feed 里的 `<category>` 标签筛，只收 / 不收某几类（比如 Ailyre 的「福利速递」）
+- 内置类型：`rss`、`telegram`（`channel`）、`v2ex`（`node`）、`repo`、`hn`、`github`（仓库搜索）、`reddit`、`epic`、`gamerpower`、`openrouter_free`
+
+GitHub 仓库（`repo`）有两种用法：
+
+```json
+{ "name": "某个免费清单", "type": "repo", "repo": "作者/仓库", "mode": "diff", "path": "README\\.md$", "category": "ai", "trusted": true }
+{ "name": "某个节点仓库", "type": "repo", "repo": "作者/仓库", "mode": "sub", "category": "proxy", "trusted": true, "subs": [["V2Ray", "https://raw.githubusercontent.com/..."]] }
+```
+
+- `mode: "diff"`：读仓库的提交记录，把新提交里新增的表格行 / 列表项变成资源（第一次只看最近 2 次提交）。`path` 是只看哪些文件的正则，默认所有 `.md`
+- `mode: "sub"`：一个仓库只占一条，每次有新提交就刷新时间；`subs` 是要展示的订阅地址
+- 读的是 `github.com/作者/仓库/commits.atom` 和提交的 `.patch`，不走 GitHub API，不需要 Token，也不占 API 限额
 
 ## 接口
 
-- `GET /api/data` 资源页用的全部数据（统计 + 保留期内所有已通过条目），带缓存和 ETag
+- `GET /api/data` 资源页用的数据（近 15 天的已通过条目、本周精选、专区、签到清单），带缓存和 ETag；`?old=1` 取更早发布的
+- `POST /api/vote` `{"id": "...", "v": 1 | -1 | 0}` 值 / 不值投票
 - `GET /api/items?category=ai|game|…&obtain=free|conditional&day=2026-11-21&q=关键词&limit=100`
 - `GET /api/stats` 各频道计数、按日期计数、最近更新时间
 - `GET /feed.xml`
@@ -183,5 +210,6 @@ npm run build:single                  # 改完源码后重新生成 dist/worker.
 
 ## 致谢
 
+- 各数据源归原作者所有，本项目只读取它们公开的 RSS、频道页和 GitHub 提交记录并链回原文，没有复制代码或内容：[Ailyre AI 速递](https://www.ailyre.com/news/)、[rockbenben/free-llm-intel](https://github.com/rockbenben/free-llm-intel)、[kirito8/free-newapi](https://github.com/kirito8/free-newapi)、[bubblevv/ai-api-gongyi-nav](https://github.com/bubblevv/ai-api-gongyi-nav)、[KJAI123/awesome-free-ai-tokens-cn](https://github.com/KJAI123/awesome-free-ai-tokens-cn)、[peter123023/awesome-free-llm-api](https://github.com/peter123023/awesome-free-llm-api)、[AIPMAndy/FreeToken](https://github.com/AIPMAndy/FreeToken)、[CYBIRD-D/FREE-LLM-API-Provider](https://github.com/CYBIRD-D/FREE-LLM-API-Provider)，以及免费梯子栏目里列出的各节点仓库
 - 设计语言、部分采集源、噪音标题与获取方式规则参考并移植自 [ZiChuanLan/freebie-radar](https://github.com/ZiChuanLan/freebie-radar)（MIT License），许可证见 `THIRD_PARTY_LICENSE_freebie-radar.txt`
 - 联网搜索各家的接口格式与免费额度参考 [bestnite/search](https://github.com/bestnite/search)（MIT License）的 BACKENDS.md，许可证见 `THIRD_PARTY_LICENSE_bestnite-search.txt`

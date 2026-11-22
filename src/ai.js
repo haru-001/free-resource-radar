@@ -54,14 +54,18 @@ import { CAT_MAP, enabledCats } from './categories.js';
 const catLine = (s) => enabledCats(s).map((k) => `${k}=${CAT_MAP[k].label}`).join('，');
 const judgePrompt = (s) => `你是"免费资源 / 白嫖福利"审核员。逐条判断输入的帖子或页面，只输出严格 JSON。
 关注的分类（category 只能取这些 key，不属于任何一类填 other）：${catLine(s)}。
+分类说明：ai=长期有效的免费额度 / 免费模型 / 免费 API；aideal=有时效的 AI 福利（限时免费开放、注册送额度、优惠码 / 免费月、公益站签到）。
 判定规则：
 1. relevant：内容确实在提供或介绍【可免费获得】且属于上述分类的资源（免费额度、限免、赠送、免费套餐等）。以下情况为 false：纯讨论或求助、付费促销或打折（非免费）、已失效 / 已关闭 / 已售罄 / 已领完、广告或明显不可信、新闻资讯。
 2. simple_signup：只需邮箱，或 GitHub / Google 等第三方账号即可注册使用 → true。需要信用卡 / PayPal 绑卡、手机号短信验证、实名 / KYC / 身份证、邀请码、人工审核申请、先付费 → false。信息不足时按常识谨慎判断，并在 signup 字段写明依据。
 3. obtain：获取方式，只能是 free（直接白嫖，注册即用）、conditional（需要完成简单任务，如回帖、邀请、签到）、lottery（抽奖 / 名额随机）、trial（限时试用，到期收费）、promo（商家推广引流）、paid（需要付费）。
 4. score：0-100 的整数，综合相关性、注册简易度、资源价值、可信度、是否长期可用。
-输出格式：{"results":[{"i":序号,"relevant":true,"category":"分类key","obtain":"free","simple_signup":true,"signup":"注册要求，15字内","name":"服务或资源名称","summary":"一句话中文简介，40字内","score":80}]}`;
+5. summary：福利类写「送什么 + 有什么限制」，资讯类写一句话要点，都不超过 40 字；how：怎么领（如“GitHub 登录后在控制台领取”），20 字内，没有就填 null；deadline：原文写明的截止日期 YYYY-MM-DD，没写就填 null，不要猜。
+6. name：服务或资源本身的名字（如“Cloudflare R2”），不要带站点名、【转】之类的前后缀。
+7. 只对 ai / aideal 两类：vendor 填提供福利的厂商或产品方（如“Google”“packet.ai”“某某公益站”，不知道填 null）；perk 填福利类型，只能是 免费额度 / 限时免费 / 赠金 / 优惠码 / 免费会员 / 公益站 / 其它。福利已结束、只有付费折扣、或需要先付费的，relevant 填 false。
+输出格式：{"results":[{"i":序号,"relevant":true,"category":"分类key","obtain":"free","simple_signup":true,"signup":"注册要求，15字内","name":"服务或资源名称","summary":"送什么 + 限制，40字内","how":"怎么领，20字内","deadline":null,"vendor":null,"perk":null,"score":80}]}`;
 
-export async function judgeBatch(items, s) {
+export async function judgeBatch(items, s, bad = []) {
   const payload = items.map((it, i) => ({
     i,
     title: it.title,
@@ -75,7 +79,7 @@ export async function judgeBatch(items, s) {
     apiKey: s.ai_api_key,
     model: s.ai_model,
     messages: [
-      { role: 'system', content: judgePrompt(s) },
+      { role: 'system', content: judgePrompt(s) + (bad.length ? `\n用户反馈「不值」的例子（类似的请从严，relevant 填 false 或压低分数）：\n${bad.map((t) => '- ' + String(t).slice(0, 60)).join('\n')}` : '') },
       { role: 'user', content: JSON.stringify(payload) },
     ],
   });

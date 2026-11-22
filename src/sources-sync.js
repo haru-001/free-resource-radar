@@ -1,6 +1,7 @@
 // 后台「更新源」：从内置推荐、freebie-radar 仓库和自定义地址拉取数据源，和当前列表比对，返回还没有的
 // freebie-radar（ZiChuanLan/freebie-radar, MIT）的源写在 TypeScript 的 SEEDS 数组里，这里把它转成本项目的格式。
 import { DEFAULT_SOURCES } from './db.js';
+import { ghCommits } from './crawler.js';
 
 export const FREEBIE_SEEDS_URL = 'https://raw.githubusercontent.com/ZiChuanLan/freebie-radar/main/src/server/collectors/index.ts';
 
@@ -23,9 +24,12 @@ const reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export function sourceKey(x) {
   const t = x.type || 'rss';
   if (t === 'rss') {
-    try { const u = new URL(x.url); return 'rss:' + u.hostname.replace(/^www\./, '').toLowerCase() + u.pathname.replace(/\/+$/, '') + u.search; } catch { return 'rss:' + x.url; }
+    // 同一个 feed 按标签拆成几个源（tags / skip_tags）时各算各的
+    const tg = x.tags || x.skip_tags ? '#' + [].concat(x.tags || []).join(',') + '!' + [].concat(x.skip_tags || []).join(',') : '';
+    try { const u = new URL(x.url); return 'rss:' + u.hostname.replace(/^www\./, '').toLowerCase() + u.pathname.replace(/\/+$/, '') + u.search + tg; } catch { return 'rss:' + x.url + tg; }
   }
   if (t === 'v2ex') return 'v2ex:' + (x.node || 'free');
+  if (t === 'repo') return 'repo:' + String(x.repo || '').toLowerCase();
   if (t === 'telegram') return 'tg:' + String(x.channel || '').toLowerCase();
   if (t === 'gamerpower') return 'gamerpower:' + (x.kind || 'game');
   return t + ':' + String(x.query || '').toLowerCase();
@@ -212,7 +216,18 @@ async function probeOne(raw) {
     const dates = [...text.matchAll(/datetime="([^"]+)"/g)].map((m) => Date.parse(m[1])).filter(Boolean);
     return { src: { name: `TG · ${title}`, type: 'telegram', channel: tg[1], enabled: true }, zh: texts.filter((t) => CJK.test(t)).length >= texts.length / 2, count: n, latest: dates.length ? Math.max(...dates) : null };
   }
-  if (!/^https?:\/\//.test(line)) throw new Error('不是网址、t.me 链接或 @频道');
+  // GitHub 仓库：同步它以后新增的条目（读 commits.atom，不占 API 限额）
+  const gh = /^(?:https?:\/\/)?github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/.*)?$/i.exec(line);
+  if (gh && !/^(orgs|topics|search|settings|marketplace)\//.test(gh[1])) {
+    const commits = await ghCommits(gh[1]);
+    if (!commits.length) throw new Error('仓库没有公开提交记录');
+    const subLike = commits.slice(0, 5).filter((c) => /节点|订阅|node|sub|proxy|v2ray|clash/i.test(c.title)).length >= 3;
+    return {
+      src: subLike ? { name: gh[1], type: 'repo', repo: gh[1], mode: 'sub', category: 'proxy', trusted: true, subs: [], enabled: true } : { name: `GitHub · ${gh[1]}`, type: 'repo', repo: gh[1], mode: 'diff', enabled: true },
+      zh: commits.some((c) => CJK.test(c.title)), count: commits.length, latest: commits[0].date, sample: commits.slice(0, 3).map((c) => c.title.slice(0, 40)),
+    };
+  }
+  if (!/^https?:\/\//.test(line)) throw new Error('不是网址、t.me 链接、GitHub 仓库或 @频道');
   const page = await getHead(line);
   let info = feedInfo(page.text), feed = page.url;
   if (!info) {

@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>管理 · 免费资源雷达</title>
 <meta name="theme-color" content="#f7f7fb" />
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='%234f46e5'/><stop offset='1' stop-color='%23312e81'/></linearGradient></defs><rect width='32' height='32' rx='9' fill='url(%23g)'/><circle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2' opacity='.4'/><circle cx='16' cy='16' r='4' fill='%23fff'/></svg>" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%234f46e5'/><circle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2' opacity='.5'/><circle cx='16' cy='16' r='4' fill='%23fff'/></svg>" />
 <style>
   :root {
     --bg:#f7f7fb; --rail:#f2f2f8; --surface:#fff; --hover:#f6f6fb; --muted:#f1f1f7; --line:#e7e7ef; --line-2:#d6d7e2;
     --ink:#14151c; --ink-2:#3a3d4a; --ink-3:#5f6372; --ink-4:#8a8e9c;
-    --brand:#14151c; --accent:#4f46e5; --accent-2:#312e81; --accent-bg:#eef0ff; --accent-line:#c9cdfb;
+    --brand:#14151c; --accent:#4f46e5; --accent-2:#4338ca; --accent-bg:#eef0ff; --accent-line:#c7cbfb;
     --deal:#047857; --deal-bg:#e8f8f0; --cond:#9a5b0b; --cond-bg:#fdf3e1; --alert:#dc2626; --alert-bg:#fef2f2; --warn:#b45309; --warn-bg:#fff7e6;
     --shadow:0 1px 2px rgba(20,21,28,.04), 0 6px 20px rgba(20,21,28,.06);
     --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -29,7 +29,7 @@
   .brand { display:flex; align-items:center; gap:11px; padding:0 6px 20px; color:var(--ink); }
   .brand:hover { text-decoration:none; }
   .brand:hover b { color:var(--accent); }
-  .logo { width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,#6366f1,#312e81); display:grid; place-items:center; flex:none; box-shadow:0 4px 12px rgba(79,70,229,.28); }
+  .logo { width:32px; height:32px; border-radius:10px; background:linear-gradient(135deg,#6366f1,#3730a3); display:grid; place-items:center; flex:none; box-shadow:0 4px 12px rgba(79,70,229,.25); }
   .logo i { width:9px; height:9px; border-radius:50%; background:#fff; box-shadow:0 0 0 5px rgba(255,255,255,.25); }
   .brand b { display:block; font-size:14.5px; font-weight:700; transition:color .12s; }
   .brand small { display:block; font-size:12px; color:var(--ink-4); }
@@ -161,6 +161,15 @@
   .tag.zh { background:var(--accent-bg); color:var(--accent-2); }
   .tag.on { background:var(--deal-bg); color:var(--deal); }
   .tag.off { background:var(--muted); color:var(--ink-4); }
+  .tag.bad { background:var(--alert-bg); color:var(--alert); }
+  .tag.warn { background:var(--warn-bg); color:var(--warn); }
+  .shealth { font-size:11.5px; color:var(--ink-4); white-space:nowrap; }
+  .shealth.bad { color:var(--alert); }
+  .pushrow { display:grid; grid-template-columns:150px minmax(0,1fr) auto; gap:10px; align-items:center; padding:10px 0; border-top:1px solid var(--line); }
+  .pushrow:first-child { border-top:none; padding-top:0; }
+  .pushrow .nm { font-weight:600; font-size:13.5px; display:flex; flex-direction:column; gap:4px; }
+  .pushrow .in { display:grid; gap:6px; }
+  @media (max-width:760px) { .pushrow { grid-template-columns:1fr; } }
   .chk { display:inline-flex; align-items:center; gap:7px; margin:4px 16px 4px 0; font-size:13.5px; color:var(--ink-2); cursor:pointer; }
   .chk input { width:16px; height:16px; accent-color:var(--accent); }
   .callout { background:var(--accent-bg); border:1px solid var(--accent-line); color:var(--accent-2); border-radius:10px; padding:10px 14px; font-size:13px; line-height:1.65; }
@@ -178,6 +187,11 @@
   .cat .ck { position:absolute; right:10px; top:11px; width:18px; height:18px; border-radius:6px; border:1.5px solid var(--line-2); display:grid; place-items:center; font-size:11px; color:transparent; transition:.12s; }
   .cat:has(input:checked) { border-color:var(--accent-line); background:var(--accent-bg); }
   .cat:has(input:checked) .ck { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .cgrps { display:flex; flex-direction:column; gap:14px; }
+  .cgh { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .cgh b { font-size:13.5px; }
+  .cgh .btn { margin-left:auto; }
+  .cgrp.off .cats { opacity:.7; }
   .cats.mini { grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); }
   .cats.mini .cat { padding:8px 10px; }
   .cats.mini .cat .ic { margin-top:5px; }
@@ -334,7 +348,7 @@
         <div class="section">
           <header><h2>收集哪些分类</h2><span class="hint" id="catCount"></span></header>
           <div class="body">
-            <div class="cats" data-csv="enabled_categories" id="catBox"></div>
+            <div class="cgrps" data-csv="enabled_categories" id="catBox"></div>
             <div class="row">
               <button class="btn sm" onclick="catAll('#catBox', true)">全选</button>
               <button class="btn sm" onclick="catAll('#catBox', false)">全不选</button>
@@ -367,6 +381,34 @@
               <div><label class="f">只要最近多少天发布的</label><input type="number" data-key="max_age_days" min="1" /></div>
               <div><label class="f">数据保留天数（到期自动清理）</label><input type="number" data-key="retention_days" min="1" max="365" /></div>
             </div>
+            <div class="grid2">
+              <div><label class="f">发布超过多少天算「较早发布」</label><input type="number" data-key="fresh_days" min="1" max="365" /></div>
+              <div class="hint" style="align-self:end;padding-bottom:8px">资源页按发布时间排序，超过这个天数的单独折叠在最后；邮件里也单独成组。</div>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>质量控制</h2></header>
+          <div class="body">
+            <div class="row" style="gap:22px">
+              <label class="sw"><input type="checkbox" data-key="link_check" />失效检测</label>
+              <label class="sw"><input type="checkbox" data-key="search_strict" />搜索结果标题必须写明免费</label>
+            </div>
+            <div class="grid3">
+              <div><label class="f">每次抓取后抽查几条链接</label><input type="number" data-key="link_check_per_run" min="1" max="30" /></div>
+              <div><label class="f">「不值」比「值」多几票自动隐藏（0 = 不隐藏）</label><input type="number" data-key="vote_hide" min="0" max="100" /></div>
+              <div class="hint" style="align-self:end;padding-bottom:8px">抽查打不开（404）或标题写着已结束 / 已失效的，标为「可能失效」沉到最后。</div>
+            </div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>资源页板块</h2></header>
+          <div class="body">
+            <div class="grid2">
+              <div><label class="f">签到清单（每行：名称 | 地址 | 备注）</label><textarea data-key="checkin_sites" style="min-height:110px" placeholder="某某公益站 | https://example.com | 每天签到送 $1"></textarea></div>
+              <div><label class="f">学生 / 开发者专区追加（每行：名称 | 地址 | 说明 | 学生 或 开发者）</label><textarea data-key="perks_extra" style="min-height:110px" placeholder="阿里云高校计划 | https://… | 学生认证送云服务器 | 学生"></textarea></div>
+            </div>
+            <div class="hint">「签到」页除了这份清单，还会自动列出最近收录的签到类资源；访客可以在页面上勾选今天签过的，记在自己的浏览器里。专区已内置 GitHub 学生包、JetBrains、Cloudflare、Oracle 等长期权益。</div>
           </div>
         </div>
         <div class="section">
@@ -399,7 +441,7 @@
         <div class="section">
           <header><h2>数据源</h2><span class="hint" id="srcCount"></span><span class="sp"></span><button class="btn sm" onclick="openSync(this)" title="从内置推荐和 freebie-radar 等地址拉取新源">↻ 更新源</button><button class="btn sm" onclick="openDiscover()" title="用已开启的搜索后端找新的订阅源">⌕ 发现新源</button><button class="btn sm" onclick="openBatch()" title="一次粘贴多个网址 / t.me 链接 / @频道">＋ 批量添加</button></header>
           <div class="body" style="padding-top:12px">
-            <div class="srcbar"><input type="text" id="srcQ" placeholder="搜索源名称 / 地址" oninput="renderSources()" /><select id="srcF" onchange="renderSources()"><option value="">全部</option><option value="on">已启用</option><option value="off">已停用</option><option value="limited">限定了分类</option></select></div>
+            <div class="srcbar"><input type="text" id="srcQ" placeholder="搜索源名称 / 地址" oninput="renderSources()" /><select id="srcF" onchange="renderSources()"><option value="">全部</option><option value="on">已启用</option><option value="off">已停用</option><option value="limited">限定了分类</option><option value="bad">近 7 天有问题</option></select><button class="btn sm" id="offBad" onclick="disableBad()" style="display:none">停用有问题的源</button></div>
             <div class="srclist" id="srcList"></div>
             <div class="hint">点「分类」限定这个源只收哪些分类，其它分类的内容直接丢弃；没设置就跟随上面勾选的分类。「默认分类」用于关键词归不了类的时候（比如主机博客默认归到主机 / VPS）。抓到的内容照常经过时间、中文、噪音、屏蔽规则、关键词和 AI 过滤。</div>
             <details class="adv"><summary>更新源的地址 / 以 JSON 编辑</summary>
@@ -407,7 +449,7 @@
               <textarea data-key="source_sync_urls" style="min-height:64px"></textarea>
               <label class="f" style="margin-top:12px">全部数据源（JSON）</label>
               <textarea data-key="sources" id="srcJson" style="min-height:260px"></textarea>
-              <div class="hint">type：rss（url）/ telegram（channel）/ v2ex（node）/ hn（query）/ reddit（query, subreddit）/ github（query）/ epic / gamerpower / openrouter_free。cats：只收这些分类；hint：默认分类；include：标题必须匹配的正则；trusted:true + category：直接入库不送 AI；ai_only：只在配置了 AI 时抓。</div>
+              <div class="hint">type：rss（url）/ telegram（channel）/ repo（repo, mode: diff / sub）/ v2ex（node）/ hn（query）/ reddit（query, subreddit）/ github（query）/ epic / gamerpower / openrouter_free。limit：每次最多取几条；every：至少隔几小时才抓一次（错峰）。cats：只收这些分类；hint：默认分类；include：标题必须匹配的正则；trusted:true + category：直接入库不送 AI；ai_only：只在配置了 AI 时抓。</div>
             </details>
           </div>
         </div>
@@ -433,6 +475,10 @@
                 <button class="btn" onclick="testModel('ai', this)">测试</button>
               </div>
             </div>
+            <div class="grid2">
+              <div><label class="f">审核方式</label><select data-key="ai_review"><option value="smart">智能（推荐）：把握大的自动定，拿不准的才问 AI</option><option value="all">严格：每一条都交给 AI</option></select></div>
+              <div class="hint" style="align-self:end;padding-bottom:8px">智能模式下，标题写明免费、能归类、没有价格 / 抽奖 / 推广字样的直接通过，提问帖和明确付费的直接拒绝，其余才消耗 AI 额度。</div>
+            </div>
             <details>
               <summary class="hint" style="cursor:pointer">更多：批量大小、判定上限、通过分数、重新判定</summary>
               <div class="grid3" style="margin-top:12px">
@@ -440,6 +486,7 @@
                 <div><label class="f">每次运行最多判定</label><input type="number" data-key="ai_max_items" min="1" /></div>
                 <div><label class="f">最低通过分数</label><input type="number" data-key="ai_min_score" min="0" max="100" /></div>
               </div>
+              <label class="sw" style="margin-top:12px"><input type="checkbox" data-key="ai_cache" />同一个目标地址判过一次就复用结论（省额度）</label>
               <div class="row" style="margin-top:12px"><button class="btn" onclick="rejudge(this)">用 AI 重新判定</button><span class="hint">把之前用关键词判过的条目交给 AI 再判一遍。</span></div>
             </details>
           </div>
@@ -461,6 +508,21 @@
               <div><label class="f">屏蔽站点（每行一个域名，对所有来源生效）</label><textarea data-key="search_block_domains"></textarea></div>
             </div>
             <div class="hint">开启的几家并行搜索（免费版每步并行 2 家）。接口资料参考 <a href="https://github.com/bestnite/search" target="_blank" rel="noopener">bestnite/search</a>。</div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>AI 福利雷达</h2><label class="sw"><input type="checkbox" data-key="aifree_radar" />启用</label></header>
+          <div class="body">
+            <div class="callout">每次抓取额外跑一步：用上面开启的搜索后端，按「福利词 + 轮到的几个厂商」去搜，结果只收进「AI 免费额度 / AI 限时福利」，再经过免费词、中文、屏蔽规则和 AI 判定，整理成 厂商 · 福利类型 · 怎么领 · 截止时间。配了 AI 效果最好。</div>
+            <div class="grid2">
+              <div><label class="f">福利搜索词（每行一个，每轮轮换着用）</label><textarea data-key="aifree_queries" style="min-height:130px"></textarea></div>
+              <div><label class="f">关注的厂商 / 产品（每行一个，每轮轮到几个，搜「xx 免费 额度 福利」）</label><textarea data-key="aifree_vendors" style="min-height:130px"></textarea></div>
+            </div>
+            <div class="grid3">
+              <div><label class="f">每轮轮到几个厂商</label><input type="number" data-key="aifree_vendors_per_run" min="0" max="8" /></div>
+              <div><label class="f">只要最近多少天的</label><input type="number" data-key="aifree_days" min="1" max="180" /></div>
+              <div class="hint" style="align-self:end;padding-bottom:8px">每轮的搜索词总数跟「每次最多查几个词」一致，免费版建议不超过 6。</div>
+            </div>
           </div>
         </div>
       </div>
@@ -523,13 +585,34 @@
           </div>
         </div>
         <div class="section">
+          <header><h2>微信 / 钉钉 / 飞书 / Bark 等机器人</h2></header>
+          <div class="body"><div id="pushRows"></div><div class="hint">填了地址就会在推送时间一起推送；开关可以单独停用某个渠道。地址和 Key 和其它密钥一样打码保存。</div></div>
+        </div>
+        <div class="section">
+          <header><h2>关键词提醒</h2><label class="sw"><input type="checkbox" data-key="watch_enabled" />启用</label></header>
+          <div class="body">
+            <div><label class="f">关注的关键词（每行一个）</label><textarea data-key="watch_keywords" style="min-height:90px" placeholder="Claude&#10;域名&#10;VPS"></textarea></div>
+            <div class="hint">每次抓取结束后，新通过的条目只要标题、名称或简介里有这些词，就立刻单独推送一次，不用等日报。</div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>每周精选</h2><label class="sw"><input type="checkbox" data-key="weekly_enabled" />启用</label></header>
+          <div class="body">
+            <div class="grid2">
+              <div><label class="f">每周几推送（随当天第一次推送一起发）</label><select data-key="weekly_weekday"><option value="1">周一</option><option value="2">周二</option><option value="3">周三</option><option value="4">周四</option><option value="5">周五</option><option value="6">周六</option><option value="0">周日</option></select></div>
+              <div class="hint" style="align-self:end;padding-bottom:8px">近 7 天里按 AI 评分、「值 / 不值」投票、被几个来源提到挑出 10 条，每个分类最多 3 条。资源页的「周报」页签也是这一份。</div>
+            </div>
+            <div class="row"><button class="btn" onclick="weeklyAction(this)">立即推送一份本周精选</button></div>
+          </div>
+        </div>
+        <div class="section">
           <header><h2>推送内容</h2></header>
           <div class="body">
             <div class="row" style="gap:22px">
               <label class="sw"><input type="checkbox" data-key="mail_only_new" />只推上次之后新通过的</label>
               <label class="sw"><input type="checkbox" data-key="mail_send_empty" />没有新内容也推</label>
             </div>
-            <div><label class="f">推送哪些分类（都不勾 = 与收集的相同）</label><div class="cats mini" data-csv="mail_categories" id="mailCatBox"></div></div>
+            <div><label class="f">推送哪些分类（都不勾 = 与收集的相同）</label><div class="cgrps" data-csv="mail_categories" id="mailCatBox"></div></div>
             <div><label class="f">资源页地址（邮件底部“查看全部”，首次登录后台时自动填写）</label><input type="text" data-key="mail_site_url" placeholder="https://xxx.workers.dev" /></div>
             <div class="row"><button class="btn pri" onclick="pushAction('send', null, this)">立即推送日报</button><span class="hint">到了推送时间按启用的渠道自动推送。</span></div>
           </div>
@@ -581,6 +664,28 @@
           </div>
         </div>
         <div class="section">
+          <header><h2>登录与接口保护</h2></header>
+          <div class="body">
+            <div class="grid2">
+              <div><label class="f">同一 IP 15 分钟内密码错几次就锁定</label><input type="number" data-key="login_max_fails" min="3" max="100" /></div>
+              <div><label class="f">公开接口每个 IP 每分钟最多请求（0 = 不限）</label><input type="number" data-key="api_rate_per_min" min="0" max="10000" /></div>
+            </div>
+            <div class="hint">后台和资源页访问密码都受锁定保护。投票接口另外限制每分钟 30 次。</div>
+          </div>
+        </div>
+        <div class="section">
+          <header><h2>备份与迁移</h2></header>
+          <div class="body">
+            <div class="row">
+              <button class="btn" onclick="exportCfg(this, false)">导出设置</button>
+              <button class="btn" onclick="exportCfg(this, true)">导出设置（含密钥）</button>
+              <button class="btn" onclick="$('#importFile').click()">导入备份…</button>
+              <input type="file" id="importFile" accept="application/json,.json" style="display:none" onchange="importCfg(this)" />
+            </div>
+            <div class="hint">导出的是全部设置和数据源（JSON 文件），换账号或重新部署后导入即可，不用重新配置。含密钥的文件里有 AI Key、邮箱授权码等，请妥善保管。资源数据不在备份里，重新抓取一次就有。</div>
+          </div>
+        </div>
+        <div class="section">
           <header><h2>存储</h2></header>
           <div class="body">
             <div id="storageInfo" class="hint"></div>
@@ -614,8 +719,10 @@ const TITLES = { items: '资源审核', collect: '采集与分类', engine: 'AI 
 const ALIAS = { ai: 'engine', search: 'engine', cats: 'collect' };
 const CATS = /*__CATS__*/[];
 const BACKENDS = /*__BACKENDS__*/[];
+const GROUPS = /*__GROUPS__*/[];
+const PUSH = /*__PUSH__*/[];
 const CAT = Object.fromEntries(CATS.map((c) => [c.key, c.label]));
-const REC = ['domain', 'hosting', 'cloud', 'ai', 'software', 'dev', 'game', 'edu'];
+const REC = ['domain', 'hosting', 'cloud', 'ai', 'aideal', 'aitool', 'software', 'dev', 'game', 'edu', 'ainews', 'news', 'proxy'];
 const OB = { free: '直接白嫖', conditional: '有条件', lottery: '抽奖', trial: '试用', promo: '推广', paid: '需付费' };
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
@@ -665,10 +772,25 @@ function backendStates() {
 function renderCats() {
   const tile = (c, mini) => '<label class="cat" title="' + esc(c.kw.join(' · ')) + '"><input type="checkbox" value="' + c.key + '"><span class="ic" style="background:' + c.color + '"></span><span class="tx"><b>' + c.label + '</b>' + (mini ? '' : '<small>' + esc(c.kw.join(' · ') || '其它未归类的免费资源') + '</small>') + '</span><span class="ck">✓</span></label>';
   const list = CATS.filter((c) => c.key !== 'other');
-  $('#catBox').innerHTML = list.map((c) => tile(c, false)).join('');
-  $('#mailCatBox').innerHTML = list.map((c) => tile(c, true)).join('');
+  // 按栏目分组，每组可以整组勾选
+  const grouped = (mini) => GROUPS.map((g) => {
+    const cs = list.filter((c) => c.group === g.key);
+    if (!cs.length) return '';
+    return '<div class="cgrp"><div class="cgh"><b>' + esc(g.label) + '</b><span class="hint">' + cs.length + ' 个分类</span><button type="button" class="btn sm" onclick="grpToggle(this)">整组勾选</button></div><div class="cats' + (mini ? ' mini' : '') + '">' + cs.map((c) => tile(c, mini)).join('') + '</div></div>';
+  }).join('');
+  $('#catBox').innerHTML = grouped(false);
+  $('#mailCatBox').innerHTML = grouped(true);
+  grpLabels();
 }
-function catCount() { $('#catCount').textContent = '已选 ' + $$('#catBox input:checked').length + ' / ' + $$('#catBox input').length; }
+function grpToggle(btn) {
+  const box = btn.closest('.cgrp');
+  const ins = [...box.querySelectorAll('input')];
+  const on = !ins.every((i) => i.checked);
+  ins.forEach((i) => (i.checked = on));
+  onEdit();
+}
+function grpLabels() { $$('.cgrp').forEach((g) => { const ins = [...g.querySelectorAll('input')]; const n = ins.filter((i) => i.checked).length; g.querySelector('.cgh .btn').textContent = n === ins.length ? '整组取消' : '整组勾选'; g.querySelector('.cgh .hint').textContent = '已选 ' + n + ' / ' + ins.length; g.classList.toggle('off', !n); }); }
+function catCount() { grpLabels(); $('#catCount').textContent = '已选 ' + $$('#catBox input:checked').length + ' / ' + $$('#catBox input').length; }
 function catAll(sel, on) { $$(sel + ' input').forEach((i) => (i.checked = on)); onEdit(); }
 function catPreset() { $$('#catBox input').forEach((i) => (i.checked = REC.includes(i.value))); onEdit(); }
 
@@ -737,7 +859,7 @@ function route() {
   $('#title').textContent = TITLES[key];
   drawer(false);
   if (key === 'runs' && TOKEN) loadRuns();
-  if (key === 'collect' && TOKEN) loadCronKey();
+  if (key === 'collect' && TOKEN) { loadCronKey(); loadHealth(); }
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);
@@ -801,8 +923,8 @@ function catPills(sel, onChange) {
 let SRC_OPEN = -1;
 function srcList() { try { const l = JSON.parse(field('sources').value); return Array.isArray(l) ? l : []; } catch { return null; } }
 function setSrc(list) { field('sources').value = JSON.stringify(list, null, 2); onEdit(); renderSources(); }
-const TYPE_ZH = { rss: 'RSS', telegram: 'TG', v2ex: 'V2EX', hn: 'HN', reddit: 'Reddit', github: 'GitHub', epic: 'Epic', gamerpower: 'GamerPower', openrouter_free: 'OpenRouter' };
-function srcWhere(x) { if (x.url) { try { const u = new URL(x.url); return u.hostname.replace(/^www\./, '') + (u.pathname.length > 1 ? u.pathname : ''); } catch { return x.url; } } return x.channel ? '@' + x.channel : x.node ? 'node/' + x.node : x.query || ''; }
+const TYPE_ZH = { rss: 'RSS', telegram: 'TG', v2ex: 'V2EX', hn: 'HN', reddit: 'Reddit', github: 'GitHub 搜索', repo: 'GitHub 仓库', epic: 'Epic', gamerpower: 'GamerPower', openrouter_free: 'OpenRouter' };
+function srcWhere(x) { if (x.url) { try { const u = new URL(x.url); return u.hostname.replace(/^www\./, '') + (u.pathname.length > 1 ? u.pathname : ''); } catch { return x.url; } } return x.repo ? x.repo + (x.mode === 'sub' ? ' · 节点订阅' : ' · 同步新增') : x.channel ? '@' + x.channel : x.node ? 'node/' + x.node : x.query || ''; }
 function renderSources() {
   const list = srcList(), box = $('#srcList');
   if (!list) { box.innerHTML = '<div class="empty" style="padding:18px">JSON 格式有误，展开下方「以 JSON 编辑」修正</div>'; return; }
@@ -812,7 +934,7 @@ function renderSources() {
   list.forEach((x, i) => {
     const on = x.enabled !== false, cats = Array.isArray(x.cats) ? x.cats : x.cats ? String(x.cats).split(',') : [];
     if (q && !(String(x.name) + ' ' + srcWhere(x)).toLowerCase().includes(q)) return;
-    if ((f === 'on' && !on) || (f === 'off' && on) || (f === 'limited' && !cats.length && !x.category)) return;
+    if ((f === 'on' && !on) || (f === 'off' && on) || (f === 'limited' && !cats.length && !x.category) || (f === 'bad' && !healthOf(x)?.bad)) return;
     const row = document.createElement('div');
     row.className = 'srow' + (on ? '' : ' off');
     const fixed = x.category && x.category !== 'auto';
@@ -820,7 +942,7 @@ function renderSources() {
       : cats.length ? cats.map((k) => { const c = CATS.find((y) => y.key === k); return c ? '<span class="tag c" style="--cc:' + c.color + (en.includes(k) ? '' : ';opacity:.45') + '">' + esc(c.label) + '</span>' : ''; }).join('')
       : '<span class="tag">全部分类</span>';
     row.innerHTML = '<label class="sw"><input type="checkbox"' + (on ? ' checked' : '') + ' /></label>' +
-      '<div class="snm">' + esc(x.name || '未命名') + '<span class="tag">' + (TYPE_ZH[x.type || 'rss'] || x.type) + '</span>' + (x.trusted ? '<span class="tag free">免审</span>' : '') + (x.include ? '<span class="tag" title="标题需匹配：' + esc(x.include) + '">有标题筛选</span>' : '') + '<small>' + esc(srcWhere(x)) + '</small></div>' +
+      '<div class="snm">' + esc(x.name || '未命名') + '<span class="tag">' + (TYPE_ZH[x.type || 'rss'] || x.type) + '</span>' + (x.trusted ? '<span class="tag free">免审</span>' : '') + (x.include ? '<span class="tag" title="标题需匹配：' + esc(x.include) + '">有标题筛选</span>' : '') + '<small>' + esc(srcWhere(x)) + (x.every ? ' · 每 ' + x.every + ' 小时' : '') + '</small>' + healthHtml(x) + '</div>' +
       '<div class="scats" title="点击设置分类">' + chips + (x.hint && !fixed ? '<span class="tag" title="默认分类">默认 ' + esc(CAT[x.hint] || x.hint) + '</span>' : '') + '</div>' +
       '<button class="sdel" title="删除">×</button>';
     row.querySelector('input').onchange = (e) => { const l = srcList(); l[i].enabled = e.target.checked; setSrc(l); };
@@ -842,7 +964,69 @@ function renderSources() {
     box.appendChild(row);
   });
   if (!box.children.length) box.innerHTML = '<div class="empty" style="padding:18px">没有匹配的源</div>';
+  const nBad = list.filter((x) => healthOf(x)?.bad).length;
+  $('#offBad').style.display = nBad ? '' : 'none';
+  $('#offBad').textContent = '停用有问题的源（' + nBad + '）';
 }
+// ---- 来源健康 ----
+let HEALTH = {};
+async function loadHealth() { HEALTH = await api('/api/admin/sources/health').catch(() => ({})); renderSources(); }
+function healthOf(x) {
+  const h = HEALTH[x.name];
+  if (!h) return null;
+  const bad = x.enabled !== false && (h.errors >= 3 || (h.fetched === 0 && h.errors > 0));
+  return { ...h, bad };
+}
+function healthHtml(x) {
+  const h = healthOf(x);
+  if (!h) return '';
+  const t = '近 7 天：抓到 ' + h.fetched + ' · 新增 ' + h.added + (h.errors ? ' · 失败 ' + h.errors + ' 次' : '') + (h.last_at ? ' · 最近成功 ' + ago(h.last_at) : ' · 一直没成功');
+  return '<span class="shealth' + (h.bad ? ' bad' : '') + '" title="' + esc(h.last_err ? '最近的错误：' + h.last_err : t) + '">' + (h.bad ? '⚠ ' : '') + esc(t) + '</span>';
+}
+function disableBad() {
+  const l = srcList(); if (!l) return;
+  const bad = l.filter((x) => healthOf(x)?.bad);
+  if (!bad.length) return toast('没有有问题的源', 2000);
+  if (!confirm('停用这 ' + bad.length + ' 个源？\n' + bad.map((x) => x.name).join('\n'))) return;
+  for (const x of bad) x.enabled = false;
+  setSrc(l); toast('已停用 ' + bad.length + ' 个，记得保存', 3000, 'ok');
+}
+
+// ---- Webhook 推送渠道 ----
+function renderPush() {
+  $('#pushRows').innerHTML = PUSH.map((c) => '<div class="pushrow"><div class="nm">' + esc(c.name) + '<label class="sw"><input type="checkbox" data-key="' + c.id + '_enabled" />启用</label></div>' +
+    '<div class="in"><input type="password" data-key="' + c.key + '" autocomplete="off" placeholder="' + esc(c.id === 'bark' ? 'https://api.day.app/你的Key' : c.id === 'serverchan' ? 'SendKey' : c.id === 'pushplus' ? 'token' : 'Webhook 地址') + '" />' +
+    (c.secret ? '<input type="password" data-key="' + c.secret + '" autocomplete="off" placeholder="加签密钥（可选）" />' : '') + '<span class="hint">' + esc(c.hint) + '</span></div>' +
+    '<button class="btn sm" onclick="pushAction(\'test\', \'push:' + c.id + '\', this)">测试</button></div>').join('');
+}
+function weeklyAction(btn) {
+  return busy(btn, async () => {
+    const r = await api('/api/admin/weekly/send', { method: 'POST', body: JSON.stringify({ test: false }) });
+    toast(r.skipped ? '未发送：' + r.skipped : '已推送本周精选 ' + r.sent + ' 条（' + r.providers.join(' + ') + '）' + (r.errors && r.errors.length ? '；失败：' + r.errors.join('；') : ''), 7000, r.skipped ? '' : 'ok');
+  });
+}
+
+// ---- 备份与迁移 ----
+function exportCfg(btn, secrets) {
+  if (secrets && !confirm('导出的文件里会包含 AI Key、邮箱授权码等密钥，确定导出？')) return;
+  return busy(btn, async () => {
+    const r = await fetch('/api/admin/export' + (secrets ? '?secrets=1' : ''), { headers: { authorization: 'Bearer ' + TOKEN } });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await r.blob());
+    a.download = 'free-resource-radar-' + new Date().toISOString().slice(0, 10) + (secrets ? '-含密钥' : '') + '.json';
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  });
+}
+async function importCfg(input) {
+  const f = input.files[0]; input.value = '';
+  if (!f) return;
+  let j;
+  try { j = JSON.parse(await f.text()); } catch { return toast('文件不是有效的 JSON', 4000, 'err'); }
+  if (!confirm('导入后会覆盖备份里包含的 ' + Object.keys(j.settings || {}).length + ' 项设置（包括数据源），确定？')) return;
+  await busy(null, async () => { const r = await api('/api/admin/import', { method: 'POST', body: JSON.stringify(j) }); fill(r.settings); toast('已导入 ' + r.count + ' 项设置', 3000, 'ok'); });
+}
+
 function addSource() {
   const url = prompt('RSS 地址，或 Telegram 频道（@频道名）：');
   if (!url) return;
@@ -885,7 +1069,7 @@ async function openSync(btn) {
   });
 }
 function openBatch(prefill, auto) {
-  syncOpen('batch', '批量添加', '<textarea id="batchIn" placeholder="https://www.example.com/\nhttps://example.com/feed\nt.me/abskoop\n@zaihuapd"></textarea><div class="row"><span class="hint">一次最多 15 个，会逐个检测能不能抓到内容</span><span class="sp" style="flex:1"></span><button class="btn pri" id="batchGo" onclick="runBatch(this)">检测</button></div>');
+  syncOpen('batch', '批量添加', '<textarea id="batchIn" placeholder="https://www.example.com/\nhttps://example.com/feed\nt.me/abskoop\n@zaihuapd\ngithub.com/owner/repo"></textarea><div class="row"><span class="hint">一次最多 15 个，会逐个检测能不能抓到内容</span><span class="sp" style="flex:1"></span><button class="btn pri" id="batchGo" onclick="runBatch(this)">检测</button></div>');
   if (prefill) $('#batchIn').value = prefill;
   setTimeout(() => (auto ? runBatch($('#batchGo')) : $('#batchIn').focus()), 0);
 }
@@ -1108,10 +1292,11 @@ function runSteps(btn, endpoint, label, doing) {
     const s = r.stats;
     prog.style.width = '100%';
     $('#runTitle').textContent = plan.reset != null ? '判定完成：通过 ' + s.approved : '抓取完成：新增 ' + s.new + '，通过 ' + s.approved;
-    out.textContent = '抓到 ' + s.fetched + ' · 候选 ' + s.candidates + ' · 新增 ' + s.new + '（专源直通 ' + (s.trusted || 0) + '）· 判定 ' + s.judged + ' · 通过 ' + s.approved + ' · 错误 ' + s.errors +
+    out.textContent = '抓到 ' + s.fetched + ' · 候选 ' + s.candidates + ' · 新增 ' + s.new + '（专源直通 ' + (s.trusted || 0) + '）· 判定 ' + s.judged + '（自动定 ' + (s.auto || 0) + '，细审 ' + Math.max(0, s.judged - (s.auto || 0) - (s.cached || 0)) + '，复用 ' + (s.cached || 0) + '）· 通过 ' + s.approved + ' · 合并 ' + (s.merged || 0) + ' · 疑似失效 ' + (s.dead || 0) + ' · 关键词提醒 ' + (s.watched || 0) + ' · 错误 ' + s.errors +
       '\n过滤：超期 ' + s.too_old + ' · 无日期 ' + s.undated + ' · 非中文 ' + (s.non_zh || 0) + ' · 不相关 ' + s.off_topic + ' · 噪音 ' + s.noise + ' · 屏蔽 ' + (s.block_rule + s.blocked) + ' · 重复标题 ' + s.dup_title + '\n\n' + lines.join('\n');
     toast($('#runTitle').textContent, 4000, 'ok');
     loadItems(CUR);
+    if (Object.keys(HEALTH).length || location.hash === '#collect') loadHealth();
   });
 }
 function pushAction(kind, channel, btn) {
@@ -1141,7 +1326,9 @@ async function loadItems(st) {
   $$('.tabs [data-st]').forEach((b) => (b.querySelector('.n').textContent = r.counts[b.dataset.st] || 0));
   $('#navPending').textContent = r.counts.pending || '';
   $('#items').innerHTML = r.items.length ? r.items.map((it) => {
-    const ob = it.obtain ? '<span class="ob ' + (it.obtain === 'free' ? 'free' : 'cond') + '">' + OB[it.obtain] + '</span>' : '';
+    const ob = (it.obtain ? '<span class="ob ' + (it.obtain === 'free' ? 'free' : 'cond') + '">' + OB[it.obtain] + '</span>' : '') +
+      (it.dead ? ' <span class="tag bad">可能失效</span>' : '') + (it.expires_at ? ' <span class="tag ' + (it.expires_at < Date.now() ? 'bad' : 'warn') + '">截止 ' + new Date(it.expires_at).toLocaleDateString('zh-CN') + '</span>' : '') +
+      (it.up || it.down ? ' <span class="tag" title="资源页上的 值 / 不值 投票">值 ' + (it.up || 0) + ' · 不值 ' + (it.down || 0) + '</span>' : '');
     return '<div class="item" id="it-' + it.id + '"><div class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '—') + '</div><div>' +
       '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + esc(it.name || it.title) + '</a>' + ob +
       (it.summary ? '<div class="sum">' + esc(it.summary) + '</div>' : '') +
@@ -1176,7 +1363,7 @@ async function loadRuns() {
 }
 
 async function init() {
-  if (!$('#catBox').children.length) { renderCats(); renderBackends(); }
+  if (!$('#catBox').children.length) { renderCats(); renderBackends(); renderPush(); }
   route();
   STATUS = await fetch('/api/admin/status').then((r) => r.json()).catch(() => STATUS);
   const where = STATUS.storage === 'kv' ? 'Cloudflare KV' : 'D1 独立的 secrets 表';

@@ -1,4 +1,6 @@
 // 数据库与设置
+import { PUSH_CHANNELS, PUSH_KEYS } from './push.js';
+import { DEFAULT_RADAR_QUERIES, DEFAULT_RADAR_VENDORS } from './extras.js';
 export const DEFAULT_SOURCES = [
   // 中文社区（部分源参考 ZiChuanLan/freebie-radar 的内置源）
   { name: 'V2EX · 免费赠送', type: 'v2ex', node: 'free', enabled: true },
@@ -46,6 +48,41 @@ export const DEFAULT_SOURCES = [
   { name: 'VPSGO', type: 'rss', url: 'https://www.vpsgo.com/feed', cats: ['hosting', 'domain', 'cloud'], hint: 'hosting', enabled: true },
   { name: 'xiaoz 博客', type: 'rss', url: 'https://blog.xiaoz.org/feed', cats: ['hosting', 'domain', 'cloud', 'dev', 'software'], enabled: true },
   { name: 'TG · 网盘资源（迅雷云盘）@yunpanxunlei', type: 'telegram', channel: 'yunpanxunlei', category: 'pan', trusted: true, enabled: false },
+  // ---------- AI 专区（2026-11-22 实测可抓） ----------
+  // Ailyre AI 速递（ailyre.com/news）：「福利速递」轨道是厂商福利（限时免费开放、优惠码、送额度），其余是模型上新和服务变动
+  { name: 'Ailyre · AI 福利速递', type: 'rss', url: 'https://www.ailyre.com/news/rss.xml', tags: ['福利速递'], cats: ['ai', 'aideal'], hint: 'aideal', every: 3, enabled: true },
+  { name: 'Ailyre · AI 速递（模型与服务变动）', type: 'rss', url: 'https://www.ailyre.com/news/rss.xml', skip_tags: ['福利速递'], category: 'ainews', trusted: true, limit: 10, every: 6, enabled: true },
+  { name: '赛博鸡蛋 · AI 免费额度', type: 'rss', url: 'https://jidan.si/rss.xml', cats: ['ai', 'aideal', 'aitool'], hint: 'ai', enabled: true },
+  { name: 'AI 福利雷达', type: 'rss', url: 'https://aifuli.dev/rss.xml', cats: ['ai', 'aideal', 'aitool'], hint: 'aideal', enabled: true },
+  { name: 'free-llm-intel · 免费额度变化', type: 'rss', url: 'https://free-llm-intel.aishort.top/feeds/llm-intel-changes.xml', category: 'ai', trusted: true, limit: 15, enabled: true },
+  { name: 'TG · LINUX DO 福利 @linuxdo_tg', type: 'telegram', channel: 'linuxdo_tg', include: '福利羊毛|公益站|公益推广|白嫖|免费|额度|赠送|送\\s*\\$?\\d', cats: ['ai', 'aideal', 'aitool', 'cloud', 'dev'], hint: 'aideal', enabled: true },
+  { name: 'TG · 苹果科技 @pgkj666', type: 'telegram', channel: 'pgkj666', include: 'API|额度|Token|免费|公益|中转', cats: ['ai', 'aideal', 'aitool'], hint: 'aideal', enabled: true },
+  // GitHub 同类清单：仓库一有新提交，就把新增的条目同步过来（读 commits.atom + 提交的 .patch，不走 GitHub API，不需要 Token）
+  { name: 'GitHub · 免费 AI API 中转站导航', type: 'repo', repo: 'kirito8/free-newapi', mode: 'diff', include: '公益|免费|签到|注册送|赠送|送\\s*[$¥]?\\d|白嫖|额度', category: 'aideal', trusted: true, every: 12, enabled: true },
+  { name: 'GitHub · AI API 公益站导航', type: 'repo', repo: 'bubblevv/ai-api-gongyi-nav', mode: 'diff', path: 'README\\.md$', include: '公益|免费|签到|注册送|赠送|送\\s*[$¥]?\\d|白嫖|额度', category: 'aideal', trusted: true, every: 12, enabled: true },
+  { name: 'GitHub · 免费 AI Token 清单（中国区）', type: 'repo', repo: 'KJAI123/awesome-free-ai-tokens-cn', mode: 'diff', category: 'ai', trusted: true, every: 12, enabled: true },
+  { name: 'GitHub · 免费大模型 API 导航', type: 'repo', repo: 'peter123023/awesome-free-llm-api', mode: 'diff', path: 'README\\.md$', category: 'ai', trusted: true, every: 12, enabled: true },
+  { name: 'GitHub · FreeToken 免费额度大全', type: 'repo', repo: 'AIPMAndy/FreeToken', mode: 'diff', path: 'README', category: 'ai', trusted: true, every: 12, enabled: true },
+  { name: 'GitHub · 免费 LLM API 平台汇总', type: 'repo', repo: 'CYBIRD-D/FREE-LLM-API-Provider', mode: 'diff', path: 'README\\.zh-CN\\.md$', category: 'ai', trusted: true, every: 12, enabled: true },
+  { name: 'GitHub · 中国独立开发者项目', type: 'repo', repo: '1c7/chinese-independent-developer', mode: 'diff', path: '^README\\.md$', cats: ['aitool', 'software', 'dev'], hint: 'software', category: 'auto', fallback: 'software', trusted: true, every: 12, enabled: false },
+  { name: 'GitHub · free-for-dev（英文）', type: 'repo', repo: 'ripienaar/free-for-dev', mode: 'diff', cats: ['dev', 'cloud', 'hosting', 'ai'], hint: 'dev', every: 12, enabled: false },
+  // ---------- 新闻资讯：资讯类专源直接收录，每次每个源最多取 limit 条 ----------
+  { name: 'free-llm-intel · AI 厂商动态', type: 'rss', url: 'https://free-llm-intel.aishort.top/feeds/llm-news-all.xml', category: 'ainews', trusted: true, limit: 12, every: 6, enabled: true },
+  { name: '量子位', type: 'rss', url: 'https://www.qbitai.com/feed', category: 'ainews', trusted: true, limit: 10, every: 6, enabled: true },
+  { name: 'Solidot', type: 'rss', url: 'https://www.solidot.org/index.rss', category: 'news', trusted: true, limit: 10, every: 6, enabled: true },
+  { name: '爱范儿', type: 'rss', url: 'https://www.ifanr.com/feed', category: 'news', trusted: true, limit: 10, every: 6, enabled: true },
+  { name: 'cnBeta', type: 'rss', url: 'https://www.cnbeta.com.tw/backend.php', category: 'news', trusted: true, limit: 10, every: 6, enabled: true },
+  { name: '极客公园', type: 'rss', url: 'https://www.geekpark.net/rss', category: 'news', trusted: true, limit: 8, every: 6, enabled: true },
+  { name: '阮一峰 · 科技爱好者周刊', type: 'rss', url: 'https://www.ruanyifeng.com/blog/atom.xml', category: 'news', trusted: true, limit: 3, every: 6, enabled: true },
+  // ---------- 免费梯子：GitHub 上自动更新的公共节点订阅，每个仓库只占一条，有新提交就刷新时间 ----------
+  { name: 'Pawdroid / Free-servers', type: 'repo', repo: 'Pawdroid/Free-servers', mode: 'sub', category: 'proxy', trusted: true, subs: [['通用订阅', 'https://raw.githubusercontent.com/Pawdroid/Free-servers/main/sub']], every: 12, enabled: true },
+  { name: 'ermaozi / get_subscribe', type: 'repo', repo: 'ermaozi/get_subscribe', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt'], ['Clash', 'https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/clash.yml']], every: 12, enabled: true },
+  { name: 'chengaopan / AutoMergePublicNodes', type: 'repo', repo: 'chengaopan/AutoMergePublicNodes', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/chengaopan/AutoMergePublicNodes/master/list.txt'], ['Clash', 'https://raw.githubusercontent.com/chengaopan/AutoMergePublicNodes/master/list.yml']], every: 12, enabled: true },
+  { name: 'peasoft / NoMoreWalls', type: 'repo', repo: 'peasoft/NoMoreWalls', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.txt'], ['Clash', 'https://raw.githubusercontent.com/peasoft/NoMoreWalls/master/list.yml']], every: 12, enabled: true },
+  { name: 'mahdibland / V2RayAggregator', type: 'repo', repo: 'mahdibland/V2RayAggregator', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt'], ['Clash', 'https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/Eternity.yml']], every: 12, enabled: true },
+  { name: 'snakem982 / proxypool', type: 'repo', repo: 'snakem982/proxypool', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/snakem982/proxypool/main/source/v2ray-2.txt'], ['Clash Meta', 'https://raw.githubusercontent.com/snakem982/proxypool/main/source/clash-meta-2.yaml']], every: 12, enabled: true },
+  { name: 'Barabama / FreeNodes', type: 'repo', repo: 'Barabama/FreeNodes', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/clashmeta.txt'], ['Clash Meta', 'https://raw.githubusercontent.com/Barabama/FreeNodes/main/nodes/clashmeta.yaml']], every: 12, enabled: true },
+  { name: 'free18 / v2ray', type: 'repo', repo: 'free18/v2ray', mode: 'sub', category: 'proxy', trusted: true, subs: [['V2Ray', 'https://raw.githubusercontent.com/free18/v2ray/main/v.txt'], ['Clash', 'https://raw.githubusercontent.com/free18/v2ray/main/c.yaml']], every: 12, enabled: true },
   // 英文社区：默认过滤纯英文内容，这些源默认关闭；关掉「过滤纯英文」后可按需打开
   { name: 'LowEndTalk · Offers', type: 'rss', url: 'https://lowendtalk.com/categories/offers/feed.rss', enabled: false },
   { name: 'LowEndSpirit', type: 'rss', url: 'https://lowendspirit.com/discussions/feed.rss', enabled: false },
@@ -71,7 +108,10 @@ export const DEFAULT_SETTINGS = {
   ai_model: '',
   ai_batch_size: '12',    // 每次请求判定几条
   ai_max_items: '60',     // 每次运行最多送 AI 判定几条（免费版 Worker 每次最多 50 个外部请求，别设太大）
-  ai_min_score: '60',     // 低于此分数视为不通过
+  ai_min_score: '60',
+  ai_review: 'smart',     // smart：把握大的自动通过 / 拒绝，只把拿不准的交给 AI；all：全部交给 AI
+  fresh_days: '15',       // 发布超过这么多天的条目，前台和邮件里单独归到「较早发布」
+  ai_cache: 'true',       // 同一个目标地址判过一次就复用结论，不重复花 AI 额度
   // 联网搜索后端（见 search.js 的 BACKENDS）。全部默认开启：AnySearch、Keenable 免 Key 直接可用；其余填了 Key 就自动参与，没填就跳过
   anysearch_enabled: 'true',
   anysearch_api_key: '',    // 可选；填了就固定走 Key
@@ -121,6 +161,8 @@ export const DEFAULT_SETTINGS = {
   telegram_enabled: 'false',
   telegram_bot_token: '',    // 存 KV
   telegram_chat_id: '',      // 存 KV
+  // Webhook 类推送（地址 / Key 存 KV），填了就推；{id}_enabled 可单独关掉
+  ...Object.fromEntries(PUSH_CHANNELS.flatMap((c) => [[c.key, ''], [`${c.id}_enabled`, 'true'], ...(c.secret ? [[c.secret, '']] : [])])),
   // 抓取与过滤
   noise_filter: 'true',
   filter_english: 'true',    // 过滤纯英文内容（标题和正文都没有中文就丢弃）      // 跳过求助 / 吐槽类标题，不送 AI
@@ -137,8 +179,27 @@ export const DEFAULT_SETTINGS = {
   trigger_min_seconds: '30', // 触发地址 / 访问触发的最小间隔（秒），间隔内的请求直接返回不执行
   visit_trigger: 'false',    // 有人打开资源页时顺带推进一步抓取（定时任务的备用方案）
   public_cache_seconds: '60', // 资源页数据缓存秒数，缓存期内不查数据库
+  // AI 福利雷达：用已开启的搜索后端按福利词 + 厂商轮流搜，结果只收「AI 免费额度 / AI 限时福利」，再经判定整理
+  aifree_radar: 'true',
+  aifree_queries: DEFAULT_RADAR_QUERIES.join('\n'),
+  aifree_vendors: DEFAULT_RADAR_VENDORS.join('\n'),
+  aifree_vendors_per_run: '3', // 每轮轮到几个厂商
+  aifree_days: '30',           // 只要最近多少天的
+  // v1.8 板块与功能
+  search_strict: 'true',   // 搜索结果标题里必须有免费类字样（搜索来的条目质量参差，从严）
+  watch_enabled: 'true',   // 关键词提醒：命中就单独推送，不等日报
+  watch_keywords: '',      // 每行一个关键词，如 Claude / 域名 / VPS
+  link_check: 'true',      // 失效检测：每次抓取后抽查一批链接，打不开或写着已结束的标灰下沉
+  link_check_per_run: '12',
+  weekly_enabled: 'false', // 每周精选：每周一（可改）随推送附带本周最值的 10 条
+  weekly_weekday: '1',     // 0 = 周日，1 = 周一 …
+  vote_hide: '3',          // 「不值」比「值」多这么多票就自动隐藏（0 = 不隐藏）
+  checkin_sites: '',       // 签到清单，每行：名称 | 地址 | 备注
+  perks_extra: '',         // 学生 / 开发者专区追加，每行：名称 | 地址 | 说明 | 学生 或 开发者
+  login_max_fails: '10',   // 同一 IP 15 分钟内登录失败这么多次就暂时锁定
+  api_rate_per_min: '120', // 公开接口每个 IP 每分钟最多请求数（0 = 不限）
   // 分类：勾选要收集的；推送分类留空 = 与收集相同
-  enabled_categories: 'domain,hosting,cloud,ai,software,dev,game,edu',
+  enabled_categories: 'domain,hosting,cloud,ai,aideal,aitool,software,dev,game,edu,ainews,news,proxy',
   mail_categories: '',
   simple_signup_only: 'true', // 只要注册简单的（邮箱 / GitHub / Google 登录）
   topic_keywords: '',      // 额外主题词（每个分类已内置关键词，这里只需补充）
@@ -148,9 +209,9 @@ export const DEFAULT_SETTINGS = {
 };
 
 const SEARCH_KEYS = ['anysearch_api_key', 'keenable_api_key', 'tavily_api_key', 'exa_api_key', 'brave_api_key', 'qianfan_api_key', 'volc_api_key'];
-export const SECRET_KEYS = ['ai_api_key', 'mail_api_key', 'smtp_pass', 'telegram_bot_token', ...SEARCH_KEYS];
+export const SECRET_KEYS = ['ai_api_key', 'mail_api_key', 'smtp_pass', 'telegram_bot_token', ...SEARCH_KEYS, ...PUSH_KEYS];
 // 敏感配置：绑定了 KV（SECRETS）就存 KV，否则存 D1 的 secrets 表（不和普通设置混在一起）
-export const KV_KEYS = ['ai_base_url', 'ai_api_key', 'mail_api_key', 'smtp_user', 'smtp_pass', 'telegram_bot_token', 'telegram_chat_id', ...SEARCH_KEYS];
+export const KV_KEYS = ['ai_base_url', 'ai_api_key', 'mail_api_key', 'smtp_user', 'smtp_pass', 'telegram_bot_token', 'telegram_chat_id', ...SEARCH_KEYS, ...PUSH_KEYS];
 const kvName = (k) => `cfg:${k}`;
 
 let schemaReady = false;
@@ -170,18 +231,28 @@ export async function ensureSchema(env) {
     env.DB.prepare('CREATE TABLE IF NOT EXISTS seen (id TEXT PRIMARY KEY, fp TEXT, seen_at INTEGER NOT NULL)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_seen_fp ON seen(fp)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_seen_at ON seen(seen_at)'),
+    // v1.8：投票、来源健康、AI 结论缓存、登录失败计数
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS votes (id TEXT NOT NULL, voter TEXT NOT NULL, v INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (id, voter))'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS src_health (name TEXT NOT NULL, day TEXT NOT NULL, fetched INTEGER NOT NULL DEFAULT 0, added INTEGER NOT NULL DEFAULT 0, errors INTEGER NOT NULL DEFAULT 0, last_at INTEGER, last_err TEXT, PRIMARY KEY (name, day))'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS verdicts (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS rate (k TEXT PRIMARY KEY, n INTEGER NOT NULL, reset INTEGER NOT NULL)'),
   ]);
-  // 增量迁移：新列（已存在会报错，忽略）
-  for (const col of ['obtain TEXT', 'fp TEXT', 'day TEXT', 'cats TEXT', 'hint TEXT', 'target TEXT', 'sources TEXT']) {
-    try { await env.DB.prepare(`ALTER TABLE items ADD COLUMN ${col}`).run(); } catch {}
+  // 增量迁移：只补缺的列（先查表结构，免得每次冷启动都跑一串 ALTER，D1 免费版每次调用有查询次数限制）
+  const cols = new Set(((await env.DB.prepare('PRAGMA table_info(items)').all()).results || []).map((r) => r.name));
+  const add = [['obtain', 'TEXT'], ['fp', 'TEXT'], ['day', 'TEXT'], ['cats', 'TEXT'], ['hint', 'TEXT'], ['target', 'TEXT'], ['sources', 'TEXT'], ['extra', 'TEXT'], ['expires_at', 'INTEGER'], ['up', 'INTEGER NOT NULL DEFAULT 0'], ['down', 'INTEGER NOT NULL DEFAULT 0'], ['dead', 'INTEGER NOT NULL DEFAULT 0'], ['checked_at', 'INTEGER']].filter(([c]) => !cols.has(c));
+  for (const [c, t] of add) { try { await env.DB.prepare(`ALTER TABLE items ADD COLUMN ${c} ${t}`).run(); } catch {} }
+  const jcols = add.length || !cols.size ? new Set(((await env.DB.prepare('PRAGMA table_info(jobs)').all()).results || []).map((r) => r.name)) : new Set(['claimed_at']);
+  if (!jcols.has('claimed_at')) { try { await env.DB.prepare('ALTER TABLE jobs ADD COLUMN claimed_at INTEGER').run(); } catch {} }
+  if (add.length) {
+    await env.DB.batch([
+      'CREATE INDEX IF NOT EXISTS idx_items_target ON items(target)',
+      'CREATE INDEX IF NOT EXISTS idx_items_fp ON items(fp)',
+      'CREATE INDEX IF NOT EXISTS idx_items_day ON items(day, status)',
+      'CREATE INDEX IF NOT EXISTS idx_items_fetched ON items(fetched_at)',
+      'CREATE INDEX IF NOT EXISTS idx_items_expires ON items(expires_at)',
+      'CREATE INDEX IF NOT EXISTS idx_health_name ON src_health(name, last_at)',
+    ].map((q) => env.DB.prepare(q))).catch(() => {});
   }
-  try { await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_items_target ON items(target)').run(); } catch {}
-  try { await env.DB.prepare('ALTER TABLE jobs ADD COLUMN claimed_at INTEGER').run(); } catch {}
-  for (const sql of [
-    'CREATE INDEX IF NOT EXISTS idx_items_fp ON items(fp)',
-    'CREATE INDEX IF NOT EXISTS idx_items_day ON items(day, status)',
-    'CREATE INDEX IF NOT EXISTS idx_items_fetched ON items(fetched_at)',
-  ]) { try { await env.DB.prepare(sql).run(); } catch {} }
   schemaReady = true;
 }
 
