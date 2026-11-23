@@ -2,7 +2,7 @@
 // 数据库用 Turso（环境变量 TURSO_DATABASE_URL + TURSO_AUTH_TOKEN），对外接口和 D1 一样，业务代码不用改
 import { tursoD1 } from './turso.js';
 
-const VERSION = '2.0.0';
+const VERSION = '3.0.0';
 let app = null, loadErr = null, envCache = null;
 
 function makeEnv() {

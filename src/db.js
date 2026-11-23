@@ -97,6 +97,9 @@ export const DEFAULT_SETTINGS = {
   ai_base_url: 'https://api.openai.com/v1',
   ai_api_key: '',
   ai_model: '',
+  ai_model_cheap: '', // 省钱模式初筛模型，留空不用
+  source_auto_slow: 'true',
+  ai_dedup: 'true', // 名称相同的同类条目合并 // 低分源自动降频
   ai_batch_size: '12',    // 每次请求判定几条
   ai_max_items: '60',     // 每次运行最多送 AI 判定几条（免费版 Worker 每次最多 50 个外部请求，别设太大）
   ai_min_score: '60',
@@ -146,6 +149,12 @@ export const DEFAULT_SETTINGS = {
   mail_only_new: 'true',     // 只发上次之后新通过的
   mail_send_empty: 'false',  // 没有新内容也发
   mail_max_items: '60',
+  mail_min_score: '0', // 低于这个分数的不推送（0 = 不限）
+  mail_top_n: '3', // 邮件开头的今日精选条数（0 = 不显示）
+  expiry_remind: 'true', // 推送过的福利 36 小时内截止时提前提醒
+  alert_enabled: 'true', // 抓取异常时单独提醒
+  alert_min_errors: '3',
+  mail_dedup: 'true', // 早报推过的，晚报不再重复
   mail_site_url: '',         // 邮件底部“查看全部”链接，如 https://xxx.workers.dev
   mail_last_sent_at: '0',    // 内部使用
   // Telegram 推送（与邮件共用“上次推送时间”）
@@ -274,8 +283,14 @@ export async function getSettings(env) {
   const sec = await env.DB.prepare('SELECT key, value FROM secrets').all();
   for (const r of sec.results || []) if (KV_KEYS.includes(r.key)) s[r.key] = r.value;
   if (env.SECRETS) Object.assign(s, await kvAll(env));
-  return s;
+  return migrateSettings(s);
 }
+// 设置迁移：老版本留下的值在读取时自动换成新版本的写法（保存时写回）
+const SETTINGS_MIGRATIONS = [
+  (s) => { if (s.mail_provider === 'cloudflare') s.mail_provider = 'smtp'; }, // v2.0 起 Vercel 不支持 Cloudflare Email
+  (s) => { if (s.search_lang === 'any' && s.filter_english === 'true') s.search_lang = 'zh_first'; }, // 过滤英文时不再搜全部语言
+];
+export function migrateSettings(s) { for (const m of SETTINGS_MIGRATIONS) try { m(s); } catch {} return s; }
 
 export function maskSecret(v) {
   if (!v) return '';

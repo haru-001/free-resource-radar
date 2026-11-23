@@ -154,6 +154,14 @@
 
 **缓存**：资源页数据默认缓存 60 秒（后台可改，0 为不缓存），缓存期内打开页面不查数据库；页面带 ETag，没变化时浏览器直接用本地副本。后台有改动会立即刷新缓存。
 
+### 备用定时：GitHub Actions
+
+仓库自带 `.github/workflows/cron.yml`，每 15 分钟请求一次触发地址，和 cron-job.org 互为备份。在仓库 **Settings → Secrets and variables → Actions** 新建 `RADAR_TRIGGER_URL`，填后台「定时与触发」里的地址即可；不填就自动跳过。GitHub 的定时任务高峰期可能延迟，所以它只做备份。
+
+### 异常提醒
+
+一轮抓取报错 3 处以上，或者一条都没抓到时，会通过已配置的推送渠道单独提醒，6 小时最多一次。可在后台「推送」里关闭。
+
 ## 数据源格式
 
 ```json
@@ -210,6 +218,10 @@ npx vercel dev                        # 本地运行，访问 http://localhost:3
 ```
 
 目录说明：`api/index.js` 打包产物（Vercel 函数）、`src/vercel.js` 入口、`src/turso.js` 数据库适配（Turso HTTP 接口，无依赖）、`src/sockets.js` SMTP 用的 TCP/TLS 连接、`vercel.json` 路由与定时、`public/` 静态文件。
+
+## 自动检查
+
+每次提交都会由 `.github/workflows/ci.yml` 重新打包并运行 `npm test`；改了 `src/` 却忘了提交新的 `api/index.js` 时会直接报错提醒。
 
 ## 致谢
 

@@ -4,6 +4,12 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>免费资源雷达 · 每日白嫖情报</title>
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icon-192.png" />
+<meta name="theme-color" content="#312e81" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="资源雷达" />
 <meta name="description" content="每天自动收集免费域名、主机、云服务、AI 额度、限免软件与游戏、科技资讯和免费节点订阅" />
 <meta name="theme-color" content="#ffffff" />
 <link rel="alternate" type="application/rss+xml" title="RSS" href="/feed.xml" />
@@ -219,6 +225,21 @@
     .stats b { font-size:18px; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+.proj{margin-left:8px;font-size:12px;padding:1px 7px;border:1px solid #c7d2fe;border-radius:6px;color:#4f46e5;text-decoration:none;white-space:nowrap}.proj:hover{background:#eef2ff}.orig{font-size:12px;color:#9ca3af;margin-top:2px;word-break:break-all}
+.tabs .tw{display:flex;align-items:stretch;gap:6px;overflow:visible}
+.tscroll{flex:1;min-width:0;display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;-webkit-mask-image:linear-gradient(90deg,#000 92%,transparent)}
+.tscroll::-webkit-scrollbar{display:none}
+.more{position:relative;flex:none;display:flex;align-items:center}
+.mbtn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--ink-2);white-space:nowrap}
+.mbtn.on,.mbtn:hover{border-color:var(--brand-line);color:var(--brand)}
+.mmenu{display:none;position:absolute;right:0;top:calc(100% + 6px);min-width:170px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px;z-index:30;box-shadow:0 8px 24px rgba(17,19,24,.08)}
+.more.open .mmenu{display:block}
+.mi{display:flex;justify-content:space-between;width:100%;border:0;background:none;padding:8px 10px;border-radius:6px;font-size:14px;text-align:left}
+.mi span{color:var(--ink-4);font-size:12px}.mi:hover{background:var(--hover)}.mi.on{color:var(--brand);font-weight:600}
+@media (max-width:640px){.tab .n{display:none}.tab{padding:10px 10px 9px}.head .search{flex:1;min-width:0}.head .search input{width:100%}.logo{flex:none}.logo b{display:none}
+ .more .mmenu{position:fixed;left:0;right:0;top:auto;bottom:0;border-radius:14px 14px 0 0;padding:8px 8px calc(8px + env(safe-area-inset-bottom));min-width:0}
+ .mi{padding:12px 14px;font-size:15px}.item .tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.proj{margin-left:0}}
+.claim{border:1px solid var(--line);background:var(--surface);border-radius:6px;font-size:12px;padding:2px 8px;color:var(--ink-3);margin-right:6px}.claim:hover{color:var(--deal);border-color:var(--deal)}.claim.on{color:var(--deal);border-color:var(--deal);background:var(--deal-bg)}
 </style>
 </head>
 <body>
@@ -229,7 +250,7 @@
     <nav class="links"><a href="/feed.xml" target="_blank" class="d">RSS</a><a href="/admin">后台</a></nav>
   </div>
 </header>
-<nav class="tabs"><div class="wrap" id="tabs"></div></nav>
+<nav class="tabs"><div class="wrap tw"><div class="tscroll" id="tabs"></div><div class="more" id="more"></div></div></nav>
 <div class="wrap main">
   <section>
     <div class="filters" id="filters"></div>
@@ -257,6 +278,7 @@ const VIEWS = [
   { key: 'v:checkin', label: '签到' },
   { key: 'v:perks', label: '学生 / 开发者' },
   { key: 'v:fav', label: '我的收藏' },
+  { key: 'v:claimed', label: '已领取' },
 ];
 const CHECKIN_RE = /签到|每日领取|每天领取|每日登录|daily\s*check-?in|每日额度/i;
 const state = { grp: localStorage.getItem('frr_grp') || '', cat: '', ob: '', src: '', vendor: '', perk: '', q: '', shown: PAGE, showOld: false, data: null, list: [], oldItems: null, oldLoading: false, cat_map: {} };
@@ -264,6 +286,7 @@ const state = { grp: localStorage.getItem('frr_grp') || '', cat: '', ob: '', src
 // ---- 本地存储：收藏、已读、投票、签到 ----
 const ls = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+let CLAIMED = ls('frr_claimed', {}); // id → 条目快照，标记「已领取」
 let FAV = ls('frr_fav', {});        // id → 条目快照（条目被清理后收藏还在）
 let READ = new Set(ls('frr_read', []));
 let VOTES = ls('frr_votes', {});    // id → 1 / -1
@@ -331,15 +354,15 @@ function itemHtml(it, i, opt = {}) {
   const mv = VOTES[it.id] || 0;
   return '<article class="item' + (READ.has(it.id) ? ' read' : '') + (it.dead ? ' dead' : '') + '" id="i-' + it.id + '" style="--c:' + c.color + '">' +
     '<div class="badge">' + (opt.rank ? '<span class="rankn">' + opt.rank + '</span>' : '') + esc(short(it, c.label)) + '</div>' +
-    '<div><a class="t" data-read="' + it.id + '" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + hl(it.name || it.title) + '</a>' + (tags.length ? '<span class="tags">' + tags.join('') + '</span>' : '') +
-    (it.summary ? '<div class="sum">' + hl(it.summary) + '</div>' : '') +
+    '<div><a class="t" data-read="' + it.id + '" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + hl((it.extra && it.extra.zh) || it.name || it.title) + '</a>' + (it.extra && it.extra.project ? '<a class="proj" href="' + esc(it.extra.project) + '" target="_blank" rel="noopener">项目地址</a>' : '') + (tags.length ? '<span class="tags">' + tags.join('') + '</span>' : '') +
+    (it.extra && it.extra.zh ? '<div class="orig">' + hl(it.title) + '</div>' : '') + (it.summary ? '<div class="sum">' + hl(it.summary) + '</div>' : '') +
     (how ? '<div class="how"><b>怎么领：</b>' + hl(how) + '</div>' : '') +
     (codes.length ? '<div class="codes">' + codes.map((x) => '<span class="code">' + esc(x) + '<button data-copy="' + esc(x) + '">复制</button></span>').join('') + '</div>' : '') +
     '<div class="meta"><span class="cat">' + esc(c.label) + '</span>' + (it.extra && it.extra.vendor ? '<a data-vd="' + esc(it.extra.vendor) + '" title="只看这个厂商">厂商：' + esc(it.extra.vendor) + '</a>' : '') + srcs + (it.signup ? '<span>注册：' + esc(it.signup) + '</span>' : '') + '<span class="host">' + esc(host(it.url)) + '</span></div></div>' +
     '<div class="side"><span class="time" title="' + esc(new Date(pubOf(it)).toLocaleString('zh-CN')) + '">' + (it.published_at ? '' : '收录于 ') + ago(pubOf(it)) + '</span>' +
     '<a class="go" data-read="' + it.id + '" href="' + esc(it.url) + '" target="_blank" rel="noopener">直达链接</a>' +
     '<div class="acts">' + (c.info ? '' : '<button class="vb' + (mv === 1 ? ' on' : '') + '" data-vote="' + it.id + '" data-v="1" title="值得一领">值 ' + (it.up || 0) + '</button><button class="vb no' + (mv === -1 ? ' on' : '') + '" data-vote="' + it.id + '" data-v="-1" title="不值 / 有坑">不值' + (it.down ? ' ' + it.down : '') + '</button>') +
-    '<button class="star' + (FAV[it.id] ? ' on' : '') + '" data-fav="' + it.id + '" title="' + (FAV[it.id] ? '取消收藏' : '收藏') + '">' + (FAV[it.id] ? '★' : '☆') + '</button></div></div></article>';
+    '<button class="claim' + (CLAIMED[it.id] ? ' on' : '') + '" data-claim="' + it.id + '" title="领过了就标记，列表里不再显示">' + (CLAIMED[it.id] ? '✓ 已领' : '领过了') + '</button>' + '<button class="star' + (FAV[it.id] ? ' on' : '') + '" data-fav="' + it.id + '" title="' + (FAV[it.id] ? '取消收藏' : '收藏') + '">' + (FAV[it.id] ? '★' : '☆') + '</button></div></div></article>';
 }
 function subHtml(it) {
   const subs = (it.extra && it.extra.subs) || [];
@@ -353,6 +376,7 @@ function subHtml(it) {
 
 // ---- 本地筛选 ----
 function matches(it, skip) {
+  if (CLAIMED[it.id]) return false; // 已领取的从列表里收起
   const c = catOf(it);
   const g = state.grp;
   if (skip !== 'grp' && g && !g.startsWith('v:') && c.group !== g) return false;
@@ -377,6 +401,7 @@ function viewItems(key) {
   if (key === 'v:codes') return items.filter((x) => codesOf(x).length && liveNow(x));
   if (key === 'v:checkin') return items.filter((x) => !isSub(x) && !catOf(x).info && CHECKIN_RE.test((x.name || '') + ' ' + x.title + ' ' + (x.summary || '')));
   if (key === 'v:fav') return Object.values(FAV).sort((a, b) => (b._at || 0) - (a._at || 0));
+  if (key === 'v:claimed') return Object.values(CLAIMED).sort((a, b) => (b._at || 0) - (a._at || 0));
   return [];
 }
 function viewCount(key) {
@@ -391,8 +416,12 @@ function renderTabs() {
   const used = new Set(d.categories.map((c) => c.group));
   const groups = d.groups.filter((g) => used.has(g.key));
   const tab = (key, label, n) => '<button class="tab' + (state.grp === key ? ' on' : '') + '" data-g="' + key + '">' + esc(label) + '<span class="n">' + (n || '') + '</span></button>';
-  $('#tabs').innerHTML = tab('', '全部', gc['']) + groups.map((g) => tab(g.key, g.label, gc[g.key])).join('') + '<span class="sep"></span>' +
-    VIEWS.filter((v) => v.key !== 'v:perks' || (d.perks || []).length).map((v) => tab(v.key, v.label, viewCount(v.key))).join('');
+  $('#tabs').innerHTML = tab('', '全部', gc['']) + groups.map((g) => tab(g.key, g.label, gc[g.key])).join('');
+  const vs = VIEWS.filter((v) => v.key !== 'v:perks' || (d.perks || []).length);
+  const cur = vs.find((v) => v.key === state.grp);
+  $('#more').innerHTML = '<button class="mbtn' + (cur ? ' on' : '') + '" data-mt aria-haspopup="true">' + esc(cur ? cur.label : '精选') + ' ▾</button><div class="mmenu">' +
+    vs.map((v) => { const n = viewCount(v.key); return '<button class="mi' + (state.grp === v.key ? ' on' : '') + '" data-g="' + v.key + '">' + esc(v.label) + '<span>' + (n || '') + '</span></button>'; }).join('') + '</div>';
+  const on = $('#tabs .tab.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
 }
 function renderFilters() {
   const d = state.data;
@@ -470,10 +499,11 @@ function renderView(key) {
     'v:weekly': '<b>本周精选</b>近 7 天按 AI 评分、「值 / 不值」投票和被几个来源提到挑出的 10 条，每个分类最多 3 条。',
     'v:soon': '<b>即将截止</b>写明了截止时间的活动，按截止时间先后排，过期一天后自动下架。',
     'v:codes': '<b>兑换码</b>正文里直接给了兑换码 / 激活码的，点一下就能复制，先到先得。',
+    'v:claimed': '<b>已领取</b>标记过「领过了」的资源收在这里，只存在这个浏览器里；点「✓ 已领」可以放回列表。',
     'v:fav': '<b>我的收藏</b>收藏只存在这个浏览器里；条目过期清理后收藏仍然保留。',
   }[key];
   el.innerHTML = '<div class="vhead">' + head + (key === 'v:fav' && list.length ? '<span class="sp"></span><button class="copy" data-clearfav="1">清空收藏</button>' : '') + '</div>' +
-    (list.length ? feedHtml(list, { flat: true, ranked: key === 'v:weekly' }) : '<div class="empty"><b>' + ({ 'v:fav': '还没有收藏', 'v:weekly': '这周还没有可选的条目', 'v:soon': '暂时没有写明截止时间的活动', 'v:codes': '暂时没有兑换码' }[key]) + '</b>' + (key === 'v:fav' ? '点资源右下角的 ☆ 收藏' : '') + '</div>');
+    (list.length ? feedHtml(list, { flat: true, ranked: key === 'v:weekly' }) : '<div class="empty"><b>' + ({ 'v:claimed': '还没有标记已领取的资源', 'v:fav': '还没有收藏', 'v:weekly': '这周还没有可选的条目', 'v:soon': '暂时没有写明截止时间的活动', 'v:codes': '暂时没有兑换码' }[key]) + '</b>' + (key === 'v:fav' ? '点资源右下角的 ☆ 收藏' : '') + '</div>');
 }
 function render() {
   const d = state.data;
@@ -542,7 +572,7 @@ function go(patch) {
   render();
   scrollTo({ top: 0 });
 }
-const findItem = (id) => state.data.items.find((x) => x.id === id) || (state.oldItems || []).find((x) => x.id === id) || FAV[id];
+const findItem = (id) => state.data.items.find((x) => x.id === id) || (state.oldItems || []).find((x) => x.id === id) || FAV[id] || CLAIMED[id];
 
 // ---- 交互 ----
 async function doVote(id, v, btn) {
@@ -560,6 +590,9 @@ async function doVote(id, v, btn) {
   } catch { toast('网络错误'); }
 }
 document.addEventListener('click', (e) => {
+  const mt = e.target.closest('[data-mt]'); const mo = $('#more');
+  if (mt) { mo.classList.toggle('open'); return; }
+  if (mo) mo.classList.remove('open');
   const t = e.target.closest('[data-g],[data-c],[data-o],[data-s],[data-q],[data-vd],[data-pk]');
   if (t) {
     e.preventDefault();
@@ -578,6 +611,13 @@ document.addEventListener('click', (e) => {
   if (rd) { markRead(rd.dataset.read); return; }
   const vb = e.target.closest('[data-vote]');
   if (vb) { doVote(vb.dataset.vote, Number(vb.dataset.v), vb); return; }
+  const cl = e.target.closest('[data-claim]');
+  if (cl) {
+    const id = cl.dataset.claim;
+    if (CLAIMED[id]) { delete CLAIMED[id]; toast('已放回列表'); } else { const it = findItem(id) || CLAIMED[id]; if (it) { CLAIMED[id] = { ...it, _at: Date.now() }; toast('已标记领取，列表里不再显示'); } }
+    lsSet('frr_claimed', CLAIMED);
+    render(); return;
+  }
   const fv = e.target.closest('[data-fav]');
   if (fv) {
     const id = fv.dataset.fav;
@@ -625,6 +665,8 @@ async function refresh() {
 if (BOOT) setData(BOOT); else refresh();
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { CKD = ls(ckKey(), {}); refresh(); } });
 setInterval(() => { if (!document.hidden) refresh(); }, 5 * 60000);
+
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('/sw.js').catch(() => {});
 </script>
 </body>
 </html>

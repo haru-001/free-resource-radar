@@ -15,3 +15,22 @@
 - drainTick in index.js: /api/cron runs autoTick in a loop up to ~45s. Tested: full crawl in 2 triggers via mock Turso (node:sqlite) at /tmp/vt.
 - Cloudflare Email provider removed; wrangler.toml, entry.js, dist/ deleted.
 - Deploy button includes Turso store param + ADMIN_TOKEN env.
+
+## v2.1.0 (2026-11-23)
+- Crawl step `translate` (after judge, also in rejudge): approved items from last 30 days with no CJK title, 15/step; AI translateBatch → extra.zh + extra.project (repo regex first, else AI pick from given links). Public/mail/Telegram show zh title, grey original, 项目地址 button. translate_english='false' disables. Not end-to-end tested.
+- esbuild install: fresh /tmp dir with `echo '{}' > package.json` first (else EACCES on /node_modules).
+
+## v2.2.0 (2026-11-23)
+- Public nav: groups in a scrollable row; virtual views moved into a 精选 ▾ dropdown (#more, bottom sheet on mobile); counts hidden on mobile.
+- Mail redesigned: gradient header with per-category counts, card per item (colored left bar, pills, how box, dashed codes, 查看详情/项目地址 buttons). Webhook markdown grouped by category with zh titles + project link.
+
+## v2.3.0 (2026-11-23)
+- Mail: ⭐ 今日精选 top N by score (mail_top_n default 3, shown when items > N+2), reason = AI summary. mail_min_score filter (default 0). mail_dedup (default true): meta:mailed keeps last 1500 ids + t:target, skipped in later reports. Admin push page has the three settings; admin mobile CSS pass (16px inputs, scrollable tables/chips, 36px buttons).
+
+## v2.4.0 (2026-11-23, v3 roadmap phase 1)
+- .github/workflows/ci.yml (bundle + diff check + npm test), cron.yml (every 15 min, secret RADAR_TRIGGER_URL), test/smoke.mjs. healthAlert in crawler.js after run finishes (alert_enabled, alert_min_errors=3, meta alert_last 6h throttle, alert_fail_streak).
+- Remaining roadmap: 一.4 Postgres, 一.5 backup/migrate, 二.1 AI dedup, 二.2 expiry recheck, 二.3 source score, 二.4 cheap+good model, 三.1 per-recipient prefs, 三.2 PWA, 三.3 claimed mark, 三.4 dark mail/weekly, 四 split html + settings migration.
+- v2.5.0: expiryRemind (expiry_remind, meta reminded) runs in check step; link check prioritizes items with expires_at. User (2026-11-23): personal use only, NO per-recipient subscriptions (drop 三.1).
+- v2.6.0: PWA (public/manifest.webmanifest, sw.js network-first cache for / and /api/data, icon.svg/png). 「领过了」mark: localStorage frr_claimed, claimed items hidden from lists, view v:claimed.
+- v2.7.0: sourceScores (30d approve rate*0.8 + vote share*20; low = n>=30 && ok<=max(1,3%)), shown in admin health; source_auto_slow skips low sources if fetched in last 23h. ai_model_cheap: cheap pre-judge, keep relevant or score>=40 for main model.
+- v3.0.0: dedupStep (ai_dedup; same category + normalized AI name/zh title, 14d, keeper=highest score, others rejected judged_by dup, sources appended). Dark-mode mail (dk-* classes), weekly mail rank badges (_weekly). migrateSettings in getSettings (cloudflare→smtp, any→zh_first). Export ?items=1 (approved, no raw_text, 3000), import INSERT OR IGNORE by PRAGMA columns. NOT done: Postgres (SQLite dialect everywhere; Turso enough), html code split (low value/risk).

@@ -1,0 +1,19 @@
+# 备用定时触发：和 cron-job.org 互为备份。
+# 用法：仓库 Settings → Secrets and variables → Actions，新建 RADAR_TRIGGER_URL，填后台「定时与触发」里的触发地址。
+# 注意：GitHub 的定时任务高峰期可能延迟，仓库 60 天没有提交会被自动暂停。
+name: 定时触发
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: 请求触发地址
+        env:
+          URL: ${{ secrets.RADAR_TRIGGER_URL }}
+        run: |
+          if [ -z "$URL" ]; then echo "未设置 RADAR_TRIGGER_URL，跳过"; exit 0; fi
+          curl -fsS --max-time 90 "$URL" | head -c 500 || echo "触发失败（下次再试）"

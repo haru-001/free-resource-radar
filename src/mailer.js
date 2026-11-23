@@ -1,5 +1,5 @@
 // 邮件日报：SMTP / Resend / Brevo
-import { getSettings, saveSettings } from './db.js';
+import { getSettings, saveSettings, getMeta, setMeta } from './db.js';
 import { foldItems } from './fold.js';
 import { CATEGORIES, mailCats } from './categories.js';
 import { PUSH_CHANNELS, pushReady, pushAll } from './push.js';
@@ -23,8 +23,21 @@ export async function collectDigest(env, s) {
     `SELECT * FROM items WHERE status = 'approved' AND dead = 0 AND (expires_at IS NULL OR expires_at > ${Date.now()}) AND COALESCE(judged_at, fetched_at) > ? AND (published_at IS NULL OR published_at >= ?)
      AND category IN (${cats.map(() => '?').join(',')})
      ORDER BY CASE category ${order} ELSE 99 END, COALESCE(published_at, fetched_at) DESC LIMIT ?`
-  ).bind(since, cutoff, ...cats, limit).all();
-  return foldItems(results || []);
+  ).bind(since, cutoff, ...cats, limit * 2).all();
+  const min = Number(s.mail_min_score) || 0;
+  let list = (results || []).filter((it) => !min || it.score == null || it.score >= min);
+  if (s.mail_dedup !== 'false' && onlyNew && env) {
+    let sent = []; try { sent = JSON.parse((await getMeta(env, 'mailed')) || '[]'); } catch {}
+    const seen = new Set(sent);
+    list = list.filter((it) => !seen.has(it.id) && !(it.target && seen.has('t:' + it.target)));
+  }
+  return foldItems(list.slice(0, limit));
+}
+// 记住推过的条目（最多 1500 个），早晚报不重复
+async function rememberMailed(env, items) {
+  let sent = []; try { sent = JSON.parse((await getMeta(env, 'mailed')) || '[]'); } catch {}
+  const add = items.flatMap((it) => [it.id, it.target ? 't:' + it.target : null]).filter(Boolean);
+  await setMeta(env, 'mailed', JSON.stringify([...new Set([...add, ...sent])].slice(0, 1500)));
 }
 
 const xo = (it) => { if (it._x) return it._x; let x = it.extra; if (typeof x === 'string') { try { x = JSON.parse(x); } catch { x = null; } } return (it._x = x || {}); };
@@ -39,42 +52,81 @@ export function renderDigest(items, s, dateStr) {
   const siteUrl = (s.mail_site_url || '').replace(/\/+$/, '');
   const font = "-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Hiragino Sans GB','Microsoft YaHei',Arial,sans-serif";
 
-  const section = (cat, list) => `
-${cat === '_flat' ? '' : `<tr><td style="padding:22px 24px 6px;font-family:${font};font-size:16px;font-weight:bold;color:#111827;border-bottom:1px solid #e6e8ec;">${CAT[cat] || cat}（${list.length}）</td></tr>`}
-${list.map((it) => `
-<tr><td style="padding:14px 24px;border-bottom:1px solid #eeeeee;font-family:${font};">
-  <a href="${esc(it.url)}" target="_blank" style="font-size:15px;font-weight:bold;color:#111318;text-decoration:none;line-height:1.5;word-break:break-all;">${esc(it.name || it.title)}</a>
-  ${it.name && it.name !== it.title ? `<div style="font-size:12px;color:#9ca3af;line-height:1.5;margin-top:2px;">${esc(it.title)}</div>` : ''}
-  ${it.summary ? `<div style="font-size:14px;color:#374151;line-height:1.6;margin-top:6px;">${esc(it.summary)}</div>` : ''}
-  ${xo(it).how || it.expires_at || xo(it).codes ? `<div style="font-size:13px;color:#374151;line-height:1.6;margin-top:4px;">${xo(it).how ? '领取：' + esc(xo(it).how) + '&nbsp; ' : ''}${it.expires_at ? `<span style="color:#b91c1c;">截止 ${ymd(it.expires_at)}</span>&nbsp; ` : ''}${xo(it).codes ? '码：' + xo(it).codes.map((c) => `<code style="background:#f1f3f6;padding:1px 5px;border-radius:4px;font-family:Menlo,Consolas,monospace;">${esc(c)}</code>`).join(' ') : ''}</div>` : ''}
-  <div style="font-size:12px;color:#6b7280;line-height:1.6;margin-top:6px;">
-    ${it.obtain ? `<span style="color:${it.obtain === 'free' ? '#047857' : '#92400e'};font-weight:bold;">${OBTAIN_ZH[it.obtain] || ''}</span>&nbsp; ` : ''}${it.signup ? `<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:4px;">注册：${esc(it.signup)}</span>&nbsp; ` : ''}
-    ${it.published_at ? ymd(it.published_at) + ' · ' : ''}${esc(it.srcs ? it.srcs.map((x) => x.n).join(' / ') : it.source || '')}${it.score != null ? ' · ' + it.score + '分' : ''}
-  </div>
-</td></tr>`).join('')}`;
+  const COLOR = Object.fromEntries(CATEGORIES.map((c) => [c.key, c.color || '#4f46e5']));
+  const pill = (txt, fg, bg) => `<span style="display:inline-block;font-size:12px;line-height:18px;padding:1px 8px;border-radius:10px;color:${fg};background:${bg};margin:0 4px 4px 0;white-space:nowrap;">${txt}</span>`;
+  const btn = (href, txt, solid) => `<a href="${esc(href)}" target="_blank" style="display:inline-block;font-size:13px;line-height:20px;padding:5px 14px;border-radius:6px;text-decoration:none;font-weight:bold;margin:8px 8px 0 0;${solid ? 'background:#4f46e5;color:#ffffff;border:1px solid #4f46e5;' : 'background:#ffffff;color:#4f46e5;border:1px solid #c7d2fe;'}">${txt}</a>`;
+  const card = (it, color, rank) => {
+    const x = xo(it);
+    const title = x.zh || it.name || it.title;
+    const pills = [
+      it.obtain && OBTAIN_ZH[it.obtain] ? pill(OBTAIN_ZH[it.obtain], it.obtain === 'free' ? '#047857' : '#92400e', it.obtain === 'free' ? '#ecfdf5' : '#fffbeb') : '',
+      x.perk ? pill(esc(x.perk), '#4f46e5', '#eef2ff') : '',
+      it.expires_at ? pill('截止 ' + ymd(it.expires_at), '#b91c1c', '#fef2f2') : '',
+      it.signup ? pill('注册：' + esc(it.signup), '#4b5563', '#f3f4f6') : '',
+    ].join('');
+    return `
+<tr><td style="padding:0 20px 12px;">
+<table class="dk-card" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e6e8ec;border-left:3px solid ${color};border-radius:8px;background:#ffffff;">
+<tr><td style="padding:14px 16px;font-family:${font};">
+  ${pills ? `<div>${pills}</div>` : ''}
+  ${rank ? `<span style="display:inline-block;min-width:22px;height:22px;line-height:22px;text-align:center;border-radius:11px;background:${rank <= 3 ? '#4f46e5' : '#e5e7eb'};color:${rank <= 3 ? '#ffffff' : '#374151'};font-size:12px;font-weight:bold;margin-right:6px;vertical-align:1px;">${rank}</span>` : ''}<a class="dk-t" href="${esc(it.url)}" target="_blank" style="font-size:16px;font-weight:bold;color:#111318;text-decoration:none;line-height:1.5;word-break:break-word;">${esc(title)}</a>
+  ${x.zh || (it.name && it.name !== it.title) ? `<div style="font-size:12px;color:#9ca3af;line-height:1.5;margin-top:2px;word-break:break-word;">${esc(it.title)}</div>` : ''}
+  ${it.summary ? `<div class="dk-s" style="font-size:14px;color:#374151;line-height:1.7;margin-top:8px;">${esc(it.summary)}</div>` : ''}
+  ${x.how ? `<div style="font-size:13px;color:#1f2937;line-height:1.6;margin-top:8px;padding:8px 10px;background:#f6f7f9;border-radius:6px;">👉 ${esc(x.how)}</div>` : ''}
+  ${x.codes && x.codes.length ? `<div style="margin-top:8px;">${x.codes.map((c) => `<span style="display:inline-block;font-family:Menlo,Consolas,monospace;font-size:13px;padding:3px 8px;border:1px dashed #d97706;color:#92400e;background:#fffbeb;border-radius:4px;margin:0 6px 4px 0;">${esc(c)}</span>`).join('')}</div>` : ''}
+  <div>${btn(it.url, '查看详情', true)}${x.project ? btn(x.project, '项目地址', false) : ''}</div>
+  <div style="font-size:12px;color:#9ca3af;line-height:1.6;margin-top:10px;">${it.published_at ? ymd(it.published_at) + ' · ' : ''}${esc(it.srcs ? it.srcs.map((y) => y.n).join(' / ') : it.source || '')}${it.score != null ? ' · ' + it.score + ' 分' : ''}</div>
+</td></tr></table>
+</td></tr>`;
+  };
+  const section = (cat, list) => {
+    const color = COLOR[cat] || '#9ca3af';
+    return `${cat === '_flat' ? '<tr><td style="height:12px;"></td></tr>' : `
+<tr><td style="padding:22px 20px 10px;font-family:${font};">
+  <span style="display:inline-block;width:4px;height:16px;background:${color};border-radius:2px;vertical-align:-2px;margin-right:8px;"></span><span class="dk-h" style="font-size:17px;font-weight:bold;color:#111827;">${esc(CAT[cat] || cat)}</span>
+  <span style="font-size:12px;color:#6b7280;background:#f3f4f6;border-radius:10px;padding:1px 8px;margin-left:6px;">${list.length}</span>
+</td></tr>`}${list.map((it, i) => card(it, color, cat === '_flat' && s._weekly ? i + 1 : 0)).join('')}`;
+  };
+  const keys = [...Object.keys(CAT), oldKey, '_flat'].filter((c) => groups[c]);
+  const overview = items.length && !s._flat ? keys.map((c) => `<span style="display:inline-block;font-size:12px;color:#e0e7ff;background:rgba(255,255,255,.14);border-radius:10px;padding:2px 9px;margin:8px 6px 0 0;white-space:nowrap;">${esc(CAT[c] || c)} ${groups[c].length}</span>`).join('') : '';
 
+  const topN = s._flat ? 0 : Math.min(5, Math.max(0, Number(s.mail_top_n ?? 3)));
+  const tops = topN && items.length > topN + 2 ? [...items].filter((it) => it.score != null).sort((a, b) => b.score - a.score).slice(0, topN) : [];
+  const topBlock = tops.length ? `
+<tr><td style="padding:16px 20px 4px;font-family:${font};"><span style="font-size:17px;font-weight:bold;color:#111827;">⭐ 今日精选</span><span style="font-size:12px;color:#6b7280;margin-left:8px;">按综合分挑出 ${tops.length} 条，最值得先看</span></td></tr>
+<tr><td style="padding:6px 20px 4px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;">
+${tops.map((it, i) => `<tr><td style="padding:12px 14px;${i ? 'border-top:1px solid #c7d2fe;' : ''}font-family:${font};">
+  <span style="display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;background:#4f46e5;color:#fff;font-size:12px;font-weight:bold;margin-right:6px;">${i + 1}</span><a href="${esc(it.url)}" target="_blank" style="font-size:15px;font-weight:bold;color:#1e1b4b;text-decoration:none;">${esc(xo(it).zh || it.name || it.title)}</a>
+  ${it.summary ? `<div style="font-size:13px;color:#3730a3;line-height:1.6;margin:4px 0 0 26px;">推荐理由：${esc(it.summary)}</div>` : ''}
+</td></tr>`).join('')}
+</table></td></tr>` : '';
   const body = items.length
-    ? [...Object.keys(CAT), oldKey, '_flat'].filter((c) => groups[c]).map((c) => section(c, groups[c])).join('')
+    ? topBlock + keys.map((c) => section(c, groups[c])).join('')
     : `<tr><td style="padding:30px 24px;font-family:${font};font-size:14px;color:#6b7280;text-align:center;">今天没有新的资源。</td></tr>`;
 
   const html = `<!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting">
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting"><meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
 <title>${esc(s.mail_subject)}</title>
 <!--[if mso]><style>table,td,a,div{font-family:'Microsoft YaHei',Arial,sans-serif !important;}</style><![endif]-->
-<style>@media only screen and (max-width:620px){.container{width:100% !important;}}</style>
+<style>@media (prefers-color-scheme:dark){body,.dk-bg{background:#0d0f13 !important}.container{background:#15181e !important;border-color:#252a33 !important}.dk-card{background:#1b1f26 !important;border-color:#2b313b !important}.dk-t,.dk-h{color:#eef0f4 !important}.dk-s{color:#cfd4dc !important}}
+@media only screen and (max-width:620px){.container{width:100% !important;border-radius:0 !important;border:0 !important;}}</style>
 </head>
 <body style="margin:0;padding:0;background:#f6f7f9;-webkit-text-size-adjust:100%;">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;">${items.length ? `今日 ${items.length} 条新资源：${esc(items.slice(0, 3).map((i) => i.name || i.title).join('、'))}` : '今天没有新资源'}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f7f9;">
+<table class="dk-bg" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f6f7f9;">
 <tr><td align="center" style="padding:20px 10px;">
-<table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border-radius:8px;">
-<tr><td style="padding:22px 24px;background:#312e81;border-radius:8px 8px 0 0;font-family:${font};">
-  <div style="font-size:19px;font-weight:bold;color:#ffffff;">${esc(s.mail_subject)}</div>
-  <div style="font-size:13px;color:#d1d5db;margin-top:4px;">${dateStr} · 共 ${items.length} 条 · ${esc(s._sub || '只收录半年内、注册简单的免费资源')}</div>
+<table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#f9fafb;border-radius:10px;border:1px solid #e6e8ec;">
+<tr><td style="padding:26px 24px 22px;background:#312e81;background-image:linear-gradient(135deg,#312e81,#4f46e5);border-radius:10px 10px 0 0;font-family:${font};">
+  <div style="font-size:12px;color:#c7d2fe;letter-spacing:1px;">免费资源雷达 · ${dateStr}</div>
+  <div style="font-size:22px;font-weight:bold;color:#ffffff;margin-top:6px;line-height:1.4;">${esc(s.mail_subject)}</div>
+  <div style="font-size:14px;color:#e0e7ff;margin-top:6px;">${s._weekly ? '本周精选' : '今天共'} <b style="font-size:18px;color:#ffffff;">${items.length}</b> 条 · ${esc(s._sub || '只收录半年内、注册简单的免费资源')}</div>
+  ${overview ? `<div>${overview}</div>` : ''}
 </td></tr>
+<tr><td style="height:8px;"></td></tr>
 ${body}
-<tr><td style="padding:18px 24px;font-family:${font};font-size:12px;color:#9ca3af;line-height:1.6;">
-  ${siteUrl ? `<a href="${esc(siteUrl)}" target="_blank" style="color:#312e81;text-decoration:none;">查看全部资源 →</a>&nbsp;·&nbsp;<a href="${esc(siteUrl)}/feed.xml" target="_blank" style="color:#9ca3af;">RSS</a><br>` : ''}
+<tr><td align="center" style="padding:20px 24px 24px;font-family:${font};font-size:12px;color:#9ca3af;line-height:1.7;border-top:1px solid #e6e8ec;">
+  ${siteUrl ? `<a href="${esc(siteUrl)}" target="_blank" style="display:inline-block;background:#111318;color:#ffffff;text-decoration:none;font-size:14px;font-weight:bold;padding:9px 22px;border-radius:6px;margin-bottom:10px;">查看全部资源 →</a><br><a href="${esc(siteUrl)}/feed.xml" target="_blank" style="color:#9ca3af;">RSS 订阅</a><br>` : ''}
   由免费资源雷达自动抓取并经 AI 筛选，使用前请自行确认服务条款。
 </td></tr>
 </table></td></tr></table></body></html>`;
@@ -82,7 +134,7 @@ ${body}
   const text = [`${s.mail_subject} · ${dateStr} · 共 ${items.length} 条`, '']
     .concat(items.length ? [...Object.keys(CAT), oldKey, '_flat'].filter((c) => groups[c]).flatMap((c) => [
       c === '_flat' ? '' : `【${CAT[c] || c}】`,
-      ...groups[c].map((it, i) => `${i + 1}. ${it.name || it.title}\n   ${it.url}${it.summary ? '\n   ' + it.summary : ''}${it.signup ? '\n   注册：' + it.signup : ''}`),
+      ...groups[c].map((it, i) => `${i + 1}. ${xo(it).zh || it.name || it.title}\n   ${it.url}${xo(it).project ? '\n   项目地址：' + xo(it).project : ''}${it.summary ? '\n   ' + it.summary : ''}${it.signup ? '\n   注册：' + it.signup : ''}`),
       '',
     ]) : ['今天没有新的资源。'])
     .concat(siteUrl ? [`查看全部：${siteUrl}`] : [])
@@ -192,7 +244,7 @@ export async function sendTelegram(s, items, title) {
   if (!s.telegram_bot_token || !s.telegram_chat_id) throw new Error('未填写 Telegram Bot Token 或 Chat ID');
   const blocks = items.map((it) => {
     const tags = [CAT[it.category] || '', it.obtain ? OBTAIN_ZH[it.obtain] : '', it.signup ? `注册：${it.signup}` : ''].filter(Boolean).join(' · ');
-    return `▪️ <a href="${tgEsc(it.url)}">${tgEsc(it.name || it.title)}</a>${it.summary ? `\n${tgEsc(it.summary)}` : ''}${tags ? `\n<i>${tgEsc(tags)}</i>` : ''}`;
+    return `▪️ <a href="${tgEsc(it.url)}">${tgEsc(xo(it).zh || it.name || it.title)}</a>${xo(it).project ? ` · <a href="${tgEsc(xo(it).project)}">项目地址</a>` : ''}${it.summary ? `\n${tgEsc(it.summary)}` : ''}${tags ? `\n<i>${tgEsc(tags)}</i>` : ''}`;
   });
   const head = `<b>${tgEsc(title)}</b>`;
   const msgs = [];
@@ -228,7 +280,7 @@ export async function deliver(env, s, { kind = 'digest', title, items, channel, 
   for (const ch of channels) {
     try {
       if (ch === 'mail') {
-        const r = await sendMail(env, s, { subject: title, ...renderDigest(items, { ...s, mail_subject: title.replace(/ · \d{4}-\d{2}-\d{2}.*$/, ''), _flat: kind !== 'digest', _sub: sub }, dateStr) });
+        const r = await sendMail(env, s, { subject: title, ...renderDigest(items, { ...s, mail_subject: title.replace(/ · \d{4}-\d{2}-\d{2}.*$/, ''), _flat: kind !== 'digest', _weekly: kind === 'weekly', _sub: sub }, dateStr) });
         if (r.failed?.length) errors.push('部分邮件失败：' + r.failed.join('；'));
         results.push(r);
       } else if (ch === 'telegram') results.push(await sendTelegram(s, items, title));
@@ -256,7 +308,7 @@ export async function sendDigest(env, { force = false, test = false, channel, la
   const dateStr = ymd(Date.now());
   const title = `${test ? '[测试] ' : ''}${s.mail_subject} · ${dateStr}${label ? ' ' + label : ''}${items.length ? `（${items.length} 条）` : ''}`;
   const r = await deliver(env, s, { title, items, channel });
-  if (!test && !r.skipped) await saveSettings(env, { mail_last_sent_at: String(startedAt) });
+  if (!test && !r.skipped) { await saveSettings(env, { mail_last_sent_at: String(startedAt) }); if (items.length) await rememberMailed(env, items).catch(() => {}); }
   return r;
 }
 

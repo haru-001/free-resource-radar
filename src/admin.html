@@ -281,6 +281,12 @@
     .acts { grid-column:2; opacity:1; flex-wrap:wrap; }
     .savebar { left:12px; right:12px; transform:translateY(160%); justify-content:space-between; }
     body.dirty .savebar { transform:none; }
+    input, select, textarea { font-size:16px !important; }
+    .section .body { overflow-x:auto; }
+    table { display:block; overflow-x:auto; white-space:nowrap; }
+    .btn, button { min-height:36px; }
+    .chips, .tabs, .seg { overflow-x:auto; flex-wrap:nowrap; scrollbar-width:none; }
+    pre, code { white-space:pre-wrap; word-break:break-all; }
   }
 </style>
 </head>
@@ -475,6 +481,10 @@
                 <button class="btn" onclick="testModel('ai', this)">测试</button>
               </div>
             </div>
+            <div>
+              <label class="f">省钱模式：初筛模型（可选）</label>
+              <input type="text" data-key="ai_model_cheap" list="ai-models" placeholder="留空 = 不用。填一个便宜模型，先由它淘汰明显不相关的，剩下的再交给上面的模型" />
+            </div>
             <div class="grid2">
               <div><label class="f">审核方式</label><select data-key="ai_review"><option value="smart">智能（推荐）：把握大的自动定，拿不准的才问 AI</option><option value="all">严格：每一条都交给 AI</option></select></div>
               <div class="hint" style="align-self:end;padding-bottom:8px">智能模式下，标题写明免费、能归类、没有价格 / 抽奖 / 推广字样的直接通过，提问帖和明确付费的直接拒绝，其余才消耗 AI 额度。</div>
@@ -566,6 +576,11 @@
               <div><label class="f">发件人名称</label><input type="text" data-key="mail_from_name" /></div>
               <div><label class="f">标题</label><input type="text" data-key="mail_subject" /></div>
               <div><label class="f">每封最多条数</label><input type="number" data-key="mail_max_items" min="1" max="200" /></div>
+              <div><label class="f">最低分数（低于不推送，0 = 不限）</label><input type="number" data-key="mail_min_score" min="0" max="100" /></div>
+              <div><label class="f">邮件开头「今日精选」条数（0 = 不显示）</label><input type="number" data-key="mail_top_n" min="0" max="5" /></div>
+              <div><label class="f">推过的不再重复推</label><select data-key="mail_dedup"><option value="true">开（早报推过的晚报不再出现）</option><option value="false">关</option></select></div>
+              <div><label class="f">抓取异常提醒</label><select data-key="alert_enabled"><option value="true">开（报错多或没抓到内容时单独推送，6 小时最多一次）</option><option value="false">关</option></select></div>
+              <div><label class="f">截止提醒</label><select data-key="expiry_remind"><option value="true">开（推送过的福利快截止时提前提醒一次）</option><option value="false">关</option></select></div>
             </div>
             <div class="row">
               <button class="btn" onclick="mailPreview(this)">预览邮件</button>
@@ -678,6 +693,7 @@
             <div class="row">
               <button class="btn" onclick="exportCfg(this, false)">导出设置</button>
               <button class="btn" onclick="exportCfg(this, true)">导出设置（含密钥）</button>
+              <button class="btn" onclick="exportCfg(this, true, true)">完整备份（设置 + 密钥 + 已通过资源，换平台用）</button>
               <button class="btn" onclick="$('#importFile').click()">导入备份…</button>
               <input type="file" id="importFile" accept="application/json,.json" style="display:none" onchange="importCfg(this)" />
             </div>
@@ -979,7 +995,8 @@ function healthOf(x) {
 function healthHtml(x) {
   const h = healthOf(x);
   if (!h) return '';
-  const t = '近 7 天：抓到 ' + h.fetched + ' · 新增 ' + h.added + (h.errors ? ' · 失败 ' + h.errors + ' 次' : '') + (h.last_at ? ' · 最近成功 ' + ago(h.last_at) : ' · 一直没成功');
+  const q = h.q ? ' · 评分 ' + h.q.score + '（30 天通过 ' + h.q.ok + '/' + h.q.n + (h.q.up || h.q.down ? '，值 ' + h.q.up + ' 不值 ' + h.q.down : '') + '）' + (h.q.low ? ' · 已自动降频' : '') : '';
+  const t = '近 7 天：抓到 ' + h.fetched + ' · 新增 ' + h.added + (h.errors ? ' · 失败 ' + h.errors + ' 次' : '') + (h.last_at ? ' · 最近成功 ' + ago(h.last_at) : ' · 一直没成功') + q;
   return '<span class="shealth' + (h.bad ? ' bad' : '') + '" title="' + esc(h.last_err ? '最近的错误：' + h.last_err : t) + '">' + (h.bad ? '⚠ ' : '') + esc(t) + '</span>';
 }
 function disableBad() {
@@ -1006,14 +1023,14 @@ function weeklyAction(btn) {
 }
 
 // ---- 备份与迁移 ----
-function exportCfg(btn, secrets) {
+function exportCfg(btn, secrets, items) {
   if (secrets && !confirm('导出的文件里会包含 AI Key、邮箱授权码等密钥，确定导出？')) return;
   return busy(btn, async () => {
-    const r = await fetch('/api/admin/export' + (secrets ? '?secrets=1' : ''), { headers: { authorization: 'Bearer ' + TOKEN } });
+    const r = await fetch('/api/admin/export?' + (secrets ? 'secrets=1&' : '') + (items ? 'items=1' : ''), { headers: { authorization: 'Bearer ' + TOKEN } });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const a = document.createElement('a');
     a.href = URL.createObjectURL(await r.blob());
-    a.download = 'free-resource-radar-' + new Date().toISOString().slice(0, 10) + (secrets ? '-含密钥' : '') + '.json';
+    a.download = 'free-resource-radar-' + new Date().toISOString().slice(0, 10) + (secrets ? '-含密钥' : '') + (items ? '-完整' : '') + '.json';
     a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   });
 }
@@ -1022,8 +1039,8 @@ async function importCfg(input) {
   if (!f) return;
   let j;
   try { j = JSON.parse(await f.text()); } catch { return toast('文件不是有效的 JSON', 4000, 'err'); }
-  if (!confirm('导入后会覆盖备份里包含的 ' + Object.keys(j.settings || {}).length + ' 项设置（包括数据源），确定？')) return;
-  await busy(null, async () => { const r = await api('/api/admin/import', { method: 'POST', body: JSON.stringify(j) }); fill(r.settings); toast('已导入 ' + r.count + ' 项设置', 3000, 'ok'); });
+  if (!confirm('导入后会覆盖备份里包含的 ' + Object.keys(j.settings || {}).length + ' 项设置（包括数据源）' + (j.items ? '，并补入 ' + j.items.length + ' 条资源（已有的不覆盖）' : '') + '，确定？')) return;
+  await busy(null, async () => { const r = await api('/api/admin/import', { method: 'POST', body: JSON.stringify(j) }); fill(r.settings); toast('已导入 ' + r.count + ' 项设置' + (r.items ? '、' + r.items + ' 条资源' : ''), 3000, 'ok'); });
 }
 
 function addSource() {

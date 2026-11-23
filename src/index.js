@@ -1,6 +1,6 @@
 import { ensureSchema, getSettings, getBasicSettings, saveSettings, settingsForAdmin, storageMode, getAdminHash, setAdminHash, sha256, dayOf, getSitePassHash, setSitePass, getMeta, setMeta, getCronKey, DEFAULT_SETTINGS, SECRET_KEYS } from './db.js';
 import { listModels, chat } from './ai.js';
-import { planRun, tick } from './crawler.js';
+import { planRun, tick, sourceScores } from './crawler.js';
 import { sendDigest, previewDigest, sendWeekly } from './mailer.js';
 import { PUSH_CHANNELS } from './push.js';
 import { weeklyPicks, perksOf, checkinOf } from './extras.js';
@@ -233,6 +233,8 @@ async function handleAdmin(req, env, url) {
     const out = {};
     for (const r of results || []) out[r.name] = { fetched: r.fetched || 0, added: r.added || 0, errors: r.errors || 0, last_at: r.last_at || null };
     for (const r of errs || []) if (out[r.name] && !out[r.name].last_err) out[r.name].last_err = r.last_err;
+    const sc = await sourceScores(env).catch(() => ({}));
+    for (const [k, v] of Object.entries(sc)) out[k] = { fetched: 0, added: 0, errors: 0, last_at: null, ...(out[k] || {}), q: v };
     return json(out);
   }
   // 备份与迁移：导出 / 导入全部设置（含数据源）。密钥默认不导出
@@ -245,7 +247,10 @@ async function handleAdmin(req, env, url) {
       if (SECRET_KEYS.includes(k) && !withSecrets) continue;
       if (s[k] !== DEFAULT_SETTINGS[k] || k === 'sources') out[k] = s[k];
     }
-    return new Response(JSON.stringify({ app: 'free-resource-radar', version: 1, exported_at: new Date().toISOString(), secrets: withSecrets, settings: out }, null, 2), { headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="free-resource-radar-${dayOf(Date.now())}.json"` } });
+    let items;
+    if (url.searchParams.get('items') === '1') items = (await env.DB.prepare("SELECT * FROM items WHERE status = 'approved' ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT 3000").all()).results || [];
+    if (items) for (const it of items) delete it.raw_text; // 控制文件大小（Vercel 单次响应上限 4.5MB）
+    return new Response(JSON.stringify({ app: 'free-resource-radar', version: 2, exported_at: new Date().toISOString(), secrets: withSecrets, settings: out, ...(items ? { items } : {}) }, null, 2), { headers: { 'content-type': 'application/json; charset=utf-8', 'content-disposition': `attachment; filename="free-resource-radar-${dayOf(Date.now())}.json"` } });
   }
   if (p === '/import' && m === 'POST') {
     const src = body && body.settings && typeof body.settings === 'object' ? body.settings : null;
@@ -253,7 +258,20 @@ async function handleAdmin(req, env, url) {
     const patch = {};
     for (const [k, v] of Object.entries(src)) if (k in DEFAULT_SETTINGS && k !== 'mail_last_sent_at') patch[k] = String(v ?? '');
     try { await saveSettings(env, patch); } catch (e) { return json({ error: '导入失败：' + e.message }, 400); }
-    return json({ ok: true, count: Object.keys(patch).length, settings: settingsForAdmin(await getSettings(env)) });
+    let imported = 0;
+    if (Array.isArray(body.items) && body.items.length) {
+      const cols = new Set(((await env.DB.prepare('PRAGMA table_info(items)').all()).results || []).map((r) => r.name));
+      const stmts = [];
+      for (const it of body.items.slice(0, 5000)) {
+        const keys = Object.keys(it || {}).filter((k) => cols.has(k) && /^[a-z_]+$/.test(k));
+        if (!keys.includes('id') || !keys.includes('url')) continue;
+        stmts.push(env.DB.prepare(`INSERT OR IGNORE INTO items (${keys.join(',')}) VALUES (${keys.map(() => '?').join(',')})`).bind(...keys.map((k) => it[k] ?? null)));
+      }
+      for (let i = 0; i < stmts.length; i += 100) await env.DB.batch(stmts.slice(i, i + 100));
+      imported = stmts.length;
+      await markDirty(env).catch(() => {});
+    }
+    return json({ ok: true, count: Object.keys(patch).length, items: imported, settings: settingsForAdmin(await getSettings(env)) });
   }
   if (p === '/mail/send' && m === 'POST') return json(await sendDigest(env, { force: true }));
   if (p === '/mail/preview' && m === 'GET') return html(await previewDigest(env));
@@ -352,7 +370,7 @@ async function health(env) {
   await step('snapshot', async () => { const r = await readSnap(env, 'head'); return { ver: r?.ver || null, bytes: r?.v ? r.v.length : 0 }; });
   await step('settings', async () => { const s = await getBasicSettings(env); return { keys: Object.keys(s).length }; });
   await step('run', async () => { const r = await env.DB.prepare('SELECT id, started_at, finished_at FROM runs ORDER BY id DESC LIMIT 1').first(); return { last: r || null }; });
-  return { ok: Object.values(out).every((x) => x.ok), version: '2.0.0', checks: out };
+  return { ok: Object.values(out).every((x) => x.ok), version: '3.0.0', checks: out };
 }
 
 async function handleFetch(req, env, ctx) {

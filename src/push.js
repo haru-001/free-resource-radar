@@ -20,25 +20,27 @@ export const pushReady = (s, c) => !!String(s[c.key] || '').trim() && s[`${c.id}
 
 const line = (it) => {
   const tags = [CAT[it.category] || '', it.obtain && OBTAIN_ZH[it.obtain] && it.obtain !== 'free' ? OBTAIN_ZH[it.obtain] : '', it.expires_at ? '截止 ' + new Date(it.expires_at + 8 * 3600000).toISOString().slice(5, 10) : ''].filter(Boolean).join(' · ');
-  return { name: String(it.name || it.title).slice(0, 80), url: it.url, summary: String(it.summary || '').slice(0, 90), tags };
+  let x = it.extra; if (typeof x === 'string') { try { x = JSON.parse(x); } catch { x = null; } } x = x || {};
+  return { name: String(x.zh || it.name || it.title).slice(0, 80), url: it.url, summary: String(it.summary || '').slice(0, 90), tags, project: x.project || '', how: x.how || '' };
 };
 /** Markdown 正文（企业微信 / 钉钉 / Server 酱 / PushPlus 通用），超出 max 字节截断 */
 function markdown(title, items, max, siteUrl) {
-  let out = `### ${title}\n`;
-  let n = 0;
+  let out = `## 📡 ${title}\n> 共 **${items.length}** 条${siteUrl ? ` · [打开网页版](${siteUrl})` : ''}\n`;
+  let n = 0, cur = null;
   for (const it of items) {
     const l = line(it);
-    const block = `\n- [${l.name.replace(/[[\]]/g, '')}](${l.url})${l.summary ? `\n  ${l.summary}` : ''}${l.tags ? `\n  <font color="comment">${l.tags}</font>` : ''}`;
+    const head = it.category !== cur ? `\n#### ▍${CAT[it.category] || '其它'}\n` : '';
+    const block = `${head}\n**[${l.name.replace(/[[\]]/g, '')}](${l.url})**${l.summary ? `\n> ${l.summary}` : ''}${l.how ? `\n> 👉 ${l.how}` : ''}${l.tags || l.project ? `\n<font color="comment">${l.tags}</font>${l.project ? `${l.tags ? ' · ' : ''}[项目地址](${l.project})` : ''}` : ''}\n`;
     if (new TextEncoder().encode(out + block).length > max - 200) break;
-    out += block;
+    out += block; cur = it.category;
     n++;
   }
-  if (n < items.length) out += `\n\n……还有 ${items.length - n} 条${siteUrl ? `，[查看全部](${siteUrl})` : ''}`;
-  else if (siteUrl) out += `\n\n[查看全部](${siteUrl})`;
+  if (n < items.length) out += `\n---\n……还有 ${items.length - n} 条${siteUrl ? `，[查看全部](${siteUrl})` : ''}`;
+  else if (siteUrl) out += `\n---\n[查看全部 →](${siteUrl})`;
   if (!items.length) out += '\n今天没有新的资源。';
   return out;
 }
-const plain = (title, items, siteUrl) => [title, '', ...items.slice(0, 30).map((it, i) => { const l = line(it); return `${i + 1}. ${l.name}\n${l.url}${l.summary ? '\n' + l.summary : ''}`; }), items.length > 30 ? `……还有 ${items.length - 30} 条` : '', siteUrl ? `查看全部：${siteUrl}` : ''].filter((x) => x !== '').join('\n');
+const plain = (title, items, siteUrl) => [title, '', ...items.slice(0, 30).map((it, i) => { const l = line(it); return `${i + 1}. ${l.name}\n${l.url}${l.summary ? '\n' + l.summary : ''}${l.project ? '\n项目：' + l.project : ''}`; }), items.length > 30 ? `……还有 ${items.length - 30} 条` : '', siteUrl ? `查看全部：${siteUrl}` : ''].filter((x) => x !== '').join('\n');
 
 async function hmacB64(key, msg) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);

@@ -1,6 +1,6 @@
 // 抓取、过滤、AI 判定的主流程
 import { getSettings, lines, getMeta, setMeta } from './db.js';
-import { judgeBatch } from './ai.js';
+import { judgeBatch, translateBatch } from './ai.js';
 import { sendDigest } from './mailer.js';
 import { dayOf } from './db.js';
 import { CAT_MAP, enabledCats, guessCategory, topicWordsFor, kwHit, compileWords, isInfoCat } from './categories.js';
@@ -455,7 +455,7 @@ export function triage(item, s) {
 // 所以一次“抓取”被拆成若干步骤存进 D1（jobs 表）：每个数据源 / 搜索引擎 / AI 判定批次 / 清理 / 推送各一步，
 // 定时任务每分钟执行一步（steps_per_tick 可调），后台“立即抓取”由浏览器逐步驱动。
 
-const ZERO_STATS = () => ({ auto: 0, cached: 0, dead: 0, watched: 0, skipped_src: 0, merged: 0, fetched: 0, blocked: 0, block_rule: 0, noise: 0, dup_title: 0, non_zh: 0, hard_signup: 0, too_old: 0, undated: 0, off_topic: 0, candidates: 0, new: 0, trusted: 0, judged: 0, approved: 0, rejected: 0, expired_removed: 0, errors: 0 });
+const ZERO_STATS = () => ({ translated: 0, auto: 0, cached: 0, dead: 0, watched: 0, skipped_src: 0, merged: 0, fetched: 0, blocked: 0, block_rule: 0, noise: 0, dup_title: 0, non_zh: 0, hard_signup: 0, too_old: 0, undated: 0, off_topic: 0, candidates: 0, new: 0, trusted: 0, judged: 0, approved: 0, rejected: 0, expired_removed: 0, errors: 0 });
 // AI 可选：开关没关、且接口地址 / Key / 模型都填了才用
 const aiReadyOf = (s) => s.ai_enabled !== 'false' && !!(s.ai_api_key && s.ai_base_url && s.ai_model);
 
@@ -710,7 +710,16 @@ async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
     for (let i = 0; i < aiItems.length; i += batchSize) batches.push(aiItems.slice(i, i + batchSize));
     await Promise.all(batches.map(async (batch) => {
       try {
-        const verdicts = await judgeBatch(batch, s, bad);
+        let verdicts;
+        // 省钱模式：先用便宜模型初筛，明显不相关的直接淘汰，其余交给主模型复审
+        if (s.ai_model_cheap && s.ai_model_cheap !== s.ai_model) {
+          const pre = await judgeBatch(batch, { ...s, ai_model: s.ai_model_cheap }, bad);
+          const keep = batch.map((_, i) => i).filter((i) => { const v = pre.get(i); return !v || v.relevant === true || Number(v.score) >= 40; });
+          const fin = keep.length ? await judgeBatch(keep.map((i) => batch[i]), s, bad) : new Map();
+          verdicts = new Map();
+          batch.forEach((_, i) => { const k = keep.indexOf(i); const v = k >= 0 ? fin.get(k) : pre.get(i); if (v) verdicts.set(i, k >= 0 ? v : { ...v, relevant: false }); });
+          stats.cheap_cut = (stats.cheap_cut || 0) + (batch.length - keep.length);
+        } else verdicts = await judgeBatch(batch, s, bad);
         batch.forEach((it, idx) => {
           const v = verdicts.get(idx);
           if (!v) { updates.push(env.DB.prepare('UPDATE items SET attempts = attempts + 1 WHERE id=?').bind(it.id)); return; }
@@ -795,16 +804,92 @@ async function checkStep(env, c, stats, log) {
   const n = Math.min(30, Math.max(1, Number(c.s.link_check_per_run) || 12));
   const info = Object.keys(CAT_MAP).filter((k) => isInfoCat(k));
   const { results: rows } = await env.DB.prepare(
-    `SELECT id, url FROM items WHERE status = 'approved' AND (checked_at IS NULL OR checked_at < ?) AND (category IS NULL OR category NOT IN (${info.map(() => '?').join(',')})) ORDER BY checked_at IS NOT NULL, checked_at, published_at DESC LIMIT ?`
+    `SELECT id, url FROM items WHERE status = 'approved' AND (checked_at IS NULL OR checked_at < ?) AND (category IS NULL OR category NOT IN (${info.map(() => '?').join(',')})) ORDER BY checked_at IS NOT NULL, expires_at IS NULL, checked_at, published_at DESC LIMIT ?`
   ).bind(c.now - 3 * DAY, ...info, n).all();
-  if (!rows?.length) return false;
+  if (!rows?.length) { await expiryRemind(env, c, log).catch((e) => log.push(`✗ 截止提醒：${e.message}`)); return false; }
   const res = await Promise.all(rows.map((r) => checkLink(r.url)));
   const now = Date.now();
   await env.DB.batch(rows.map((r, i) => env.DB.prepare('UPDATE items SET checked_at = ?, dead = CASE WHEN ? IS NULL THEN dead ELSE ? END WHERE id = ?').bind(now, res[i], res[i] ?? 0, r.id)));
   const dead = res.filter((x) => x === 1).length;
   stats.dead += dead;
   log.push(`✓ 失效检测：抽查 ${rows.length} 条，${dead} 条疑似失效，${res.filter((x) => x === null).length} 条打不开（不计入）`);
+  await expiryRemind(env, c, log).catch((e) => log.push(`✗ 截止提醒：${e.message}`));
   return false;
+}
+// 截止提醒：推送过、36 小时内截止、还没失效的福利，提前单独提醒一次
+async function expiryRemind(env, c, log) {
+  if (c.s.expiry_remind === 'false') return;
+  const now = Date.now();
+  const { results: rows } = await env.DB.prepare("SELECT id, title, name, summary, url, category, obtain, expires_at, extra, target FROM items WHERE status = 'approved' AND dead = 0 AND expires_at > ? AND expires_at < ? ORDER BY expires_at LIMIT 30").bind(now, now + 36 * 3600000).all();
+  if (!rows?.length) return;
+  let mailed = [], done = [];
+  try { mailed = JSON.parse((await getMeta(env, 'mailed')) || '[]'); } catch {}
+  try { done = JSON.parse((await getMeta(env, 'reminded')) || '[]'); } catch {}
+  const m = new Set(mailed), d = new Set(done);
+  const hits = rows.filter((r) => (m.has(r.id) || (r.target && m.has('t:' + r.target))) && !d.has(r.id));
+  if (!hits.length) return;
+  const r = await deliver(env, c.s, { kind: 'alert', title: `⏰ ${hits.length} 个福利快截止了`, items: hits });
+  await setMeta(env, 'reminded', JSON.stringify([...hits.map((h) => h.id), ...done].slice(0, 500)));
+  log.push(r.skipped ? `– 截止提醒：${r.skipped}` : `✓ 截止提醒：${hits.length} 条`);
+}
+
+// ---------- 智能去重：AI 提取的名称相同（或中英文标题相同）的同类条目合并为一条，其它来源挂到保留的那条 ----------
+const normName = (x) => String(x || '').toLowerCase().replace(/[\s·:：\-_|【】\[\]()（）"'“”!！?？,.，。]+/g, '').slice(0, 40);
+export async function dedupStep(env, c, stats, log) {
+  if (c.s.ai_dedup === 'false') return false;
+  const { results: rows } = await env.DB.prepare("SELECT id, name, title, url, source, category, score, sources, extra, COALESCE(published_at, fetched_at) AS t FROM items WHERE status = 'approved' AND COALESCE(judged_at, fetched_at) > ? ORDER BY score DESC, t ASC LIMIT 600").bind(c.now - 14 * DAY).all();
+  const keep = new Map(), stmts = [];
+  let n = 0;
+  for (const r of rows || []) {
+    let x = {}; try { x = r.extra ? JSON.parse(r.extra) : {}; } catch {}
+    const keys = [r.name, x.zh].map(normName).filter((k) => k.length >= 4).map((k) => r.category + '|' + k);
+    const hit = keys.map((k) => keep.get(k)).find(Boolean);
+    if (!hit) { for (const k of keys) keep.set(k, r); continue; }
+    if (hit.url === r.url) continue;
+    let src = []; try { src = JSON.parse(hit.sources || '[]'); } catch {}
+    if (!src.some((y) => y.u === r.url)) src.push({ n: r.source, u: r.url });
+    hit.sources = JSON.stringify(src.slice(0, 12));
+    stmts.push(env.DB.prepare("UPDATE items SET status = 'rejected', judged_by = 'dup' WHERE id = ?").bind(r.id));
+    stmts.push(env.DB.prepare('UPDATE items SET sources = ? WHERE id = ?').bind(hit.sources, hit.id));
+    n++;
+  }
+  if (stmts.length) await env.DB.batch(stmts.slice(0, 200));
+  if (n) { stats.merged = (stats.merged || 0) + n; log.push(`✓ 智能去重：合并 ${n} 条重复`); }
+  return false;
+}
+
+// ---------- 英文条目：翻译标题、提取项目地址 ----------
+const HAS_CJK = /[\u3400-\u9fff]/;
+const REPO_RE = /https?:\/\/(?:github\.com|gitlab\.com|codeberg\.org|huggingface\.co)\/[\w.-]+\/[\w.-]+/i;
+const linksOf = (r) => [...new Set([r.url, r.target && /^https?:/.test(r.target) ? r.target : null, ...(String(r.raw_text || '').match(/https?:\/\/[^\s"'<>)\]]+/g) || [])].filter(Boolean))].slice(0, 8);
+async function translateStep(env, c, stats, log) {
+  if (c.s.translate_english === 'false') return false;
+  const { results: rows } = await env.DB.prepare(
+    "SELECT id, title, name, url, target, raw_text, extra FROM items WHERE status = 'approved' AND COALESCE(judged_at, fetched_at) > ? AND (extra IS NULL OR extra NOT LIKE '%\"zh\"%') ORDER BY COALESCE(judged_at, fetched_at) DESC LIMIT 300"
+  ).bind(c.now - 30 * DAY).all();
+  const todo = (rows || []).filter((r) => !HAS_CJK.test(r.title || '') && /[A-Za-z]{3}/.test(r.title || '')).slice(0, 15);
+  if (!todo.length) return false;
+  let tr = new Map();
+  if (c.aiReady) {
+    try { tr = await translateBatch(todo.map((r) => ({ title: r.title, name: r.name, links: linksOf(r) })), c.s); }
+    catch (e) { log.push(`✗ 翻译英文：${e.message}`); return false; }
+  }
+  const stmts = [];
+  todo.forEach((r, i) => {
+    let x = {}; try { x = r.extra ? JSON.parse(r.extra) : {}; } catch {}
+    const t = tr.get(i) || {};
+    const links = linksOf(r);
+    const repo = links.map((u) => (REPO_RE.exec(u) || [])[0]).find(Boolean);
+    const proj = repo || (t.project && links.includes(t.project) ? t.project : null);
+    x.zh = t.zh && HAS_CJK.test(t.zh) ? String(t.zh).slice(0, 80) : ''; // 空串 = 处理过但没翻
+    if (proj) x.project = proj.replace(/[.,;]+$/, '');
+    stmts.push(env.DB.prepare('UPDATE items SET extra = ? WHERE id = ?').bind(JSON.stringify(x), r.id));
+  });
+  await env.DB.batch(stmts);
+  const n = todo.filter((_, i) => (tr.get(i) || {}).zh).length;
+  stats.translated = (stats.translated || 0) + n;
+  log.push(`✓ 翻译英文：处理 ${todo.length} 条，翻好 ${n} 条` + (c.aiReady ? '' : '（未配置 AI，只提取项目地址）'));
+  return todo.length === 15 && (stats.translated || 0) < 90;
 }
 
 // ---------- 关键词提醒：新通过的条目命中关键词就单独推送 ----------
@@ -831,7 +916,7 @@ async function watchStep(env, c, stats, log) {
   return false;
 }
 
-const STEP_LABEL = { source: '抓取', search: '搜索', radar: 'AI 福利雷达', judge: '判定', cleanup: '清理', mail: '推送', check: '失效检测', watch: '关键词提醒' };
+const STEP_LABEL = { source: '抓取', search: '搜索', radar: 'AI 福利雷达', judge: '判定', cleanup: '清理', mail: '推送', check: '失效检测', dedup: '智能去重', watch: '关键词提醒', translate: '翻译英文' };
 
 /** 新建一次运行（已有进行中的运行则直接返回它） */
 export async function planRun(env, trigger = 'cron', opts = {}) {
@@ -851,9 +936,22 @@ export async function planRun(env, trigger = 'cron', opts = {}) {
     const skip = sources.filter((x) => Number(x.every) > 0 && now - (last[x.name] || 0) < Number(x.every) * 3600000 - 30 * 60000);
     if (skip.length) { log.push(`– 错峰：${skip.length} 个源还没到抓取间隔，这一轮跳过`); sources = sources.filter((x) => !skip.includes(x)); }
   }
+  // 低分源自动降频：近 30 天 30 条以上几乎没通过的源，每天只抓一次
+  if (trigger !== 'manual' && s.source_auto_slow !== 'false' && opts.only !== 'judge') {
+    try {
+      const sc = await sourceScores(env);
+      const low = sources.filter((x) => sc[x.name]?.low && !(Number(x.every) > 0));
+      if (low.length) {
+        const { results: rows } = await env.DB.prepare('SELECT name, MAX(last_at) AS t FROM src_health GROUP BY name').all();
+        const last = Object.fromEntries((rows || []).map((r) => [r.name, r.t || 0]));
+        const slow = low.filter((x) => now - (last[x.name] || 0) < 23 * 3600000);
+        if (slow.length) { log.push(`– 降频：${slow.map((x) => x.name).join('、')} 近 30 天几乎没有通过，今天已抓过`); sources = sources.filter((x) => !slow.includes(x)); }
+      }
+    } catch {}
+  }
   const steps = opts.only === 'judge' ? [] : sources.map((src) => ['source', { src }]);
   if (opts.only === 'judge') {
-    steps.push(['judge', { cap: opts.cap || 0 }]); // 只重新判定，不抓取
+    steps.push(['judge', { cap: opts.cap || 0 }], ['translate', {}]); // 只重新判定，不抓取
   } else {
     // 可用的搜索后端并行跑；单次调用外部请求上限 50，按每步最多 40 个请求分组
     const ready = BACKENDS.filter((b) => backendReady(s, b)).map((b) => b.id);
@@ -863,7 +961,7 @@ export async function planRun(env, trigger = 'cron', opts = {}) {
     // AI 福利雷达：AI 两个分类有勾选、且有可用的搜索后端时，单独跑一步（最多 2 家）
     const cats = enabledCats(s);
     if (s.aifree_radar !== 'false' && ready.length && (cats.includes('ai') || cats.includes('aideal'))) for (const id of ready.slice(0, 2)) steps.push(['radar', { engines: [id] }]);
-    steps.push(['judge', {}], ['cleanup', {}], ['check', {}], ['watch', {}]);
+    steps.push(['judge', {}], ['translate', {}], ['dedup', {}], ['cleanup', {}], ['check', {}], ['watch', {}]);
   }
   if (!aiReady) log.push('未配置 AI，使用关键词判定');
 
@@ -933,6 +1031,10 @@ async function runJob(env, job, c, stats, log, runStats) {
       return false;
     case 'check':
       return checkStep(env, c, stats, log);
+    case 'dedup':
+      return dedupStep(env, c, stats, log);
+    case 'translate':
+      return translateStep(env, c, stats, log);
     case 'watch':
       return watchStep(env, c, stats, log);
     case 'mail': {
@@ -988,10 +1090,44 @@ export async function tick(env, maxSteps = 1) {
   if (done) {
     const fin = await env.DB.prepare('UPDATE runs SET finished_at = ? WHERE id = ? AND finished_at IS NULL').bind(now, run.id).run();
     if (fin.meta?.changes) log.push(`完成，用时 ${Math.max(1, Math.round((now - run.started_at) / 1000))}s`);
+    if (fin.meta?.changes) { try { await healthAlert(env, run, runStats, log); } catch (e) { log.push(`✗ 故障提醒失败：${e.message}`); } }
   }
   const add = log.join('\n');
   if (add) await env.DB.prepare("UPDATE runs SET log = CASE WHEN log = '' THEN ? ELSE log || char(10) || ? END WHERE id = ?").bind(add, add, run.id).run();
   return { run_id: run.id, done, busy, current, left: left?.n || 0, total: left?.total || 0, stats: runStats, log };
+}
+
+// 数据源评分：近 30 天通过率 + 「值 / 不值」投票，0-100
+export async function sourceScores(env) {
+  const since = Date.now() - 30 * DAY;
+  const { results } = await env.DB.prepare("SELECT source, COUNT(*) AS n, SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) AS ok, SUM(up) AS up, SUM(down) AS down FROM items WHERE fetched_at >= ? AND status != 'pending' GROUP BY source").bind(since).all();
+  const out = {};
+  for (const r of results || []) {
+    const n = r.n || 0, ok = r.ok || 0, up = r.up || 0, down = r.down || 0;
+    const rate = n ? ok / n : 0;
+    const score = Math.max(0, Math.min(100, Math.round(rate * 100 * 0.8 + 20 * ((up + 1) / (up + down + 2)))));
+    out[r.source] = { n, ok, up, down, score, low: n >= 30 && ok <= Math.max(1, n * 0.03) };
+  }
+  return out;
+}
+
+// 故障提醒：一轮抓取报错太多或一条都没抓到时单独推送，6 小时内最多一次
+async function healthAlert(env, run, st, log) {
+  const s = await getSettings(env);
+  if (s.alert_enabled === 'false' || run.trigger === 'mail' || run.trigger === 'rejudge') return;
+  const errs = Number(st.errors) || 0, fetched = Number(st.fetched) || 0;
+  const reasons = [];
+  if (errs >= (Number(s.alert_min_errors) || 3)) reasons.push(`本轮有 ${errs} 处报错`);
+  if (!fetched && !(Number(st.trusted) || 0)) reasons.push('本轮一条都没抓到（可能被限流或数据源失效）');
+  if (!reasons.length) { await setMeta(env, 'alert_fail_streak', 0); return; }
+  const streak = (Number(await getMeta(env, 'alert_fail_streak')) || 0) + 1;
+  await setMeta(env, 'alert_fail_streak', streak);
+  const last = Number(await getMeta(env, 'alert_last')) || 0;
+  if (Date.now() - last < 6 * 3600000) return;
+  await setMeta(env, 'alert_last', Date.now());
+  const errLines = String(run.log || '').split('\n').concat(log).filter((l) => l.startsWith('✗')).slice(0, 8);
+  const r = await deliver(env, s, { kind: 'alert', title: `⚠️ 免费资源雷达运行异常（连续 ${streak} 轮）`, items: [{ id: 'alert', title: reasons.join('；'), url: (s.mail_site_url || '').replace(/\/+$/, '') + '/admin#runs', summary: errLines.join('\n') || '到后台「运行记录」查看详情', category: 'other' }] });
+  log.push(r.skipped ? `– 故障提醒：${r.skipped}` : `✓ 已发送故障提醒`);
 }
 
 /** 一口气跑完（本地测试 / 付费版用）。免费版请用 tick 逐步执行 */

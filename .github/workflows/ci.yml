@@ -1,0 +1,16 @@
+name: 检查
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+      - run: npm run bundle
+      - name: api/index.js 是否已重新打包
+        run: git diff --exit-code api/index.js || (echo "::error::改了 src/ 但没重新打包，请运行 npm run bundle 后提交 api/index.js" && exit 1)
+      - run: node --experimental-sqlite test/smoke.mjs

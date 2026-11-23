@@ -1,12 +1,13 @@
 {
   "name": "free-resource-radar",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=20" },
   "scripts": {
-    "bundle": "esbuild src/vercel.js --bundle --format=esm --platform=node --target=node20 --loader:.html=text --outfile=api/index.js --legal-comments=inline --banner:js=\"// 免费资源雷达 v2.0.0 · 由 npm run bundle 从 src/ 生成，请改 src/ 后重新生成\"",
-    "dev": "npm run bundle && vercel dev"
+    "bundle": "esbuild src/vercel.js --bundle --format=esm --platform=node --target=node20 --loader:.html=text --outfile=api/index.js --legal-comments=inline --banner:js=\"// 免费资源雷达 v3.0.0 · 由 npm run bundle 从 src/ 生成，请改 src/ 后重新生成\"",
+    "dev": "npm run bundle && vercel dev",
+    "test": "node test/smoke.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.24.0"
