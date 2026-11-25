@@ -6,8 +6,9 @@ import { PUSH_CHANNELS } from './push.js';
 import { weeklyPicks, perksOf, checkinOf } from './extras.js';
 import { BACKENDS, BACKEND_MAP, runBackend, searchForDiscovery } from './search.js';
 import { checkSources, probeInputs, discoverSources } from './sources-sync.js';
+import { readSuggest, dailySuggest, pruneSuggest } from './suggest.js';
 import { foldItems } from './fold.js';
-import { readSnap, liveHead, livePart, liveOld, markDirty, snapStep } from './snap.js';
+import { readSnap, liveHead, livePart, liveOld, markDirty, snapStep, shapeItems, ITEM_COLS } from './snap.js';
 import { CATEGORIES, CAT_MAP, GROUPS, enabledCats } from './categories.js';
 import adminHtml from './admin.html';
 import publicHtml from './public.html';
@@ -220,6 +221,13 @@ async function handleAdmin(req, env, url) {
     if (!kw) return json({ error: '请输入关键词' }, 400);
     return json(await discoverSources(current, kw, (qs) => searchForDiscovery(s, qs)));
   }
+  // 每日推荐源
+  if (p === '/sources/suggest' && m === 'GET') return json(await readSuggest(env));
+  if (p === '/sources/suggest' && m === 'POST') {
+    const arr = (v) => (Array.isArray(v) ? v.map(String).slice(0, 100) : []);
+    if (body.run) { const r = await dailySuggest(env, await getSettings(env), { force: true }); return json({ ...(await readSuggest(env)), run: r }); }
+    return json(await pruneSuggest(env, { added: arr(body.added), ignore: arr(body.ignore) }));
+  }
   if (p === '/mail/test' && m === 'POST') {
     const ch = body.channel === 'telegram' || /^push:\w+$/.test(body.channel || '') ? body.channel : 'mail';
     return json(await sendDigest(env, { force: true, test: true, channel: ch }));
@@ -284,6 +292,14 @@ async function handleAdmin(req, env, url) {
     const { results } = await env.DB.prepare('SELECT * FROM items WHERE status = ? ORDER BY published_at DESC LIMIT 300').bind(status).all();
     const { results: counts } = await env.DB.prepare('SELECT status, COUNT(*) AS n FROM items GROUP BY status').all();
     return json({ items: results || [], counts: Object.fromEntries((counts || []).map((r) => [r.status, r.n])) });
+  }
+  if (p === '/items/batch' && m === 'POST') {
+    const ids = (Array.isArray(body.ids) ? body.ids : []).map(String).filter((x) => /^[0-9a-f]+$/.test(x)).slice(0, 300);
+    if (!ids.length) return json({ error: '没有选中条目' }, 400);
+    if (body.status === 'delete') await env.DB.batch(ids.map((id) => env.DB.prepare('DELETE FROM items WHERE id = ?').bind(id)));
+    else if (['approved', 'rejected', 'pending'].includes(body.status)) await env.DB.batch(ids.map((id) => env.DB.prepare('UPDATE items SET status = ?, judged_by = ?, judged_at = ?, attempts = 0 WHERE id = ?').bind(body.status, 'manual', Date.now(), id)));
+    else return json({ error: 'status 无效' }, 400);
+    return json({ ok: true, n: ids.length });
   }
   const im = p.match(/^\/items\/([0-9a-f]+)$/);
   if (im && m === 'POST') {
@@ -370,7 +386,7 @@ async function health(env) {
   await step('snapshot', async () => { const r = await readSnap(env, 'head'); return { ver: r?.ver || null, bytes: r?.v ? r.v.length : 0 }; });
   await step('settings', async () => { const s = await getBasicSettings(env); return { keys: Object.keys(s).length }; });
   await step('run', async () => { const r = await env.DB.prepare('SELECT id, started_at, finished_at FROM runs ORDER BY id DESC LIMIT 1').first(); return { last: r || null }; });
-  return { ok: Object.values(out).every((x) => x.ok), version: '3.0.0', checks: out };
+  return { ok: Object.values(out).every((x) => x.ok), version: '3.4.0', checks: out };
 }
 
 async function handleFetch(req, env, ctx) {
@@ -395,11 +411,20 @@ async function handleFetch(req, env, ctx) {
         const lim = Number((await basic(env)).api_rate_per_min);
         if (!rateOk('api:' + ip, Number.isFinite(lim) ? lim : 120) || (url.pathname === '/api/vote' && !rateOk('vote:' + ip, 30))) return json({ error: '请求太频繁，稍后再试' }, 429);
       }
-      if (['/', '/index.html', '/api/items', '/api/stats', '/feed.xml', '/api/data', '/api/vote'].includes(url.pathname)) {
+      if (['/', '/index.html', '/api/items', '/api/stats', '/feed.xml', '/api/data', '/api/vote', '/api/search'].includes(url.pathname)) {
         const g = await siteGate(req, env, url);
         if (!g.ok) return url.pathname.startsWith('/api/') || url.pathname === '/feed.xml' ? json({ error: '需要访问密码' }, 401) : html(lockPage(), 401);
       }
       if (url.pathname === '/api/vote' && req.method === 'POST') { const r = await vote(req, env); ctx.waitUntil(markDirty(env)); return r; }
+      // 搜索归档：在数据库里搜全部已通过的条目（包括较早发布、首屏没加载的）
+      if (url.pathname === '/api/search') {
+        const q = String(url.searchParams.get('q') || '').trim().slice(0, 40);
+        if (q.length < 2) return json({ items: [] });
+        const st = await getBasicSettings(env);
+        const like = '%' + q.replace(/[%_\\]/g, (m) => '\\' + m) + '%';
+        const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE status = 'approved' AND (title LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR extra LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\') ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT 80`).bind(like, like, like, like, like).all();
+        return json({ q, items: shapeItems(rows.results, st) });
+      }
       if (url.pathname === '/api/data') {
         const JS = 'application/json; charset=utf-8';
         // 没设访问密码时走边缘缓存：同一份数据 2 分钟内不再查数据库

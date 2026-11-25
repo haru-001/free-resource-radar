@@ -1,6 +1,6 @@
 // 邮件日报：SMTP / Resend / Brevo
 import { getSettings, saveSettings, getMeta, setMeta } from './db.js';
-import { foldItems } from './fold.js';
+import { foldItems, zhOnly } from './fold.js';
 import { CATEGORIES, mailCats } from './categories.js';
 import { PUSH_CHANNELS, pushReady, pushAll } from './push.js';
 import { weeklyPicks } from './extras.js';
@@ -31,7 +31,7 @@ export async function collectDigest(env, s) {
     const seen = new Set(sent);
     list = list.filter((it) => !seen.has(it.id) && !(it.target && seen.has('t:' + it.target)));
   }
-  return foldItems(list.slice(0, limit));
+  return zhOnly(foldItems(list), s).slice(0, limit);
 }
 // 记住推过的条目（最多 1500 个），早晚报不重复
 async function rememberMailed(env, items) {
@@ -316,7 +316,7 @@ export async function sendDigest(env, { force = false, test = false, channel, la
 export async function sendWeekly(env, { channel, test = false } = {}) {
   const s = await getSettings(env);
   const { results } = await env.DB.prepare("SELECT * FROM items WHERE status = 'approved' AND dead = 0 AND COALESCE(published_at, fetched_at) >= ? ORDER BY score DESC LIMIT 400").bind(Date.now() - 7 * 86400000).all();
-  const items = weeklyPicks(foldItems(results || []).map((it) => { try { it.extra = it.extra ? JSON.parse(it.extra) : null; } catch { it.extra = null; } return it; }));
+  const items = weeklyPicks(zhOnly(foldItems(results || []), s).map((it) => { try { it.extra = it.extra ? JSON.parse(it.extra) : null; } catch { it.extra = null; } return it; }));
   if (!items.length) return { skipped: '这周没有可选的条目' };
   return deliver(env, s, { kind: 'weekly', title: `${test ? '[测试] ' : ''}免费资源雷达 · 本周精选 ${ymd(Date.now())}（${items.length} 条）`, items, channel, sub: '近 7 天综合 AI 评分、投票和来源数挑出的 10 条' });
 }

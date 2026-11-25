@@ -99,6 +99,11 @@ export const DEFAULT_SETTINGS = {
   ai_model: '',
   ai_model_cheap: '', // 省钱模式初筛模型，留空不用
   source_auto_slow: 'true',
+  translate_english: 'true',
+  source_suggest: 'true',
+  source_auto_off: 'true', // 连续 3 天失败的源自动停用
+  archive_days: '180', // 已通过的条目保留多久，可在资源页搜索归档 // 每天搜索一次，推荐新的订阅源
+  hide_english: 'true', // 没翻成中文的纯英文条目不在网页 / 推送里展示
   ai_dedup: 'true', // 名称相同的同类条目合并 // 低分源自动降频
   ai_batch_size: '12',    // 每次请求判定几条
   ai_max_items: '60',     // 每次运行最多送 AI 判定几条（免费版 Worker 每次最多 50 个外部请求，别设太大）
@@ -215,7 +220,7 @@ export const KV_KEYS = ['ai_base_url', 'ai_api_key', 'mail_api_key', 'smtp_user'
 const kvName = (k) => `cfg:${k}`;
 
 let schemaReady = false;
-const SCHEMA_VER = '1.8.4';
+const SCHEMA_VER = '3.2.0';
 export async function ensureSchema(env) {
   if (schemaReady) return;
   // 已经是当前版本就跳过建表（冷启动只查一次）
@@ -245,13 +250,14 @@ export async function ensureSchema(env) {
   ]);
   // 增量迁移：只补缺的列（先查表结构，免得每次冷启动都跑一串 ALTER，D1 免费版每次调用有查询次数限制）
   const cols = new Set(((await env.DB.prepare('PRAGMA table_info(items)').all()).results || []).map((r) => r.name));
-  const add = [['obtain', 'TEXT'], ['fp', 'TEXT'], ['day', 'TEXT'], ['cats', 'TEXT'], ['hint', 'TEXT'], ['target', 'TEXT'], ['sources', 'TEXT'], ['extra', 'TEXT'], ['expires_at', 'INTEGER'], ['up', 'INTEGER NOT NULL DEFAULT 0'], ['down', 'INTEGER NOT NULL DEFAULT 0'], ['dead', 'INTEGER NOT NULL DEFAULT 0'], ['checked_at', 'INTEGER']].filter(([c]) => !cols.has(c));
+  const add = [['obtain', 'TEXT'], ['fp', 'TEXT'], ['day', 'TEXT'], ['cats', 'TEXT'], ['hint', 'TEXT'], ['target', 'TEXT'], ['sources', 'TEXT'], ['extra', 'TEXT'], ['expires_at', 'INTEGER'], ['up', 'INTEGER NOT NULL DEFAULT 0'], ['down', 'INTEGER NOT NULL DEFAULT 0'], ['dead', 'INTEGER NOT NULL DEFAULT 0'], ['checked_at', 'INTEGER'], ['ukey', 'TEXT']].filter(([c]) => !cols.has(c));
   for (const [c, t] of add) { try { await env.DB.prepare(`ALTER TABLE items ADD COLUMN ${c} ${t}`).run(); } catch {} }
   const jcols = new Set(((await env.DB.prepare('PRAGMA table_info(jobs)').all()).results || []).map((r) => r.name));
   if (!jcols.has('claimed_at')) { try { await env.DB.prepare('ALTER TABLE jobs ADD COLUMN claimed_at INTEGER').run(); } catch {} }
   if (!jcols.has('tries')) { try { await env.DB.prepare('ALTER TABLE jobs ADD COLUMN tries INTEGER NOT NULL DEFAULT 0').run(); } catch {} }
   if (add.length) {
     await env.DB.batch([
+      'CREATE INDEX IF NOT EXISTS idx_items_ukey ON items(ukey)',
       'CREATE INDEX IF NOT EXISTS idx_items_target ON items(target)',
       'CREATE INDEX IF NOT EXISTS idx_items_fp ON items(fp)',
       'CREATE INDEX IF NOT EXISTS idx_items_day ON items(day, status)',

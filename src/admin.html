@@ -218,6 +218,10 @@
   .item:first-child { border-top:none; }
   .item:hover { background:var(--hover); }
   .item.gone { opacity:.3; pointer-events:none; }
+  .item.cur { background:#eef2ff; box-shadow:inset 3px 0 0 #4f46e5; }
+  .bbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 16px; border-bottom:1px solid var(--line); position:sticky; top:0; background:#fff; z-index:2; }
+  .bbar .kbd { cursor:help; }
+  .score .pick { display:block; margin:4px auto 0; }
   .score { font:700 13px/22px var(--mono); color:var(--ink-4); text-align:center; background:var(--muted); border-radius:7px; font-variant-numeric:tabular-nums; }
   .score.hi { color:var(--deal); background:var(--deal-bg); }
   .t { font-size:14.5px; font-weight:600; color:var(--ink); line-height:1.4; word-break:break-word; }
@@ -346,6 +350,7 @@
           <span style="flex:1"></span>
           <button onclick="clearStatus()" style="color:var(--alert)">清空当前</button>
         </div>
+        <div class="bbar" id="bbar"><label class="sw"><input type="checkbox" id="pickAll" onchange="pickAll(this.checked)" />全选</label><span id="pickN" class="hint"></span><span class="sp" style="flex:1"></span><button class="btn sm" onclick="batchSet('approved', this)">通过选中</button><button class="btn sm" onclick="batchSet('rejected', this)">拒绝选中</button><button class="btn sm" onclick="batchSet('pending', this)">重判选中</button><button class="btn sm danger" onclick="batchSet('delete', this)">删除选中</button><span class="hint kbd" title="j / k 上下移动，x 选中，a 通过，r 拒绝，p 重判，o 打开链接，Shift+A 通过全部选中">快捷键 ?</span></div>
         <div id="items" class="list"><div class="empty">加载中…</div></div>
       </div>
 
@@ -379,13 +384,20 @@
               </div>
             </div>
             <div class="row" style="gap:22px">
-              <label class="sw"><input type="checkbox" data-key="filter_english" />过滤纯英文内容</label>
+              <label class="sw"><input type="checkbox" data-key="filter_english" />过滤英文内容（标题没有中文就丢弃，已有的也隐藏）</label>
+              <label class="sw"><input type="checkbox" data-key="translate_english" />英文翻译成中文（关闭过滤英文后才用得到）</label>
+              <label class="sw"><input type="checkbox" data-key="hide_english" />没翻成中文的条目不展示、不推送</label>
+              <label class="sw"><input type="checkbox" data-key="source_suggest" />每天搜索推荐新订阅源</label>
               <label class="sw"><input type="checkbox" data-key="noise_filter" />跳过求助 / 吐槽帖</label>
               <label class="sw"><input type="checkbox" data-key="keep_undated" />保留没有发布日期的</label>
             </div>
             <div class="grid2">
               <div><label class="f">只要最近多少天发布的</label><input type="number" data-key="max_age_days" min="1" /></div>
               <div><label class="f">数据保留天数（到期自动清理）</label><input type="number" data-key="retention_days" min="1" max="365" /></div>
+            </div>
+            <div class="grid2">
+              <div><label class="f">已通过条目归档天数（资源页可搜索）</label><input type="number" data-key="archive_days" min="0" max="730" /></div>
+              <div><label class="f">坏源处理</label><label class="sw" style="margin-top:8px"><input type="checkbox" data-key="source_auto_off" />连续 3 天失败自动停用</label></div>
             </div>
             <div class="grid2">
               <div><label class="f">发布超过多少天算「较早发布」</label><input type="number" data-key="fresh_days" min="1" max="365" /></div>
@@ -445,7 +457,7 @@
           </div>
         </div>
         <div class="section">
-          <header><h2>数据源</h2><span class="hint" id="srcCount"></span><span class="sp"></span><button class="btn sm" onclick="openSync(this)" title="从内置推荐和 freebie-radar 等地址拉取新源">↻ 更新源</button><button class="btn sm" onclick="openDiscover()" title="用已开启的搜索后端找新的订阅源">⌕ 发现新源</button><button class="btn sm" onclick="openBatch()" title="一次粘贴多个网址 / t.me 链接 / @频道">＋ 批量添加</button></header>
+          <header><h2>数据源</h2><span class="hint" id="srcCount"></span><span class="sp"></span><button class="btn sm" onclick="openSuggest(this)" title="每天自动搜索一个分类，推荐还没订阅的中文 RSS 源">★ 每日推荐<b id="sugN" style="margin-left:4px;color:var(--accent,#4f46e5)"></b></button><button class="btn sm" onclick="openSync(this)" title="从内置推荐和 freebie-radar 等地址拉取新源">↻ 更新源</button><button class="btn sm" onclick="openDiscover()" title="用已开启的搜索后端找新的订阅源">⌕ 发现新源</button><button class="btn sm" onclick="openBatch()" title="一次粘贴多个网址 / t.me 链接 / @频道">＋ 批量添加</button></header>
           <div class="body" style="padding-top:12px">
             <div class="srcbar"><input type="text" id="srcQ" placeholder="搜索源名称 / 地址" oninput="renderSources()" /><select id="srcF" onchange="renderSources()"><option value="">全部</option><option value="on">已启用</option><option value="off">已停用</option><option value="limited">限定了分类</option><option value="bad">近 7 天有问题</option></select><button class="btn sm" id="offBad" onclick="disableBad()" style="display:none">停用有问题的源</button></div>
             <div class="srclist" id="srcList"></div>
@@ -874,7 +886,7 @@ function route() {
   $('#title').textContent = TITLES[key];
   drawer(false);
   if (key === 'runs' && TOKEN) loadRuns();
-  if (key === 'collect' && TOKEN) { loadCronKey(); loadHealth(); }
+  if (key === 'collect' && TOKEN) { loadCronKey(); loadHealth(); loadSuggest(); }
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);
@@ -960,7 +972,7 @@ function renderSources() {
       '<div class="snm">' + esc(x.name || '未命名') + '<span class="tag">' + (TYPE_ZH[x.type || 'rss'] || x.type) + '</span>' + (x.trusted ? '<span class="tag free">免审</span>' : '') + (x.include ? '<span class="tag" title="标题需匹配：' + esc(x.include) + '">有标题筛选</span>' : '') + '<small>' + esc(srcWhere(x)) + (x.every ? ' · 每 ' + x.every + ' 小时' : '') + '</small>' + healthHtml(x) + '</div>' +
       '<div class="scats" title="点击设置分类">' + chips + (x.hint && !fixed ? '<span class="tag" title="默认分类">默认 ' + esc(CAT[x.hint] || x.hint) + '</span>' : '') + '</div>' +
       '<button class="sdel" title="删除">×</button>';
-    row.querySelector('input').onchange = (e) => { const l = srcList(); l[i].enabled = e.target.checked; setSrc(l); };
+    row.querySelector('input').onchange = (e) => { const l = srcList(); l[i].enabled = e.target.checked; if (e.target.checked) { delete l[i].auto_off; delete l[i].auto_err; } setSrc(l); };
     row.querySelector('.sdel').onclick = () => { if (confirm('删除「' + (x.name || '') + '」？')) { const l = srcList(); l.splice(i, 1); SRC_OPEN = -1; setSrc(l); } };
     row.querySelector('.scats').onclick = () => { SRC_OPEN = SRC_OPEN === i ? -1 : i; renderSources(); };
     if (SRC_OPEN === i) {
@@ -993,6 +1005,7 @@ function healthOf(x) {
   return { ...h, bad };
 }
 function healthHtml(x) {
+  if (x.auto_off) return '<span class="shealth bad" title="' + esc(x.auto_err || '') + '">⚠ ' + esc(x.auto_off) + ' 连续 3 天失败，已自动停用（打开开关即可恢复）</span>';
   const h = healthOf(x);
   if (!h) return '';
   const q = h.q ? ' · 评分 ' + h.q.score + '（30 天通过 ' + h.q.ok + '/' + h.q.n + (h.q.up || h.q.down ? '，值 ' + h.q.up + ' 不值 ' + h.q.down : '') + '）' + (h.q.low ? ' · 已自动降频' : '') : '';
@@ -1064,7 +1077,7 @@ function renderSync(r) {
   $('#syncErr').textContent = (r.errors || []).length ? r.errors.join('；') : '';
   $('#syncBody').innerHTML = n ? r.groups.map((g, gi) => '<h4>' + esc(g.label) + ' · ' + g.items.length + ' 个</h4>' + g.items.map((it, ii) =>
     '<label class="sitem"><input type="checkbox" data-g="' + gi + '" data-i="' + ii + '"' + (it.suggest ? ' checked' : '') + (it.why === '已有' ? ' disabled' : '') + ' /><div class="snm">' + esc(it.src.name) + '<span class="tag">' + (TYPE_ZH[it.src.type || 'rss'] || it.src.type) + '</span>' + (it.why ? '<span class="tag why">' + esc(it.why) + '</span>' : '<span class="tag on">推荐</span>') + (it.src.hint ? '<span class="tag">' + esc(CAT[it.src.hint] || it.src.hint) + '</span>' : '') + (it.facts ? '<span class="tag">' + esc(it.facts) + '</span>' : '') + '<small>' + esc(srcWhere(it.src)) + '</small>' + (it.sample ? '<span class="smp">' + esc(it.sample) + '</span>' : '') + '</div></label>').join('')).join('')
-    : '<div class="empty" style="padding:30px 0">' + (SYNC_MODE === 'sync' ? '已经是最新的了，没有新的源。' : '没有找到可用的订阅源。') + '</div>';
+    : '<div class="empty" style="padding:30px 0">' + (SYNC_MODE === 'sync' ? '已经是最新的了，没有新的源。' : SYNC_MODE === 'suggest' ? '暂时没有推荐。每天抓取时会自动搜一个分类，也可以点「立即搜一次」。' : '没有找到可用的订阅源。') + '</div>';
   syncCount();
 }
 let SYNC_MODE = 'sync';
@@ -1116,10 +1129,36 @@ function subSite(u) {
   let o = u; try { const x = new URL(u); o = x.hostname === 't.me' ? u : x.origin + '/'; } catch {}
   openBatch(o, true);
 }
+// ---- 每日推荐源 ----
+function sugGroups(r) {
+  const by = {};
+  for (const it of r.items || []) (by[it.day + ' · 搜「' + it.kw + '」'] ||= []).push(it);
+  return { groups: Object.entries(by).map(([label, items], i) => ({ id: 'sug' + i, label, items })), errors: [] };
+}
+function sugCount(r) { const n = (r.items || []).length; $('#sugN').textContent = n ? n : ''; }
+async function loadSuggest() { try { sugCount(await api('/api/admin/sources/suggest')); } catch {} }
+async function openSuggest(btn) {
+  await busy(btn, async () => {
+    const r = await api('/api/admin/sources/suggest');
+    syncOpen('suggest', '每日推荐源', '<div class="row"><span class="hint">' + (r.at ? '最近一次：' + esc(r.last) : '还没搜过') + '</span><span class="sp" style="flex:1"></span><button class="btn sm" onclick="sugIgnore(this)" title="没勾选的以后不再推荐">忽略未勾选</button><button class="btn sm" onclick="sugRun(this)">立即搜一次</button></div>');
+    renderSync(sugGroups(r)); sugCount(r);
+  });
+}
+async function sugRun(btn) {
+  $('#syncBody').innerHTML = '<div class="empty" style="padding:24px 0">正在搜索并检测订阅地址，大约 10–20 秒…</div>';
+  await busy(btn, async () => { const r = await api('/api/admin/sources/suggest', { method: 'POST', body: JSON.stringify({ run: true }) }); renderSync(sugGroups(r)); sugCount(r); if (r.run && r.run.kw) toast('搜「' + r.run.kw + '」新增 ' + r.run.added + ' 个', 3000, 'ok'); });
+}
+async function sugIgnore(btn) {
+  const keys = [...$$('#syncBody input:not(:checked)')].map((i) => SYNC.groups[i.dataset.g].items[i.dataset.i].key);
+  if (!keys.length) return toast('没有未勾选的', 2000);
+  await busy(btn, async () => { const r = await api('/api/admin/sources/suggest', { method: 'POST', body: JSON.stringify({ ignore: keys }) }); renderSync(sugGroups(r)); sugCount(r); toast('已忽略 ' + keys.length + ' 个，以后不再推荐', 2500, 'ok'); });
+}
 function closeSync() { $('#syncModal').classList.remove('on'); }
 function applySync() {
   // 从分类快捷词发现的源，默认分类就设成那个分类
-  const add = [...$$('#syncBody input:checked')].map((i) => SYNC.groups[i.dataset.g].items[i.dataset.i].src).map((x) => (SYNC_MODE === 'discover' && DISC_CAT && !x.hint ? { ...x, hint: DISC_CAT } : x));
+  const picked = [...$$('#syncBody input:checked')].map((i) => SYNC.groups[i.dataset.g].items[i.dataset.i]);
+  if (SYNC_MODE === 'suggest') api('/api/admin/sources/suggest', { method: 'POST', body: JSON.stringify({ added: picked.map((x) => x.key) }) }).then(sugCount).catch(() => {});
+  const add = picked.map((x) => x.src).map((x) => (SYNC_MODE === 'discover' && DISC_CAT && !x.hint ? { ...x, hint: DISC_CAT } : x));
   const l = srcList() || [];
   setSrc([...l, ...add]);
   closeSync();
@@ -1347,7 +1386,7 @@ async function loadItems(st) {
     const ob = (it.obtain ? '<span class="ob ' + (it.obtain === 'free' ? 'free' : 'cond') + '">' + OB[it.obtain] + '</span>' : '') +
       (it.dead ? ' <span class="tag bad">可能失效</span>' : '') + (it.expires_at ? ' <span class="tag ' + (it.expires_at < Date.now() ? 'bad' : 'warn') + '">截止 ' + new Date(it.expires_at).toLocaleDateString('zh-CN') + '</span>' : '') +
       (it.up || it.down ? ' <span class="tag" title="资源页上的 值 / 不值 投票">值 ' + (it.up || 0) + ' · 不值 ' + (it.down || 0) + '</span>' : '');
-    return '<div class="item" id="it-' + it.id + '"><div class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '—') + '</div><div>' +
+    return '<div class="item" id="it-' + it.id + '" data-id="' + it.id + '" data-url="' + esc(it.url) + '"><div class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '—') + '<input type="checkbox" class="pick" data-id="' + it.id + '" onchange="pickCount()" /></div><div>' +
       '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + esc(it.name || it.title) + '</a>' + ob +
       (it.summary ? '<div class="sum">' + esc(it.summary) + '</div>' : '') +
       '<div class="meta">' + [esc(it.source) + (() => { try { const l = JSON.parse(it.sources || '[]'); return l.length ? ' <span class="tag zh" title="' + esc(l.map((x) => x.n).join('、')) + '">+' + l.length + ' 个来源</span>' : ''; } catch { return ''; } })(), CAT[it.category] || '', it.signup ? '注册：' + esc(it.signup) : '', ago(it.published_at), it.judged_by ? esc(it.judged_by) : ''].filter(Boolean).join('<i>·</i>') + '</div>' +
@@ -1359,6 +1398,7 @@ async function loadItems(st) {
       '<button class="btn sm" title="检测这个网站的订阅地址并加为数据源" onclick="subSite(\'' + esc(it.url) + '\')">订阅此站</button>' +
       '<button class="btn sm danger" onclick="del(\'' + it.id + '\', this)">删除</button></div></div>';
   }).join('') : '<div class="empty">暂无</div>';
+  KCUR = -1; $('#pickAll').checked = false; pickCount();
 }
 // 操作后立即从列表淡出，不等整页刷新
 async function setStatus(id, status, btn) { await busy(btn, async () => { await api('/api/admin/items/' + id, { method: 'POST', body: JSON.stringify({ status }) }); $('#it-' + id)?.classList.add('gone'); toast({ approved: '已通过', rejected: '已拒绝', pending: '已放回待判定' }[status], 1500, 'ok'); bumpCount(status); }); }
@@ -1368,6 +1408,44 @@ function bumpCount(to) {
   n(CUR, -1); if (to) n(to, 1);
   $('#navPending').textContent = Number($('.tabs [data-st="pending"] .n').textContent) || '';
 }
+// ---- 批量审核 + 键盘 ----
+let KCUR = -1;
+const rowsLive = () => [...$$('#items .item:not(.gone)')];
+function pickCount() { const n = $$('#items .item:not(.gone) .pick:checked').length; $('#pickN').textContent = n ? '已选 ' + n + ' 条' : ''; }
+function pickAll(on) { rowsLive().forEach((r) => (r.querySelector('.pick').checked = on)); pickCount(); }
+async function batchSet(status, btn) {
+  const ids = [...$$('#items .item:not(.gone) .pick:checked')].map((i) => i.dataset.id);
+  if (!ids.length) return toast('先勾选条目', 2000, 'err');
+  if (status === 'delete' && !confirm('删除选中的 ' + ids.length + ' 条？')) return;
+  await busy(btn, async () => {
+    await api('/api/admin/items/batch', { method: 'POST', body: JSON.stringify({ ids, status }) });
+    for (const id of ids) { $('#it-' + id)?.classList.add('gone'); bumpCount(status === 'delete' ? null : status); }
+    $('#pickAll').checked = false; pickCount();
+    toast({ approved: '已通过 ', rejected: '已拒绝 ', pending: '已放回待判定 ', delete: '已删除 ' }[status] + ids.length + ' 条', 2000, 'ok');
+  });
+}
+function kMove(d) {
+  const rows = rowsLive(); if (!rows.length) return;
+  $$('#items .item.cur').forEach((r) => r.classList.remove('cur'));
+  KCUR = Math.max(0, Math.min(rows.length - 1, KCUR + d));
+  rows[KCUR].classList.add('cur'); rows[KCUR].scrollIntoView({ block: 'nearest' });
+}
+document.addEventListener('keydown', (e) => {
+  if (!$('#p-items').classList.contains('on') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '') && document.activeElement.type !== 'checkbox') return;
+  const rows = rowsLive(); const cur = rows[KCUR];
+  const k = e.key;
+  if (k === 'j' || k === 'ArrowDown') { e.preventDefault(); kMove(1); }
+  else if (k === 'k' || k === 'ArrowUp') { e.preventDefault(); kMove(-1); }
+  else if (k === 'A' && e.shiftKey) batchSet('approved');
+  else if (k === 'x' && cur) { const c = cur.querySelector('.pick'); c.checked = !c.checked; pickCount(); }
+  else if (k === 'o' && cur) window.open(cur.dataset.url, '_blank');
+  else if ((k === 'a' || k === 'r' || k === 'p') && cur) {
+    const st = { a: 'approved', r: 'rejected', p: 'pending' }[k];
+    if (st === CUR) return;
+    setStatus(cur.dataset.id, st).then(() => { KCUR--; kMove(1); });
+  }
+});
 async function clearStatus() { if (!confirm('清空当前分类的全部条目？')) return; await busy(null, async () => { await api('/api/admin/items?status=' + CUR, { method: 'DELETE' }); loadItems(CUR); }); }
 
 async function loadRuns() {

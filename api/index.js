@@ -1,4 +1,4 @@
-// 免费资源雷达 v3.0.0 · 由 npm run bundle 从 src/ 生成，请改 src/ 后重新生成
+// 免费资源雷达 v3.4.0 · 由 npm run bundle 从 src/ 生成，请改 src/ 后重新生成
 var __defProp = Object.defineProperty;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __esm = (fn, res, err) => function __init() {
@@ -423,7 +423,7 @@ async function ensureSchema(env) {
     env.DB.prepare("CREATE TABLE IF NOT EXISTS snap (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL)")
   ]);
   const cols = new Set(((await env.DB.prepare("PRAGMA table_info(items)").all()).results || []).map((r) => r.name));
-  const add = [["obtain", "TEXT"], ["fp", "TEXT"], ["day", "TEXT"], ["cats", "TEXT"], ["hint", "TEXT"], ["target", "TEXT"], ["sources", "TEXT"], ["extra", "TEXT"], ["expires_at", "INTEGER"], ["up", "INTEGER NOT NULL DEFAULT 0"], ["down", "INTEGER NOT NULL DEFAULT 0"], ["dead", "INTEGER NOT NULL DEFAULT 0"], ["checked_at", "INTEGER"]].filter(([c]) => !cols.has(c));
+  const add = [["obtain", "TEXT"], ["fp", "TEXT"], ["day", "TEXT"], ["cats", "TEXT"], ["hint", "TEXT"], ["target", "TEXT"], ["sources", "TEXT"], ["extra", "TEXT"], ["expires_at", "INTEGER"], ["up", "INTEGER NOT NULL DEFAULT 0"], ["down", "INTEGER NOT NULL DEFAULT 0"], ["dead", "INTEGER NOT NULL DEFAULT 0"], ["checked_at", "INTEGER"], ["ukey", "TEXT"]].filter(([c]) => !cols.has(c));
   for (const [c, t] of add) {
     try {
       await env.DB.prepare(`ALTER TABLE items ADD COLUMN ${c} ${t}`).run();
@@ -445,6 +445,7 @@ async function ensureSchema(env) {
   }
   if (add.length) {
     await env.DB.batch([
+      "CREATE INDEX IF NOT EXISTS idx_items_ukey ON items(ukey)",
       "CREATE INDEX IF NOT EXISTS idx_items_target ON items(target)",
       "CREATE INDEX IF NOT EXISTS idx_items_fp ON items(fp)",
       "CREATE INDEX IF NOT EXISTS idx_items_day ON items(day, status)",
@@ -697,6 +698,14 @@ var init_db = __esm({
       ai_model_cheap: "",
       // 省钱模式初筛模型，留空不用
       source_auto_slow: "true",
+      translate_english: "true",
+      source_suggest: "true",
+      source_auto_off: "true",
+      // 连续 3 天失败的源自动停用
+      archive_days: "180",
+      // 已通过的条目保留多久，可在资源页搜索归档 // 每天搜索一次，推荐新的订阅源
+      hide_english: "true",
+      // 没翻成中文的纯英文条目不在网页 / 推送里展示
       ai_dedup: "true",
       // 名称相同的同类条目合并 // 低分源自动降频
       ai_batch_size: "12",
@@ -878,7 +887,7 @@ var init_db = __esm({
     KV_KEYS = ["ai_base_url", "ai_api_key", "mail_api_key", "smtp_user", "smtp_pass", "telegram_bot_token", "telegram_chat_id", ...SEARCH_KEYS, ...PUSH_KEYS];
     kvName = (k) => `cfg:${k}`;
     schemaReady = false;
-    SCHEMA_VER = "1.8.4";
+    SCHEMA_VER = "3.2.0";
     SETTINGS_MIGRATIONS = [
       (s) => {
         if (s.mail_provider === "cloudflare") s.mail_provider = "smtp";
@@ -971,13 +980,13 @@ ${bad.map((t) => "- " + String(t).slice(0, 60)).join("\n")}` : "") },
   return map;
 }
 async function translateBatch(items, s) {
-  const payload = items.map((it, i) => ({ i, title: it.title, name: it.name || null, links: it.links }));
+  const payload = items.map((it, i) => ({ i, title: it.title || null, summary: it.summary || null, name: it.name || null, links: it.links }));
   const content = await chat({
     baseUrl: s.ai_base_url,
     apiKey: s.ai_api_key,
     model: s.ai_model,
     messages: [
-      { role: "system", content: '\u628A\u6BCF\u6761\u82F1\u6587\u6807\u9898\u7FFB\u6210\u7B80\u6D01\u81EA\u7136\u7684\u7B80\u4F53\u4E2D\u6587\uFF08\u4EA7\u54C1\u540D\u3001\u54C1\u724C\u540D\u4FDD\u7559\u82F1\u6587\uFF09\uFF0C\u4E0D\u8D85\u8FC7 40 \u5B57\u3002project\uFF1A\u4ECE\u8BE5\u6761\u7684 links \u91CC\u6311\u51FA\u9879\u76EE\u672C\u8EAB\u7684\u5730\u5740\uFF08GitHub \u4ED3\u5E93\u3001\u5B98\u7F51\u3001\u4EA7\u54C1\u9875\uFF09\uFF0C\u65B0\u95FB / \u8BBA\u575B / \u805A\u5408\u9875\u4E0D\u7B97\uFF0C\u6CA1\u6709\u5C31\u586B null\uFF0C\u4E0D\u8981\u7F16\u9020\u3002\u53EA\u8F93\u51FA JSON\uFF1A{"results":[{"i":0,"zh":"\u4E2D\u6587\u6807\u9898","project":null}]}' },
+      { role: "system", content: 'title \u4E0D\u4E3A null \u65F6\uFF0C\u628A\u82F1\u6587\u6807\u9898\u7FFB\u6210\u7B80\u6D01\u81EA\u7136\u7684\u7B80\u4F53\u4E2D\u6587\uFF08\u4EA7\u54C1\u540D\u3001\u54C1\u724C\u540D\u4FDD\u7559\u82F1\u6587\uFF09\uFF0C\u4E0D\u8D85\u8FC7 40 \u5B57\uFF0C\u586B zh\uFF1Bsummary \u4E0D\u4E3A null \u65F6\uFF0C\u7528\u7B80\u4F53\u4E2D\u6587\u6982\u62EC\u6210\u4E00\u53E5\u8BDD\uFF08\u9001\u4EC0\u4E48 / \u8BB2\u4E86\u4EC0\u4E48 + \u9650\u5236\uFF09\uFF0C\u4E0D\u8D85\u8FC7 60 \u5B57\uFF0C\u586B summary\u3002\u4E3A null \u7684\u5B57\u6BB5\u8F93\u51FA null\u3002project\uFF1A\u4ECE\u8BE5\u6761\u7684 links \u91CC\u6311\u51FA\u9879\u76EE\u672C\u8EAB\u7684\u5730\u5740\uFF08GitHub \u4ED3\u5E93\u3001\u5B98\u7F51\u3001\u4EA7\u54C1\u9875\uFF09\uFF0C\u65B0\u95FB / \u8BBA\u575B / \u805A\u5408\u9875\u4E0D\u7B97\uFF0C\u6CA1\u6709\u5C31\u586B null\uFF0C\u4E0D\u8981\u7F16\u9020\u3002\u53EA\u8F93\u51FA JSON\uFF1A{"results":[{"i":0,"zh":"\u4E2D\u6587\u6807\u9898","summary":"\u4E2D\u6587\u7B80\u4ECB","project":null}]}' },
       { role: "user", content: JSON.stringify(payload) }
     ]
   });
@@ -1007,6 +1016,15 @@ var init_ai = __esm({
 });
 
 // src/fold.js
+function targetKey(u) {
+  try {
+    const x = new URL(String(u || "").trim());
+    for (const k of [...x.searchParams.keys()]) if (/^(utm_.*|spm|source|aff|aff_code|ref|refer|referral|invite|invite_code|inviter|via|from|share|channel|code)$/i.test(k)) x.searchParams.delete(k);
+    return (x.hostname.replace(/^(www|m)\./, "").toLowerCase() + x.pathname.replace(/\/+$/, "") + x.search).slice(0, 300);
+  } catch {
+    return String(u || "").slice(0, 300);
+  }
+}
 function foldItems(list) {
   const by = /* @__PURE__ */ new Map(), out = [];
   for (const it of list) {
@@ -1015,24 +1033,46 @@ function foldItems(list) {
       extra = JSON.parse(it.sources || "[]");
     } catch {
     }
-    const key = it.target || it.url;
-    const head = by.get(key);
+    const keys = [...new Set([keyOf(it.target), it.ukey || targetKey(it.url), ...extra.map((x) => targetKey(x.u))].filter(Boolean))];
+    const head = keys.map((k) => by.get(k)).find(Boolean);
     const mine = [{ n: it.source, u: it.url }, ...extra];
     if (head) {
       for (const x of mine) if (!head.srcs.some((y) => y.u === x.u)) head.srcs.push(x);
+      for (const k of keys) if (!by.has(k)) by.set(k, head);
       continue;
     }
-    const { target, sources, ...rest } = it;
+    const { target, sources, ukey, ...rest } = it;
     const o = { ...rest, srcs: mine };
-    by.set(key, o);
+    for (const k of keys) by.set(k, o);
     out.push(o);
   }
   for (const o of out) if (o.srcs.length < 2) delete o.srcs;
   else o.srcs = o.srcs.slice(0, 8);
   return out;
 }
+function zhOnly(list, s = {}) {
+  const hide = s.hide_english !== "false";
+  const noEn = s.filter_english !== "false";
+  return list.filter((it) => {
+    if (noEn && !CJK.test(it.title || "")) return false;
+    let x = it.extra;
+    if (typeof x === "string") {
+      try {
+        x = JSON.parse(x);
+      } catch {
+        x = null;
+      }
+    }
+    if (x && x.zs) it.summary = x.zs;
+    if (!hide) return true;
+    return CJK.test(x && x.zh || it.title || "") || CJK.test(it.summary || "");
+  });
+}
+var keyOf, CJK;
 var init_fold = __esm({
   "src/fold.js"() {
+    keyOf = (t) => t ? targetKey(/^https?:\/\//i.test(t) ? t : "https://" + t) : null;
+    CJK = /[\u3400-\u9fff]/;
   }
 });
 
@@ -1252,7 +1292,7 @@ async function collectDigest(env, s) {
     const seen = new Set(sent);
     list = list.filter((it) => !seen.has(it.id) && !(it.target && seen.has("t:" + it.target)));
   }
-  return foldItems(list.slice(0, limit));
+  return zhOnly(foldItems(list), s).slice(0, limit);
 }
 async function rememberMailed(env, items) {
   let sent = [];
@@ -1518,7 +1558,7 @@ async function sendDigest(env, { force = false, test = false, channel, label = "
 async function sendWeekly(env, { channel, test = false } = {}) {
   const s = await getSettings(env);
   const { results } = await env.DB.prepare("SELECT * FROM items WHERE status = 'approved' AND dead = 0 AND COALESCE(published_at, fetched_at) >= ? ORDER BY score DESC LIMIT 400").bind(Date.now() - 7 * 864e5).all();
-  const items = weeklyPicks(foldItems(results || []).map((it) => {
+  const items = weeklyPicks(zhOnly(foldItems(results || []), s).map((it) => {
     try {
       it.extra = it.extra ? JSON.parse(it.extra) : null;
     } catch {
@@ -1576,7 +1616,7 @@ function searchQueries(s, cats) {
   let qs = String(s.search_queries || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
   if (!qs.length) qs = searchQueriesFor(cats || enabledCats(s));
   const lang = s.search_lang || "zh_first";
-  if (lang === "zh_only") qs = qs.filter((q) => CJK.test(q));
+  if (lang === "zh_only") qs = qs.filter((q) => CJK2.test(q));
   return qs.slice(0, Math.max(1, Number(s.search_max_queries) || 12));
 }
 function blockList(s) {
@@ -1633,12 +1673,12 @@ async function searchForDiscovery(s, queries) {
   await Promise.all(jobs);
   return { results, errors };
 }
-var CJK, sleep, sinceDate, pick, parseTime, BACKENDS, BACKEND_MAP, backendReady;
+var CJK2, sleep, sinceDate, pick, parseTime, BACKENDS, BACKEND_MAP, backendReady;
 var init_search = __esm({
   "src/search.js"() {
     init_db();
     init_categories();
-    CJK = /[\u4e00-\u9fff]/;
+    CJK2 = /[\u4e00-\u9fff]/;
     sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     sinceDate = (days) => new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
     pick = (r) => ({ title: r.title || r.url, url: r.url, published_at: r.published_at || null, raw_text: String(r.raw_text || "").slice(0, 1500) });
@@ -1692,7 +1732,7 @@ var init_search = __esm({
           const body = { query, search_depth: s.tavily_depth || "basic", max_results: Math.min(20, Number(s.search_max_results) || 10), topic: "general", auto_parameters: false, start_date: sinceDate(days), filter_by_published_date: true, include_published_date: true, include_answer: false, include_raw_content: false };
           const ex = blockList(s).slice(0, 150);
           if (ex.length) body.exclude_domains = ex;
-          if (CJK.test(query) && (s.search_lang || "zh_only") !== "any") {
+          if (CJK2.test(query) && (s.search_lang || "zh_only") !== "any") {
             body.language = "zh-cn";
             if ((s.search_lang || "zh_only") === "zh_only") body.filter_by_language = true;
           }
@@ -1723,7 +1763,7 @@ var init_search = __esm({
         async search(s, query, days) {
           const fresh = days <= 1 ? "pd" : days <= 7 ? "pw" : days <= 31 ? "pm" : "py";
           const qs = new URLSearchParams({ q: query, count: String(Math.min(20, Number(s.search_max_results) || 10)), freshness: fresh });
-          if (CJK.test(query)) qs.set("search_lang", "zh-hans");
+          if (CJK2.test(query)) qs.set("search_lang", "zh-hans");
           const r = await fetch(`https://api.search.brave.com/res/v1/web/search?${qs}`, { headers: { "X-Subscription-Token": s.brave_api_key, Accept: "application/json" }, signal: AbortSignal.timeout(3e4) });
           const text2 = await r.text();
           if (!r.ok) throw new Error(`Brave HTTP ${r.status}: ${text2.slice(0, 200)}`);
@@ -1898,10 +1938,382 @@ var init_rules = __esm({
   }
 });
 
+// src/sources-sync.js
+function sourceKey(x) {
+  const t = x.type || "rss";
+  if (t === "rss") {
+    const tg = x.tags || x.skip_tags ? "#" + [].concat(x.tags || []).join(",") + "!" + [].concat(x.skip_tags || []).join(",") : "";
+    try {
+      const u = new URL(x.url);
+      return "rss:" + u.hostname.replace(/^www\./, "").toLowerCase() + u.pathname.replace(/\/+$/, "") + u.search + tg;
+    } catch {
+      return "rss:" + x.url + tg;
+    }
+  }
+  if (t === "v2ex") return "v2ex:" + (x.node || "free");
+  if (t === "repo") return "repo:" + String(x.repo || "").toLowerCase();
+  if (t === "telegram") return "tg:" + String(x.channel || "").toLowerCase();
+  if (t === "gamerpower") return "gamerpower:" + (x.kind || "game");
+  return t + ":" + String(x.query || "").toLowerCase();
+}
+function parseFreebieSeeds(ts) {
+  const start = ts.indexOf("export const SEEDS");
+  if (start < 0) throw new Error("\u6CA1\u627E\u5230 SEEDS");
+  const open = ts.indexOf("[", ts.indexOf("=", start));
+  let depth = 0, end = -1, q = null;
+  for (let i = open; i < ts.length; i++) {
+    const ch = ts[i];
+    if (q) {
+      if (ch === "\\") i++;
+      else if (ch === q) q = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") {
+      q = ch;
+      continue;
+    }
+    if (ch === "/" && ts[i + 1] === "/") {
+      const nl = ts.indexOf("\n", i);
+      i = nl < 0 ? ts.length : nl;
+      continue;
+    }
+    if (ch === "[" || ch === "{") depth++;
+    else if ((ch === "]" || ch === "}") && --depth === 0) {
+      end = i;
+      break;
+    }
+  }
+  if (end < 0) throw new Error("SEEDS \u6570\u7EC4\u4E0D\u5B8C\u6574");
+  const src = ts.slice(open, end + 1);
+  const parts = [];
+  let last = "{";
+  const ID0 = /[A-Za-z_$]/, IDC = /[\w$]/;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === '"' || ch === "'") {
+      let j = i + 1;
+      while (j < src.length && src[j] !== ch) j += src[j] === "\\" ? 2 : 1;
+      const body = src.slice(i + 1, j);
+      parts.push(ch === '"' ? '"' + body + '"' : JSON.stringify(body.replace(/\\'/g, "'")));
+      last = '"';
+      i = j;
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "/") {
+      const nl = src.indexOf("\n", i);
+      i = (nl < 0 ? src.length : nl) - 1;
+      continue;
+    }
+    if (ch === "/" && src[i + 1] === "*") {
+      const e = src.indexOf("*/", i + 2);
+      i = (e < 0 ? src.length : e + 2) - 1;
+      continue;
+    }
+    if (ID0.test(ch)) {
+      let j = i + 1;
+      while (j < src.length && IDC.test(src[j])) j++;
+      const word = src.slice(i, j);
+      let k = j;
+      while (src[k] === " " || src[k] === "	") k++;
+      parts.push((last === "{" || last === ",") && src[k] === ":" ? '"' + word + '"' : word);
+      last = "a";
+      i = j - 1;
+      continue;
+    }
+    parts.push(ch);
+    if (ch !== " " && ch !== "\n" && ch !== "\r" && ch !== "	") last = ch;
+  }
+  let out = parts.join("");
+  out = out.replace(/,(\s*[}\]])/g, "$1");
+  const seeds = JSON.parse(out);
+  return seeds.flatMap(seedToSources).filter(Boolean);
+}
+function seedToSources(seed) {
+  const c = seed.config || {};
+  const cat = CAT_HINT[c.fixedCategory] || CAT_HINT[c.categoryHint] || void 0;
+  const info = c.kindHint === "info" || [c.categoryHint, c.fixedCategory, ...(c.feeds || []).map((f) => f.categoryHint)].some((h) => h && !CAT_HINT[h]);
+  const base = { from: "freebie-radar", upstream_enabled: seed.enabled !== false, ...info ? { info: true } : {} };
+  switch (seed.kind) {
+    case "rss":
+      return (c.feeds || []).filter((f) => f.url).map((f, i, all) => {
+        const o = { name: all.length > 1 ? `${seed.name} \xB7 ${f.id}` : seed.name, type: "rss", url: f.url, ...base };
+        if (f.titleKeywords?.length) o.include = f.titleKeywords.map(reEscape).join("|");
+        if (f.only100Off) o.include = "100%";
+        const hint = CAT_HINT[f.categoryHint] || cat;
+        if (hint) o.hint = hint;
+        return o;
+      });
+    case "v2ex":
+      return [{ name: seed.name, type: "v2ex", node: c.node || "free", ...base }];
+    case "telegram":
+      return (c.channels || []).map((ch) => ({ name: `${seed.name.replace(/（.*?）/, "")} \xB7 @${ch}`, type: "telegram", channel: ch, ...cat ? { hint: cat } : {}, ...base }));
+    case "linuxdo":
+      return c.categoryId ? [{ name: seed.name, type: "rss", url: `https://linux.do/c/${c.rssSlug || c.categoryId}/${c.categoryId}.rss`, ...base }] : [];
+    case "epic":
+      return [{ name: seed.name, type: "epic", category: "game", trusted: true, ...base }];
+    case "gamerpower": {
+      const kind = /loot/.test(c.query || "") ? "loot" : "game";
+      return [{ name: seed.name, type: "gamerpower", kind, category: "game", trusted: true, ...base }];
+    }
+    case "openrouter":
+      return [{ name: seed.name, type: "openrouter_free", category: "ai", trusted: true, ...base }];
+    default:
+      return [{ unsupported: true, name: seed.name, kind: seed.kind }];
+  }
+}
+function zhOf(x) {
+  const h = hostOf(x.url || "");
+  if (h && hostIn(h, EN_HOSTS)) return false;
+  if (h && hostIn(h, ZH_HOSTS)) return true;
+  if (["v2ex", "telegram", "epic", "gamerpower", "openrouter_free"].includes(x.type)) return true;
+  return CJK3.test(String(x.name || "").trim().split(/[\s·]/)[0]) || /\.(cn|tw|hk)$/.test(h);
+}
+async function checkSources(current, urls) {
+  const have = new Set(current.map(sourceKey));
+  const groups = [{ id: "builtin", label: "\u5185\u7F6E\u63A8\u8350\uFF08\u672C\u7248\u672C\u65B0\u589E\uFF09", list: DEFAULT_SOURCES.map((x) => ({ ...x, from: "builtin", upstream_enabled: x.enabled !== false })) }];
+  const errors = [];
+  let unsupported = 0;
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, { headers: { "User-Agent": "free-resource-radar", Accept: "*/*" }, signal: AbortSignal.timeout(15e3) });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const text2 = await r.text();
+      let list;
+      if (/^\s*[[{]/.test(text2)) {
+        const j = JSON.parse(text2);
+        list = (Array.isArray(j) ? j : j.sources || []).filter((x) => x && (x.url || x.type)).map((x) => ({ ...x, from: url, upstream_enabled: x.enabled !== false }));
+      } else {
+        list = parseFreebieSeeds(text2);
+      }
+      unsupported += list.filter((x) => x.unsupported).length;
+      const label = url === FREEBIE_SEEDS_URL || /freebie-radar/.test(url) ? "freebie-radar" : url.replace(/^https?:\/\//, "").slice(0, 60);
+      groups.push({ id: url, label, list: list.filter((x) => !x.unsupported) });
+    } catch (e) {
+      errors.push(`${url}\uFF1A${e.message}`);
+    }
+  }
+  const seen = new Set(have);
+  const out = [];
+  let existing = 0;
+  for (const g of groups) {
+    const fresh = [];
+    for (const x of g.list) {
+      const k = sourceKey(x);
+      if (x.category === "proxy" || x.mode === "sub" || /梯子|节点|v2ray|clash|proxy|机场/i.test(`${x.name || ""} ${x.repo || ""}`)) continue;
+      if (seen.has(k)) {
+        if (have.has(k)) existing++;
+        continue;
+      }
+      seen.add(k);
+      const zh = zhOf(x);
+      const blocked = hostIn(hostOf(x.url || ""), BLOCKED_HOSTS);
+      const info = x.info || hostIn(hostOf(x.url || ""), NEWS_HOSTS) && !x.include;
+      const { upstream_enabled, from, info: _i, ...src } = x;
+      src.enabled = true;
+      const why = !zh ? "\u82F1\u6587" : blocked ? "\u673A\u623F\u5E38\u88AB\u62E6" : info ? "\u8D44\u8BAF\u7C7B" : !upstream_enabled ? "\u4E0A\u6E38\u672A\u542F\u7528" : "";
+      fresh.push({ key: k, suggest: !why, why, src });
+    }
+    if (fresh.length) out.push({ id: g.id, label: g.label, items: fresh });
+  }
+  return { groups: out, existing, unsupported, errors };
+}
+async function getHead(url, limit = 2e5) {
+  const r = await fetch(url, { headers: UA, redirect: "follow", signal: AbortSignal.timeout(1e4) });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const t = await r.text();
+  return { text: t.slice(0, limit), url: r.url || url };
+}
+function feedInfo(xml) {
+  if (!/<(rss|feed|rdf:RDF)[\s>]/i.test(xml.slice(0, 3e3))) return null;
+  const titles = [...xml.matchAll(/<(?:item|entry)[\s>][\s\S]*?<title[^>]*>([\s\S]*?)<\/title>/gi)].map((m) => decode(m[1]));
+  const dates = [...xml.matchAll(/<(?:pubDate|updated|published|dc:date)>([^<]+)</gi)].map((m) => Date.parse(m[1])).filter((x) => x > 0);
+  const zh = titles.length ? titles.filter((t) => CJK3.test(t)).length / titles.length >= 0.5 : false;
+  const name = decode((/<title[^>]*>([\s\S]*?)<\/title>/i.exec(xml) || [])[1]).slice(0, 40);
+  return { count: titles.length, latest: dates.length ? Math.max(...dates) : null, zh, name, sample: titles.slice(0, 3) };
+}
+async function probeOne(raw) {
+  const line2 = raw.trim();
+  if (/^\{/.test(line2)) {
+    const x = JSON.parse(line2);
+    return { src: { enabled: true, ...x }, note: "JSON" };
+  }
+  const tg = /^(?:https?:\/\/)?t\.me\/(?:s\/)?([A-Za-z0-9_]{4,})/.exec(line2) || /^@([A-Za-z0-9_]{4,})$/.exec(line2);
+  if (tg) {
+    const { text: text2 } = await getHead(`https://t.me/s/${tg[1]}`, 3e5);
+    const n = (text2.match(/tgme_widget_message_text/g) || []).length;
+    if (!n) throw new Error("\u9891\u9053\u6CA1\u6709\u516C\u5F00\u6D88\u606F\u9875");
+    const title = decode((/<meta property="og:title" content="([^"]+)"/.exec(text2) || [])[1]) || tg[1];
+    const texts = [...text2.matchAll(/tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/g)].map((m) => m[1].replace(/<[^>]+>/g, ""));
+    const dates = [...text2.matchAll(/datetime="([^"]+)"/g)].map((m) => Date.parse(m[1])).filter(Boolean);
+    return { src: { name: `TG \xB7 ${title}`, type: "telegram", channel: tg[1], enabled: true }, zh: texts.filter((t) => CJK3.test(t)).length >= texts.length / 2, count: n, latest: dates.length ? Math.max(...dates) : null };
+  }
+  const gh = /^(?:https?:\/\/)?github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/.*)?$/i.exec(line2);
+  if (gh && !/^(orgs|topics|search|settings|marketplace)\//.test(gh[1])) {
+    const commits = await ghCommits(gh[1]);
+    if (!commits.length) throw new Error("\u4ED3\u5E93\u6CA1\u6709\u516C\u5F00\u63D0\u4EA4\u8BB0\u5F55");
+    const subLike = commits.slice(0, 5).filter((c) => /节点|v2ray|clash|vless|trojan|机场|proxy/i.test(c.title)).length >= 3;
+    if (subLike) throw new Error("\u8FD9\u662F\u4EE3\u7406\u8282\u70B9\u4ED3\u5E93\uFF0C\u4E0D\u518D\u6536\u5F55");
+    return {
+      src: { name: `GitHub \xB7 ${gh[1]}`, type: "repo", repo: gh[1], mode: "diff", enabled: true },
+      zh: commits.some((c) => CJK3.test(c.title)),
+      count: commits.length,
+      latest: commits[0].date,
+      sample: commits.slice(0, 3).map((c) => c.title.slice(0, 40))
+    };
+  }
+  if (!/^https?:\/\//.test(line2)) throw new Error("\u4E0D\u662F\u7F51\u5740\u3001t.me \u94FE\u63A5\u3001GitHub \u4ED3\u5E93\u6216 @\u9891\u9053");
+  const page = await getHead(line2);
+  let info = feedInfo(page.text), feed = page.url;
+  if (!info) {
+    const alts = [...page.text.matchAll(/<link[^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]*>/gi)].map((m) => (/href=["']([^"']+)["']/.exec(m[0]) || [])[1]).filter(Boolean).filter((h2) => !/comments/.test(h2));
+    const origin = new URL(page.url).origin;
+    const tries = [...alts.map((h2) => new URL(h2, page.url).href), `${origin}/feed`, `${origin}/rss.xml`, `${origin}/feed.xml`].filter((v, i, a) => a.indexOf(v) === i).slice(0, alts.length ? 2 : 3);
+    for (const u of tries) {
+      try {
+        const f = await getHead(u);
+        info = feedInfo(f.text);
+        if (info) {
+          feed = f.url;
+          break;
+        }
+      } catch {
+      }
+    }
+    if (!info) throw new Error("\u6CA1\u627E\u5230 RSS/Atom \u8BA2\u9605\u5730\u5740");
+  }
+  const h = hostOf(feed);
+  return { src: { name: info.name || h, type: "rss", url: feed, enabled: true }, zh: info.zh, count: info.count, latest: info.latest, sample: info.sample };
+}
+function toCandidate(p, have) {
+  const k = sourceKey(p.src);
+  const h = hostOf(p.src.url || "");
+  const why = have.has(k) ? "\u5DF2\u6709" : p.zh === false ? "\u82F1\u6587" : hostIn(h, BLOCKED_HOSTS) ? "\u673A\u623F\u5E38\u88AB\u62E6" : p.count === 0 ? "\u6CA1\u6709\u6761\u76EE" : p.latest && Date.now() - p.latest > 180 * 864e5 ? "\u534A\u5E74\u6CA1\u66F4\u65B0" : "";
+  const facts = [p.count != null ? p.count + " \u6761" : "", p.latest !== void 0 ? ago(p.latest) : ""].filter(Boolean).join(" \xB7 ");
+  return { key: k, suggest: !why, why, facts, sample: (p.sample || []).join(" / ").slice(0, 120), src: p.src };
+}
+async function probeInputs(current, lines2) {
+  const have = new Set(current.map(sourceKey));
+  const items = [], errors = [];
+  const list = [...new Set(lines2.map((x) => x.trim()).filter(Boolean))].slice(0, 15);
+  const res = await Promise.allSettled(list.map(probeOne));
+  res.forEach((r, i) => r.status === "fulfilled" ? items.push(toCandidate(r.value, have)) : errors.push(`${list[i].slice(0, 60)}\uFF1A${r.reason?.message || r.reason}`));
+  return { groups: items.length ? [{ id: "batch", label: "\u6279\u91CF\u6DFB\u52A0", items }] : [], existing: items.filter((x) => x.why === "\u5DF2\u6709").length, errors };
+}
+async function discoverSources(current, keyword, searchFn) {
+  const have = new Set(current.map(sourceKey));
+  const haveHosts = new Set(current.map((x) => hostOf(x.url || "")).filter(Boolean));
+  const { results, errors } = await searchFn([`${keyword} RSS \u8BA2\u9605`, `${keyword} \u535A\u5BA2`]);
+  const hosts = [];
+  for (const r of results) {
+    const h = hostOf(r.url);
+    if (!h || hosts.some((x) => x.h === h) || haveHosts.has(h) || hostIn(h, SKIP_HOSTS) || hostIn(h, BLOCKED_HOSTS)) continue;
+    hosts.push({ h, url: new URL(r.url).origin + "/", title: r.title });
+    if (hosts.length >= 8) break;
+  }
+  const res = await Promise.allSettled(hosts.map((x) => probeOne(x.url)));
+  const items = [], miss = [];
+  res.forEach((r, i) => r.status === "fulfilled" ? items.push(toCandidate(r.value, have)) : miss.push(hosts[i].h));
+  if (miss.length) errors.push(`\u8FD9\u4E9B\u7AD9\u6CA1\u627E\u5230\u8BA2\u9605\u5730\u5740\uFF1A${miss.join("\u3001")}`);
+  return { groups: items.length ? [{ id: "discover", label: `\u641C\u7D22\u300C${keyword}\u300D\u53D1\u73B0`, items }] : [], existing: items.filter((x) => x.why === "\u5DF2\u6709").length, errors, searched: hosts.length };
+}
+var FREEBIE_SEEDS_URL, CJK3, EN_HOSTS, BLOCKED_HOSTS, NEWS_HOSTS, ZH_HOSTS, CAT_HINT, hostOf, hostIn, reEscape, UA, SKIP_HOSTS, decode, ago;
+var init_sources_sync = __esm({
+  "src/sources-sync.js"() {
+    init_db();
+    init_crawler();
+    FREEBIE_SEEDS_URL = "https://raw.githubusercontent.com/ZiChuanLan/freebie-radar/main/src/server/collectors/index.ts";
+    CJK3 = /[\u4e00-\u9fff]/;
+    EN_HOSTS = ["reddit.com", "itch.io", "isthereanydeal.com", "indiegamebundles.com", "freesteamkeys.com", "gg.deals", "giveawayoftheday.com", "tickcoupon.com", "sharewareonsale.com", "lowendtalk.com", "lowendspirit.com", "lowendbox.com", "news.ycombinator.com"];
+    BLOCKED_HOSTS = ["linux.do", "reddit.com", "deepflood.com", "52pojie.cn", "hostloc.com", "423down.com"];
+    NEWS_HOSTS = ["chinanews.com.cn", "wallstreetcn.com", "qbitai.com", "leiphone.com", "tmtpost.com", "ifanr.com", "36kr.com", "huxiu.com", "cctv.com", "thepaper.cn", "sspai.com", "ithome.com", "cnbeta.com.tw"];
+    ZH_HOSTS = ["linux.do", "nodeseek.com", "nodeloc.com", "deepflood.com", "vpsgo.com", "vpsxb.net", "keylol.com", "free.com.tw", "v2ex.com", "appinn.com", "appinn.net", "ghxi.com", "yxssp.com", "iplaysoft.com", "vpsjxw.com", "laozuo.org", "veidc.com", "vpser.net", "banwagong.net"];
+    CAT_HINT = { vps: "hosting", hosting: "hosting", software: "software", pan: "pan", game: "game", ai: "ai", domain: "domain", cloud: "cloud", dev: "dev", edu: "edu", course: "course", media: "media", design: "design" };
+    hostOf = (u) => {
+      try {
+        return new URL(u).hostname.replace(/^www\./, "").toLowerCase();
+      } catch {
+        return "";
+      }
+    };
+    hostIn = (h, list) => list.some((d) => h === d || h.endsWith("." + d));
+    reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    UA = { "User-Agent": "Mozilla/5.0 (compatible; free-resource-radar)", Accept: "text/html,application/xml,application/rss+xml,*/*" };
+    SKIP_HOSTS = ["zhihu.com", "bilibili.com", "weixin.qq.com", "qq.com", "baidu.com", "csdn.net", "github.com", "gitee.com", "douyin.com", "weibo.com", "xiaohongshu.com", "toutiao.com", "sohu.com", "163.com", "sina.com.cn", "youtube.com", "google.com", "wikipedia.org", "jianshu.com", "juejin.cn", "cnblogs.com", "smzdm.com", "taobao.com", "jd.com", "apple.com", "microsoft.com"];
+    decode = (s) => String(s || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+    ago = (t) => {
+      if (!t) return "\u65E0\u65E5\u671F";
+      const d = Math.floor((Date.now() - t) / 864e5);
+      return d <= 0 ? "\u4ECA\u5929\u66F4\u65B0" : d + " \u5929\u524D\u66F4\u65B0";
+    };
+  }
+});
+
+// src/suggest.js
+async function readSuggest(env) {
+  const box = await readJson(env, "src_suggest", { items: [] });
+  return { at: box.at || 0, last: box.last || "", items: box.items || [] };
+}
+async function dailySuggest(env, s, { force = false } = {}) {
+  if (!force && s.source_suggest === "false") return null;
+  const today = dayOf(Date.now());
+  if (!force && await getMeta(env, "suggest_day") === today) return null;
+  await setMeta(env, "suggest_day", today);
+  const cats = enabledCats(s).filter((k) => CAT_MAP[k] && (CAT_MAP[k].q || []).length);
+  if (!cats.length) return null;
+  const round = Number(await getMeta(env, "suggest_round")) || 0;
+  await setMeta(env, "suggest_round", String(round + 1));
+  const cat = cats[round % cats.length];
+  const q = CAT_MAP[cat].q;
+  const kw = q[Math.floor(round / cats.length) % q.length];
+  let current = [];
+  try {
+    current = JSON.parse(s.sources);
+  } catch {
+  }
+  const r = await discoverSources(Array.isArray(current) ? current : [], kw, (qs) => searchForDiscovery(s, qs));
+  const ignored = new Set(await readJson(env, "src_ignored", []));
+  const box = await readSuggest(env);
+  const have = new Set(box.items.map((x) => x.key));
+  const fresh = (r.groups[0]?.items || []).filter((x) => x.suggest && !ignored.has(x.key) && !have.has(x.key)).map((x) => ({ ...x, src: { ...x.src, hint: x.src.hint || cat }, kw, cat, day: today }));
+  box.items = [...fresh, ...box.items].slice(0, MAX_KEEP);
+  box.at = Date.now();
+  box.last = `${kw}\uFF1A\u65B0\u589E ${fresh.length} \u4E2A` + (r.errors?.length ? `\uFF08${r.errors[0].slice(0, 60)}\uFF09` : "");
+  await setMeta(env, "src_suggest", JSON.stringify(box));
+  return { kw, added: fresh.length, errors: r.errors || [] };
+}
+async function pruneSuggest(env, { added = [], ignore = [] } = {}) {
+  const drop = /* @__PURE__ */ new Set([...added, ...ignore]);
+  const box = await readSuggest(env);
+  box.items = box.items.filter((x) => !drop.has(x.key));
+  await setMeta(env, "src_suggest", JSON.stringify(box));
+  if (ignore.length) {
+    const ig = await readJson(env, "src_ignored", []);
+    await setMeta(env, "src_ignored", JSON.stringify([.../* @__PURE__ */ new Set([...ignore, ...ig])].slice(0, 500)));
+  }
+  return box;
+}
+var MAX_KEEP, readJson;
+var init_suggest = __esm({
+  "src/suggest.js"() {
+    init_db();
+    init_categories();
+    init_sources_sync();
+    init_search();
+    MAX_KEEP = 30;
+    readJson = async (env, k, d) => {
+      try {
+        return JSON.parse(await getMeta(env, k) || "") ?? d;
+      } catch {
+        return d;
+      }
+    };
+  }
+});
+
 // src/crawler.js
 async function getText(url, headers = {}, maxBytes = 0) {
   const r = await fetch(url, {
-    headers: { "User-Agent": UA, Accept: "*/*", ...headers },
+    headers: { "User-Agent": UA2, Accept: "*/*", ...headers },
     signal: AbortSignal.timeout(2e4)
   });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -1962,15 +2374,6 @@ function tag(block, name) {
   if (gt < 0 || block[gt - 1] === "/") return "";
   const end = block.indexOf("</" + name + ">", gt);
   return end < 0 ? "" : block.slice(gt + 1, end);
-}
-function targetKey(u) {
-  try {
-    const x = new URL(normalizeUrl(u));
-    for (const k of [...x.searchParams.keys()]) if (/^(aff|aff_code|ref|refer|referral|invite|invite_code|inviter|via|from|share|channel|code)$/i.test(k)) x.searchParams.delete(k);
-    return (x.hostname.replace(/^(www|m)\./, "").toLowerCase() + x.pathname.replace(/\/+$/, "") + x.search).slice(0, 300);
-  } catch {
-    return String(u || "").slice(0, 300);
-  }
 }
 function parseTelegram(html2, ch) {
   const out = [];
@@ -2370,6 +2773,7 @@ function ctxOf(s, now) {
     blockRules: compileBlockRules(s.block_rules),
     noiseOn: s.noise_filter !== "false",
     noEnglish: s.filter_english !== "false",
+    canTranslate: aiReadyOf(s) && s.translate_english !== "false",
     aiReady: aiReadyOf(s)
   };
 }
@@ -2465,7 +2869,7 @@ async function ingest(env, c, src, items, stats, log) {
       stats.noise++;
       continue;
     }
-    if (c.noEnglish && !CJK2.test(it.title) && !CJK2.test(it.summary || "") && !CJK2.test(String(it.raw_text || "").slice(0, 500))) {
+    if (c.noEnglish && (!CJK4.test(it.title) || zhRatio(`${it.title} ${it.summary || ""} ${String(it.raw_text || "").slice(0, 300)}`) < 0.2)) {
       stats.non_zh++;
       continue;
     }
@@ -2483,7 +2887,7 @@ ${it.raw_text || ""}`)) {
         stats.off_topic++;
         continue;
       }
-      const zh = it.lang ? it.lang.startsWith("zh") : CJK2.test(it.title);
+      const zh = it.lang ? it.lang.startsWith("zh") : CJK4.test(it.title);
       if (c.searchLang === "zh_only" && !zh) {
         stats.non_zh++;
         continue;
@@ -2513,13 +2917,14 @@ ${it.raw_text || ""}`)) {
     const fp = titleFingerprint(it.title);
     if (candidates.has(id)) continue;
     const tkey = targetKey(it.target || url);
-    const twin = fp.length >= 8 && runFp.get(fp) || [...candidates.values()].find((x) => x.tkey === tkey || x.target && targetKey(x.url) === tkey);
+    const ukey = targetKey(url);
+    const twin = fp.length >= 8 && runFp.get(fp) || [...candidates.values()].find((x) => x.tkey === tkey || x.ukey === tkey || x.tkey === ukey);
     if (twin) {
       twin.also = mergeSources(twin.also || [], [{ n: it.source, u: url }]);
       stats.merged++;
       continue;
     }
-    const cand = { ...it, url, id, fp, tkey };
+    const cand = { ...it, url, id, fp, tkey, ukey };
     if (fp.length >= 8) runFp.set(fp, cand);
     candidates.set(id, cand);
   }
@@ -2541,11 +2946,12 @@ ${it.raw_text || ""}`)) {
   }
   const byTarget = /* @__PURE__ */ new Map();
   const byFp = /* @__PURE__ */ new Map();
-  const tkeys = [...new Set([...candidates.values()].flatMap((x) => [x.tkey, targetKey(x.url)]))];
-  for (let i = 0; i < tkeys.length; i += 90) {
-    const chunk = tkeys.slice(i, i + 90);
-    const { results: rows } = await env.DB.prepare(`SELECT id, target, source, url, sources FROM items WHERE target IN (${chunk.map(() => "?").join(",")})`).bind(...chunk).all();
-    for (const row of rows || []) if (!byTarget.has(row.target)) byTarget.set(row.target, row);
+  const tkeys = [...new Set([...candidates.values()].flatMap((x) => [x.tkey, x.ukey]))];
+  for (let i = 0; i < tkeys.length; i += 45) {
+    const chunk = tkeys.slice(i, i + 45);
+    const q = chunk.map(() => "?").join(",");
+    const { results: rows } = await env.DB.prepare(`SELECT id, target, ukey, source, url, sources FROM items WHERE target IN (${q}) OR ukey IN (${q})`).bind(...chunk, ...chunk).all();
+    for (const row of rows || []) for (const k of [row.target, row.ukey || targetKey(row.url)]) if (k && !byTarget.has(k)) byTarget.set(k, row);
   }
   const fpList = [...new Set([...candidates.values()].map((x) => x.fp).filter((f) => f && f.length >= 8))];
   for (let i = 0; i < fpList.length; i += 90) {
@@ -2559,14 +2965,14 @@ ${it.raw_text || ""}`)) {
     if (it.upsert) {
       stats.new += existing.has(id) ? 0 : 1;
       stmts.push(
-        env.DB.prepare(`INSERT INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, obtain, score, judged_by, judged_at, target, extra) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', NULL, ?, ?, ?, ?, 'free', 80, 'trusted', ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET title = excluded.title, summary = excluded.summary, extra = excluded.extra, published_at = excluded.published_at, fetched_at = excluded.fetched_at, judged_at = excluded.judged_at, day = excluded.day, status = 'approved' WHERE items.published_at IS NOT excluded.published_at OR items.extra IS NOT excluded.extra`).bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || c.now, c.now, today, it.category, it.name || null, it.summary || null, c.now, it.tkey, JSON.stringify(it.extra || {})),
+        env.DB.prepare(`INSERT INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, obtain, score, judged_by, judged_at, target, ukey, extra) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', NULL, ?, ?, ?, ?, 'free', 80, 'trusted', ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET title = excluded.title, summary = excluded.summary, extra = excluded.extra, published_at = excluded.published_at, fetched_at = excluded.fetched_at, judged_at = excluded.judged_at, day = excluded.day, status = 'approved' WHERE items.published_at IS NOT excluded.published_at OR items.extra IS NOT excluded.extra`).bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || c.now, c.now, today, it.category, it.name || null, it.summary || null, c.now, it.tkey, it.ukey, JSON.stringify(it.extra || {})),
         env.DB.prepare("INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)").bind(id, null, c.now)
       );
       continue;
     }
     if (existing.has(id)) continue;
-    const prev = byTarget.get(it.tkey) || byTarget.get(targetKey(it.url)) || (it.fp && it.fp.length >= 8 ? byFp.get(it.fp) : null);
+    const prev = byTarget.get(it.tkey) || byTarget.get(it.ukey) || (it.fp && it.fp.length >= 8 ? byFp.get(it.fp) : null);
     if (prev && prev.id !== id) {
       let list = [];
       try {
@@ -2603,7 +3009,7 @@ ${it.raw_text || ""}`;
       stats.approved++;
     }
     stmts.push(
-      direct ? env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at, target, sources, expires_at, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "approved", it.fp || null, today, it.category, it.name || null, it.summary || firstSentence(it.raw_text, 100), it.signup || null, isInfoCat(it.category) ? null : "free", 80, "trusted", c.now, it.tkey, it.also ? JSON.stringify(it.also) : null, exp, extra) : env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, cats, hint, target, sources, expires_at, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "pending", it.fp || null, today, it.cats || null, it.hint || null, it.tkey, it.also ? JSON.stringify(it.also) : null, exp, extra),
+      direct ? env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at, target, ukey, sources, expires_at, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "approved", it.fp || null, today, it.category, it.name || null, it.summary || firstSentence(it.raw_text, 100), it.signup || null, isInfoCat(it.category) ? null : "free", 80, "trusted", c.now, it.tkey, it.ukey, it.also ? JSON.stringify(it.also) : null, exp, extra) : env.DB.prepare("INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, cats, hint, target, ukey, sources, expires_at, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(id, it.title.slice(0, 500), it.url, it.source || "", (it.raw_text || "").slice(0, 2e3), it.published_at || null, c.now, "pending", it.fp || null, today, it.cats || null, it.hint || null, it.tkey, it.ukey, it.also ? JSON.stringify(it.also) : null, exp, extra),
       env.DB.prepare("INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)").bind(id, it.fp || null, c.now)
     );
   }
@@ -2757,10 +3163,38 @@ async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
   for (let i = 0; i < updates.length; i += 50) await env.DB.batch(updates.slice(i, i + 50));
   return (pending || []).length > list.length || c.aiReady && list.length === perStep;
 }
-async function cleanupStep(env, c, stats) {
+async function autoOffSources(env, c, log) {
+  if (c.s.source_auto_off === "false") return;
+  const { results: rows } = await env.DB.prepare("SELECT name, COUNT(*) AS d, SUM(fetched) AS f, SUM(errors) AS e, MAX(last_err) AS err FROM src_health WHERE day >= ? GROUP BY name HAVING d >= 3 AND f = 0 AND e >= 3").bind(dayOf(c.now - 3 * DAY2)).all();
+  if (!(rows || []).length) return;
+  let list;
+  try {
+    list = JSON.parse(c.s.sources);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(list)) return;
+  const bad = new Map(rows.map((r) => [r.name, r]));
+  const off = [];
+  for (const x of list) if (x && x.enabled !== false && bad.has(x.name)) {
+    x.enabled = false;
+    x.auto_off = dayOf(c.now);
+    x.auto_err = String(bad.get(x.name).err || "").slice(0, 120);
+    off.push(x.name);
+  }
+  if (!off.length) return;
+  await saveSettings(env, { sources: JSON.stringify(list) });
+  c.s.sources = JSON.stringify(list);
+  log.push(`\u26A0 \u81EA\u52A8\u505C\u7528 ${off.length} \u4E2A\u8FDE\u7EED 3 \u5929\u5931\u8D25\u7684\u6E90\uFF1A${off.join("\u3001")}`);
+}
+async function cleanupStep(env, c, stats, log = []) {
   const keepMs = Math.max(1, Number(c.s.retention_days) || 15) * DAY2;
-  const del = await env.DB.prepare("DELETE FROM items WHERE fetched_at < ? OR (published_at IS NOT NULL AND published_at < ?)").bind(c.now - keepMs, c.cutoff).run();
+  const archMs = Math.max(keepMs, Math.max(0, Number(c.s.archive_days) || 0) * DAY2);
+  const del = await env.DB.prepare("DELETE FROM items WHERE (status != 'approved' AND fetched_at < ?) OR (status = 'approved' AND fetched_at < ?) OR (published_at IS NOT NULL AND published_at < ?)").bind(c.now - keepMs, c.now - archMs, Math.min(c.cutoff, c.now - archMs)).run();
   stats.expired_removed += del.meta?.changes || 0;
+  if (archMs > keepMs) await env.DB.prepare("UPDATE items SET raw_text = '' WHERE status = 'approved' AND fetched_at < ? AND raw_text != ''").bind(c.now - keepMs).run().catch(() => {
+  });
+  await autoOffSources(env, c, log).catch((e) => log.push("\u2717 \u81EA\u52A8\u505C\u7528\u6E90\uFF1A" + e.message));
   await env.DB.batch([
     env.DB.prepare("DELETE FROM seen WHERE seen_at < ?").bind(Math.min(c.cutoff, c.now - keepMs)),
     env.DB.prepare("DELETE FROM verdicts WHERE at < ?").bind(c.cutoff),
@@ -2780,7 +3214,7 @@ async function checkLink(url) {
   }
   if (SKIP_CHECK.test(host)) return null;
   try {
-    const r = await fetch(url, { redirect: "follow", headers: { "User-Agent": UA, Accept: "text/html,*/*" }, signal: AbortSignal.timeout(1e4) });
+    const r = await fetch(url, { redirect: "follow", headers: { "User-Agent": UA2, Accept: "text/html,*/*" }, signal: AbortSignal.timeout(1e4) });
     if (r.status === 404 || r.status === 410) {
       r.body?.cancel().catch(() => {
       });
@@ -2849,8 +3283,7 @@ async function expiryRemind(env, c, log) {
   log.push(r.skipped ? `\u2013 \u622A\u6B62\u63D0\u9192\uFF1A${r.skipped}` : `\u2713 \u622A\u6B62\u63D0\u9192\uFF1A${hits.length} \u6761`);
 }
 async function dedupStep(env, c, stats, log) {
-  if (c.s.ai_dedup === "false") return false;
-  const { results: rows } = await env.DB.prepare("SELECT id, name, title, url, source, category, score, sources, extra, COALESCE(published_at, fetched_at) AS t FROM items WHERE status = 'approved' AND COALESCE(judged_at, fetched_at) > ? ORDER BY score DESC, t ASC LIMIT 600").bind(c.now - 14 * DAY2).all();
+  const { results: rows } = await env.DB.prepare("SELECT id, name, title, url, target, ukey, source, category, score, sources, extra, COALESCE(published_at, fetched_at) AS t FROM items WHERE status = 'approved' AND COALESCE(judged_at, fetched_at) > ? ORDER BY score DESC, t ASC LIMIT 600").bind(c.now - 14 * DAY2).all();
   const keep = /* @__PURE__ */ new Map(), stmts = [];
   let n = 0;
   for (const r of rows || []) {
@@ -2859,12 +3292,15 @@ async function dedupStep(env, c, stats, log) {
       x = r.extra ? JSON.parse(r.extra) : {};
     } catch {
     }
-    const keys = [r.name, x.zh].map(normName).filter((k) => k.length >= 4).map((k) => r.category + "|" + k);
+    const uk = r.ukey || targetKey(r.url);
+    if (!r.ukey) stmts.push(env.DB.prepare("UPDATE items SET ukey = ? WHERE id = ?").bind(uk, r.id));
+    const keys = [...[keyOf(r.target), uk].filter(Boolean).map((k) => "u|" + k), ...(c.s.ai_dedup === "false" ? [] : [r.name, x.zh]).map(normName).filter((k) => k.length >= 4).map((k) => r.category + "|" + k)];
     const hit = keys.map((k) => keep.get(k)).find(Boolean);
     if (!hit) {
       for (const k of keys) keep.set(k, r);
       continue;
     }
+    for (const k of keys) if (!keep.has(k)) keep.set(k, hit);
     if (hit.url === r.url) continue;
     let src = [];
     try {
@@ -2877,7 +3313,7 @@ async function dedupStep(env, c, stats, log) {
     stmts.push(env.DB.prepare("UPDATE items SET sources = ? WHERE id = ?").bind(hit.sources, hit.id));
     n++;
   }
-  if (stmts.length) await env.DB.batch(stmts.slice(0, 200));
+  for (let i = 0; i < stmts.length; i += 100) await env.DB.batch(stmts.slice(i, i + 100));
   if (n) {
     stats.merged = (stats.merged || 0) + n;
     log.push(`\u2713 \u667A\u80FD\u53BB\u91CD\uFF1A\u5408\u5E76 ${n} \u6761\u91CD\u590D`);
@@ -2887,20 +3323,40 @@ async function dedupStep(env, c, stats, log) {
 async function translateStep(env, c, stats, log) {
   if (c.s.translate_english === "false") return false;
   const { results: rows } = await env.DB.prepare(
-    `SELECT id, title, name, url, target, raw_text, extra FROM items WHERE status = 'approved' AND COALESCE(judged_at, fetched_at) > ? AND (extra IS NULL OR extra NOT LIKE '%"zh"%') ORDER BY COALESCE(judged_at, fetched_at) DESC LIMIT 300`
+    `SELECT id, title, name, summary, url, target, raw_text, extra FROM items WHERE status = 'approved' AND COALESCE(judged_at, fetched_at) > ? AND (extra IS NULL OR extra NOT LIKE '%"zv":2%') ORDER BY COALESCE(judged_at, fetched_at) DESC LIMIT 300`
   ).bind(c.now - 30 * DAY2).all();
-  const todo = (rows || []).filter((r) => !HAS_CJK.test(r.title || "") && /[A-Za-z]{3}/.test(r.title || "")).slice(0, 15);
-  if (!todo.length) return false;
-  let tr = /* @__PURE__ */ new Map();
-  if (c.aiReady) {
+  const enTitle = (r) => !HAS_CJK.test(r.title || "") && /[A-Za-z]{3}/.test(r.title || "");
+  const enSum = (r) => r.summary && zhRatio(r.summary) < 0.3 && /[A-Za-z]{3}/.test(r.summary);
+  const all = rows || [];
+  const todo = all.filter((r) => enTitle(r) || enSum(r)).slice(0, 15);
+  const done = all.filter((r) => !enTitle(r) && !enSum(r)).slice(0, 100);
+  const stmts = done.map((r) => {
+    let x = {};
     try {
-      tr = await translateBatch(todo.map((r) => ({ title: r.title, name: r.name, links: linksOf(r) })), c.s);
-    } catch (e) {
-      log.push(`\u2717 \u7FFB\u8BD1\u82F1\u6587\uFF1A${e.message}`);
-      return false;
+      x = r.extra ? JSON.parse(r.extra) : {};
+    } catch {
     }
+    x.zv = 2;
+    return env.DB.prepare("UPDATE items SET extra = ? WHERE id = ?").bind(JSON.stringify(x), r.id);
+  });
+  if (!todo.length) {
+    if (stmts.length) await env.DB.batch(stmts);
+    return false;
   }
-  const stmts = [];
+  if (!c.aiReady) {
+    if (stmts.length) await env.DB.batch(stmts);
+    log.push(`\u2013 \u7FFB\u8BD1\u82F1\u6587\uFF1A${todo.length} \u6761\u5F85\u7FFB\u8BD1\uFF0C\u672A\u914D\u7F6E AI\uFF0C\u8FD9\u4E9B\u6761\u76EE\u6682\u4E0D\u5C55\u793A`);
+    return false;
+  }
+  let tr;
+  try {
+    tr = await translateBatch(todo.map((r) => ({ title: enTitle(r) ? r.title : null, summary: enSum(r) ? String(r.summary).slice(0, 400) : null, name: r.name, links: linksOf(r) })), c.s);
+  } catch (e) {
+    if (stmts.length) await env.DB.batch(stmts);
+    log.push(`\u2717 \u7FFB\u8BD1\u82F1\u6587\uFF1A${e.message}`);
+    return false;
+  }
+  let n = 0;
   todo.forEach((r, i) => {
     let x = {};
     try {
@@ -2911,14 +3367,19 @@ async function translateStep(env, c, stats, log) {
     const links = linksOf(r);
     const repo = links.map((u) => (REPO_RE.exec(u) || [])[0]).find(Boolean);
     const proj = repo || (t.project && links.includes(t.project) ? t.project : null);
-    x.zh = t.zh && HAS_CJK.test(t.zh) ? String(t.zh).slice(0, 80) : "";
+    if (enTitle(r)) x.zh = t.zh && HAS_CJK.test(t.zh) ? String(t.zh).slice(0, 80) : "";
+    else if (!("zh" in x)) x.zh = "";
+    if (enSum(r) && t.summary && HAS_CJK.test(t.summary)) x.zs = String(t.summary).slice(0, 120);
+    if ((!enTitle(r) || x.zh) && (!enSum(r) || x.zs)) {
+      x.zv = 2;
+      n++;
+    } else x.zt = (x.zt || 0) + 1, x.zt >= 3 && (x.zv = 2);
     if (proj) x.project = proj.replace(/[.,;]+$/, "");
     stmts.push(env.DB.prepare("UPDATE items SET extra = ? WHERE id = ?").bind(JSON.stringify(x), r.id));
   });
   await env.DB.batch(stmts);
-  const n = todo.filter((_, i) => (tr.get(i) || {}).zh).length;
   stats.translated = (stats.translated || 0) + n;
-  log.push(`\u2713 \u7FFB\u8BD1\u82F1\u6587\uFF1A\u5904\u7406 ${todo.length} \u6761\uFF0C\u7FFB\u597D ${n} \u6761` + (c.aiReady ? "" : "\uFF08\u672A\u914D\u7F6E AI\uFF0C\u53EA\u63D0\u53D6\u9879\u76EE\u5730\u5740\uFF09"));
+  log.push(`\u2713 \u7FFB\u8BD1\u82F1\u6587\uFF1A\u5904\u7406 ${todo.length} \u6761\uFF0C\u7FFB\u597D ${n} \u6761`);
   return todo.length === 15 && (stats.translated || 0) < 90;
 }
 async function watchStep(env, c, stats, log) {
@@ -2989,7 +3450,7 @@ async function planRun(env, trigger = "cron", opts = {}) {
     for (let i = 0; i < ready.length; i += group) steps.push(["search", { engines: ready.slice(i, i + group) }]);
     const cats = enabledCats(s);
     if (s.aifree_radar !== "false" && ready.length && (cats.includes("ai") || cats.includes("aideal"))) for (const id of ready.slice(0, 2)) steps.push(["radar", { engines: [id] }]);
-    steps.push(["judge", {}], ["translate", {}], ["dedup", {}], ["cleanup", {}], ["check", {}], ["watch", {}]);
+    steps.push(["judge", {}], ["translate", {}], ["dedup", {}], ["cleanup", {}], ["check", {}], ["watch", {}], ["suggest", {}]);
   }
   if (!aiReady) log.push("\u672A\u914D\u7F6E AI\uFF0C\u4F7F\u7528\u5173\u952E\u8BCD\u5224\u5B9A");
   const r = await env.DB.prepare("INSERT INTO runs (trigger, started_at, finished_at, stats, log) VALUES (?, ?, NULL, ?, ?) RETURNING id").bind(trigger, now, JSON.stringify(ZERO_STATS()), log.join("\n")).first();
@@ -3061,10 +3522,15 @@ async function runJob(env, job, c, stats, log, runStats) {
     case "judge":
       return judgeStep(env, c, stats, log, Math.max(0, (runStats.judged || 0) - (runStats.auto || 0) - (runStats.cached || 0)), p.cap);
     case "cleanup":
-      await cleanupStep(env, c, stats);
+      await cleanupStep(env, c, stats, log);
       return false;
     case "check":
       return checkStep(env, c, stats, log);
+    case "suggest": {
+      const r = await dailySuggest(env, c.s).catch((e) => ({ errors: [e.message] }));
+      if (r) log.push(r.kw ? `\u2713 \u6BCF\u65E5\u63A8\u8350\u6E90\uFF1A\u641C\u300C${r.kw}\u300D\uFF0C\u65B0\u589E ${r.added} \u4E2A\u5019\u9009` : `\u2717 \u6BCF\u65E5\u63A8\u8350\u6E90\uFF1A${(r.errors || []).join("\uFF1B")}`);
+      return false;
+    }
     case "dedup":
       return dedupStep(env, c, stats, log);
     case "translate":
@@ -3181,7 +3647,7 @@ async function healthAlert(env, run, st, log) {
   const r = await deliver(env, s, { kind: "alert", title: `\u26A0\uFE0F \u514D\u8D39\u8D44\u6E90\u96F7\u8FBE\u8FD0\u884C\u5F02\u5E38\uFF08\u8FDE\u7EED ${streak} \u8F6E\uFF09`, items: [{ id: "alert", title: reasons.join("\uFF1B"), url: (s.mail_site_url || "").replace(/\/+$/, "") + "/admin#runs", summary: errLines.join("\n") || "\u5230\u540E\u53F0\u300C\u8FD0\u884C\u8BB0\u5F55\u300D\u67E5\u770B\u8BE6\u60C5", category: "other" }] });
   log.push(r.skipped ? `\u2013 \u6545\u969C\u63D0\u9192\uFF1A${r.skipped}` : `\u2713 \u5DF2\u53D1\u9001\u6545\u969C\u63D0\u9192`);
 }
-var UA, DAY2, getJson, ENT, mergeSources, SKIP_TARGET, GH, MD_LINK, GENERIC_LINK, mdPlain, CJK2, containsAny, csv, DOUBT, ZERO_STATS, aiReadyOf, RADAR_SKIP, DEAD_RE, SKIP_CHECK, normName, HAS_CJK, REPO_RE, linksOf, STEP_LABEL;
+var UA2, DAY2, getJson, ENT, mergeSources, SKIP_TARGET, GH, MD_LINK, GENERIC_LINK, mdPlain, CJK4, zhRatio, containsAny, csv, DOUBT, ZERO_STATS, aiReadyOf, RADAR_SKIP, DEAD_RE, SKIP_CHECK, normName, HAS_CJK, REPO_RE, linksOf, STEP_LABEL;
 var init_crawler = __esm({
   "src/crawler.js"() {
     init_db();
@@ -3193,7 +3659,10 @@ var init_crawler = __esm({
     init_rules();
     init_extras();
     init_mailer();
-    UA = "Mozilla/5.0 (compatible; FreeResourceRadar/1.0; +https://github.com/haru-001/free-resource-radar)";
+    init_suggest();
+    init_fold();
+    init_fold();
+    UA2 = "Mozilla/5.0 (compatible; FreeResourceRadar/1.0; +https://github.com/haru-001/free-resource-radar)";
     DAY2 = 864e5;
     getJson = async (url, headers) => JSON.parse(await getText(url, { Accept: "application/json", ...headers }));
     ENT = { nbsp: " ", quot: '"', apos: "'", lt: "<", gt: ">", amp: "&" };
@@ -3207,7 +3676,12 @@ var init_crawler = __esm({
     MD_LINK = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
     GENERIC_LINK = /^(注册链接|注册|链接|官网|官网链接|地址|入口|官方入口|官方来源|官方链接|官方页|官方页面|官方文档|文档|公告|活动公告|活动页|专属链接|点击|访问|前往|link|website|docs|官方|source|源码|github|详情|官方免费层|免费层|试用|限时|限时免费|永久免费|试用 \/ 限时权益|有效|待核实|已失效)$/i;
     mdPlain = (x) => decodeEntities(x.replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(MD_LINK, "$1").replace(/<[^>]+>/g, " ").replace(/[*_`>#]|:[a-z0-9_+-]+:/g, "").replace(/\s+/g, " ")).trim();
-    CJK2 = /[\u4e00-\u9fff]/;
+    CJK4 = /[\u4e00-\u9fff]/;
+    zhRatio = (t) => {
+      const z = (String(t).match(/[\u3400-\u9fff]/g) || []).length;
+      const w = (String(t).match(/[A-Za-z]{2,}/g) || []).length;
+      return z + w ? z / (z + w) : 1;
+    };
     containsAny = (text2, words) => words.some((w) => text2.includes(w));
     csv = (v) => (Array.isArray(v) ? v : String(v || "").split(",")).map((x) => String(x).trim()).filter(Boolean);
     DOUBT = /抽奖|开奖|转发|付费|充值|折扣|打折|优惠码|优惠券|半价|首月|首年|低至|特价|促销|秒杀|续费|年付|月付|季付|限量|名额|内测资格|邀请码|aff|推广|广告|招聘|求助|请问|求推荐|有没有|怎么|吗[？?]?$|[？?]$|[$¥￥]\s?\d|\d+(\.\d+)?\s*(元|美元|欧元|rmb|usd)(?![a-z])/i;
@@ -3220,317 +3694,7 @@ var init_crawler = __esm({
     HAS_CJK = /[\u3400-\u9fff]/;
     REPO_RE = /https?:\/\/(?:github\.com|gitlab\.com|codeberg\.org|huggingface\.co)\/[\w.-]+\/[\w.-]+/i;
     linksOf = (r) => [...new Set([r.url, r.target && /^https?:/.test(r.target) ? r.target : null, ...String(r.raw_text || "").match(/https?:\/\/[^\s"'<>)\]]+/g) || []].filter(Boolean))].slice(0, 8);
-    STEP_LABEL = { source: "\u6293\u53D6", search: "\u641C\u7D22", radar: "AI \u798F\u5229\u96F7\u8FBE", judge: "\u5224\u5B9A", cleanup: "\u6E05\u7406", mail: "\u63A8\u9001", check: "\u5931\u6548\u68C0\u6D4B", dedup: "\u667A\u80FD\u53BB\u91CD", watch: "\u5173\u952E\u8BCD\u63D0\u9192", translate: "\u7FFB\u8BD1\u82F1\u6587" };
-  }
-});
-
-// src/sources-sync.js
-function sourceKey(x) {
-  const t = x.type || "rss";
-  if (t === "rss") {
-    const tg = x.tags || x.skip_tags ? "#" + [].concat(x.tags || []).join(",") + "!" + [].concat(x.skip_tags || []).join(",") : "";
-    try {
-      const u = new URL(x.url);
-      return "rss:" + u.hostname.replace(/^www\./, "").toLowerCase() + u.pathname.replace(/\/+$/, "") + u.search + tg;
-    } catch {
-      return "rss:" + x.url + tg;
-    }
-  }
-  if (t === "v2ex") return "v2ex:" + (x.node || "free");
-  if (t === "repo") return "repo:" + String(x.repo || "").toLowerCase();
-  if (t === "telegram") return "tg:" + String(x.channel || "").toLowerCase();
-  if (t === "gamerpower") return "gamerpower:" + (x.kind || "game");
-  return t + ":" + String(x.query || "").toLowerCase();
-}
-function parseFreebieSeeds(ts) {
-  const start = ts.indexOf("export const SEEDS");
-  if (start < 0) throw new Error("\u6CA1\u627E\u5230 SEEDS");
-  const open = ts.indexOf("[", ts.indexOf("=", start));
-  let depth = 0, end = -1, q = null;
-  for (let i = open; i < ts.length; i++) {
-    const ch = ts[i];
-    if (q) {
-      if (ch === "\\") i++;
-      else if (ch === q) q = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === "`") {
-      q = ch;
-      continue;
-    }
-    if (ch === "/" && ts[i + 1] === "/") {
-      const nl = ts.indexOf("\n", i);
-      i = nl < 0 ? ts.length : nl;
-      continue;
-    }
-    if (ch === "[" || ch === "{") depth++;
-    else if ((ch === "]" || ch === "}") && --depth === 0) {
-      end = i;
-      break;
-    }
-  }
-  if (end < 0) throw new Error("SEEDS \u6570\u7EC4\u4E0D\u5B8C\u6574");
-  const src = ts.slice(open, end + 1);
-  const parts = [];
-  let last = "{";
-  const ID0 = /[A-Za-z_$]/, IDC = /[\w$]/;
-  for (let i = 0; i < src.length; i++) {
-    const ch = src[i];
-    if (ch === '"' || ch === "'") {
-      let j = i + 1;
-      while (j < src.length && src[j] !== ch) j += src[j] === "\\" ? 2 : 1;
-      const body = src.slice(i + 1, j);
-      parts.push(ch === '"' ? '"' + body + '"' : JSON.stringify(body.replace(/\\'/g, "'")));
-      last = '"';
-      i = j;
-      continue;
-    }
-    if (ch === "/" && src[i + 1] === "/") {
-      const nl = src.indexOf("\n", i);
-      i = (nl < 0 ? src.length : nl) - 1;
-      continue;
-    }
-    if (ch === "/" && src[i + 1] === "*") {
-      const e = src.indexOf("*/", i + 2);
-      i = (e < 0 ? src.length : e + 2) - 1;
-      continue;
-    }
-    if (ID0.test(ch)) {
-      let j = i + 1;
-      while (j < src.length && IDC.test(src[j])) j++;
-      const word = src.slice(i, j);
-      let k = j;
-      while (src[k] === " " || src[k] === "	") k++;
-      parts.push((last === "{" || last === ",") && src[k] === ":" ? '"' + word + '"' : word);
-      last = "a";
-      i = j - 1;
-      continue;
-    }
-    parts.push(ch);
-    if (ch !== " " && ch !== "\n" && ch !== "\r" && ch !== "	") last = ch;
-  }
-  let out = parts.join("");
-  out = out.replace(/,(\s*[}\]])/g, "$1");
-  const seeds = JSON.parse(out);
-  return seeds.flatMap(seedToSources).filter(Boolean);
-}
-function seedToSources(seed) {
-  const c = seed.config || {};
-  const cat = CAT_HINT[c.fixedCategory] || CAT_HINT[c.categoryHint] || void 0;
-  const info = c.kindHint === "info" || [c.categoryHint, c.fixedCategory, ...(c.feeds || []).map((f) => f.categoryHint)].some((h) => h && !CAT_HINT[h]);
-  const base = { from: "freebie-radar", upstream_enabled: seed.enabled !== false, ...info ? { info: true } : {} };
-  switch (seed.kind) {
-    case "rss":
-      return (c.feeds || []).filter((f) => f.url).map((f, i, all) => {
-        const o = { name: all.length > 1 ? `${seed.name} \xB7 ${f.id}` : seed.name, type: "rss", url: f.url, ...base };
-        if (f.titleKeywords?.length) o.include = f.titleKeywords.map(reEscape).join("|");
-        if (f.only100Off) o.include = "100%";
-        const hint = CAT_HINT[f.categoryHint] || cat;
-        if (hint) o.hint = hint;
-        return o;
-      });
-    case "v2ex":
-      return [{ name: seed.name, type: "v2ex", node: c.node || "free", ...base }];
-    case "telegram":
-      return (c.channels || []).map((ch) => ({ name: `${seed.name.replace(/（.*?）/, "")} \xB7 @${ch}`, type: "telegram", channel: ch, ...cat ? { hint: cat } : {}, ...base }));
-    case "linuxdo":
-      return c.categoryId ? [{ name: seed.name, type: "rss", url: `https://linux.do/c/${c.rssSlug || c.categoryId}/${c.categoryId}.rss`, ...base }] : [];
-    case "epic":
-      return [{ name: seed.name, type: "epic", category: "game", trusted: true, ...base }];
-    case "gamerpower": {
-      const kind = /loot/.test(c.query || "") ? "loot" : "game";
-      return [{ name: seed.name, type: "gamerpower", kind, category: "game", trusted: true, ...base }];
-    }
-    case "openrouter":
-      return [{ name: seed.name, type: "openrouter_free", category: "ai", trusted: true, ...base }];
-    default:
-      return [{ unsupported: true, name: seed.name, kind: seed.kind }];
-  }
-}
-function zhOf(x) {
-  const h = hostOf(x.url || "");
-  if (h && hostIn(h, EN_HOSTS)) return false;
-  if (h && hostIn(h, ZH_HOSTS)) return true;
-  if (["v2ex", "telegram", "epic", "gamerpower", "openrouter_free"].includes(x.type)) return true;
-  return CJK3.test(String(x.name || "").trim().split(/[\s·]/)[0]) || /\.(cn|tw|hk)$/.test(h);
-}
-async function checkSources(current, urls) {
-  const have = new Set(current.map(sourceKey));
-  const groups = [{ id: "builtin", label: "\u5185\u7F6E\u63A8\u8350\uFF08\u672C\u7248\u672C\u65B0\u589E\uFF09", list: DEFAULT_SOURCES.map((x) => ({ ...x, from: "builtin", upstream_enabled: x.enabled !== false })) }];
-  const errors = [];
-  let unsupported = 0;
-  for (const url of urls) {
-    try {
-      const r = await fetch(url, { headers: { "User-Agent": "free-resource-radar", Accept: "*/*" }, signal: AbortSignal.timeout(15e3) });
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      const text2 = await r.text();
-      let list;
-      if (/^\s*[[{]/.test(text2)) {
-        const j = JSON.parse(text2);
-        list = (Array.isArray(j) ? j : j.sources || []).filter((x) => x && (x.url || x.type)).map((x) => ({ ...x, from: url, upstream_enabled: x.enabled !== false }));
-      } else {
-        list = parseFreebieSeeds(text2);
-      }
-      unsupported += list.filter((x) => x.unsupported).length;
-      const label = url === FREEBIE_SEEDS_URL || /freebie-radar/.test(url) ? "freebie-radar" : url.replace(/^https?:\/\//, "").slice(0, 60);
-      groups.push({ id: url, label, list: list.filter((x) => !x.unsupported) });
-    } catch (e) {
-      errors.push(`${url}\uFF1A${e.message}`);
-    }
-  }
-  const seen = new Set(have);
-  const out = [];
-  let existing = 0;
-  for (const g of groups) {
-    const fresh = [];
-    for (const x of g.list) {
-      const k = sourceKey(x);
-      if (x.category === "proxy" || x.mode === "sub" || /梯子|节点|v2ray|clash|proxy|机场/i.test(`${x.name || ""} ${x.repo || ""}`)) continue;
-      if (seen.has(k)) {
-        if (have.has(k)) existing++;
-        continue;
-      }
-      seen.add(k);
-      const zh = zhOf(x);
-      const blocked = hostIn(hostOf(x.url || ""), BLOCKED_HOSTS);
-      const info = x.info || hostIn(hostOf(x.url || ""), NEWS_HOSTS) && !x.include;
-      const { upstream_enabled, from, info: _i, ...src } = x;
-      src.enabled = true;
-      const why = !zh ? "\u82F1\u6587" : blocked ? "\u673A\u623F\u5E38\u88AB\u62E6" : info ? "\u8D44\u8BAF\u7C7B" : !upstream_enabled ? "\u4E0A\u6E38\u672A\u542F\u7528" : "";
-      fresh.push({ key: k, suggest: !why, why, src });
-    }
-    if (fresh.length) out.push({ id: g.id, label: g.label, items: fresh });
-  }
-  return { groups: out, existing, unsupported, errors };
-}
-async function getHead(url, limit = 2e5) {
-  const r = await fetch(url, { headers: UA2, redirect: "follow", signal: AbortSignal.timeout(1e4) });
-  if (!r.ok) throw new Error("HTTP " + r.status);
-  const t = await r.text();
-  return { text: t.slice(0, limit), url: r.url || url };
-}
-function feedInfo(xml) {
-  if (!/<(rss|feed|rdf:RDF)[\s>]/i.test(xml.slice(0, 3e3))) return null;
-  const titles = [...xml.matchAll(/<(?:item|entry)[\s>][\s\S]*?<title[^>]*>([\s\S]*?)<\/title>/gi)].map((m) => decode(m[1]));
-  const dates = [...xml.matchAll(/<(?:pubDate|updated|published|dc:date)>([^<]+)</gi)].map((m) => Date.parse(m[1])).filter((x) => x > 0);
-  const zh = titles.length ? titles.filter((t) => CJK3.test(t)).length / titles.length >= 0.5 : false;
-  const name = decode((/<title[^>]*>([\s\S]*?)<\/title>/i.exec(xml) || [])[1]).slice(0, 40);
-  return { count: titles.length, latest: dates.length ? Math.max(...dates) : null, zh, name, sample: titles.slice(0, 3) };
-}
-async function probeOne(raw) {
-  const line2 = raw.trim();
-  if (/^\{/.test(line2)) {
-    const x = JSON.parse(line2);
-    return { src: { enabled: true, ...x }, note: "JSON" };
-  }
-  const tg = /^(?:https?:\/\/)?t\.me\/(?:s\/)?([A-Za-z0-9_]{4,})/.exec(line2) || /^@([A-Za-z0-9_]{4,})$/.exec(line2);
-  if (tg) {
-    const { text: text2 } = await getHead(`https://t.me/s/${tg[1]}`, 3e5);
-    const n = (text2.match(/tgme_widget_message_text/g) || []).length;
-    if (!n) throw new Error("\u9891\u9053\u6CA1\u6709\u516C\u5F00\u6D88\u606F\u9875");
-    const title = decode((/<meta property="og:title" content="([^"]+)"/.exec(text2) || [])[1]) || tg[1];
-    const texts = [...text2.matchAll(/tgme_widget_message_text[^>]*>([\s\S]*?)<\/div>/g)].map((m) => m[1].replace(/<[^>]+>/g, ""));
-    const dates = [...text2.matchAll(/datetime="([^"]+)"/g)].map((m) => Date.parse(m[1])).filter(Boolean);
-    return { src: { name: `TG \xB7 ${title}`, type: "telegram", channel: tg[1], enabled: true }, zh: texts.filter((t) => CJK3.test(t)).length >= texts.length / 2, count: n, latest: dates.length ? Math.max(...dates) : null };
-  }
-  const gh = /^(?:https?:\/\/)?github\.com\/([\w.-]+\/[\w.-]+?)(?:\.git)?(?:\/.*)?$/i.exec(line2);
-  if (gh && !/^(orgs|topics|search|settings|marketplace)\//.test(gh[1])) {
-    const commits = await ghCommits(gh[1]);
-    if (!commits.length) throw new Error("\u4ED3\u5E93\u6CA1\u6709\u516C\u5F00\u63D0\u4EA4\u8BB0\u5F55");
-    const subLike = commits.slice(0, 5).filter((c) => /节点|v2ray|clash|vless|trojan|机场|proxy/i.test(c.title)).length >= 3;
-    if (subLike) throw new Error("\u8FD9\u662F\u4EE3\u7406\u8282\u70B9\u4ED3\u5E93\uFF0C\u4E0D\u518D\u6536\u5F55");
-    return {
-      src: { name: `GitHub \xB7 ${gh[1]}`, type: "repo", repo: gh[1], mode: "diff", enabled: true },
-      zh: commits.some((c) => CJK3.test(c.title)),
-      count: commits.length,
-      latest: commits[0].date,
-      sample: commits.slice(0, 3).map((c) => c.title.slice(0, 40))
-    };
-  }
-  if (!/^https?:\/\//.test(line2)) throw new Error("\u4E0D\u662F\u7F51\u5740\u3001t.me \u94FE\u63A5\u3001GitHub \u4ED3\u5E93\u6216 @\u9891\u9053");
-  const page = await getHead(line2);
-  let info = feedInfo(page.text), feed = page.url;
-  if (!info) {
-    const alts = [...page.text.matchAll(/<link[^>]+type=["']application\/(?:rss|atom)\+xml["'][^>]*>/gi)].map((m) => (/href=["']([^"']+)["']/.exec(m[0]) || [])[1]).filter(Boolean).filter((h2) => !/comments/.test(h2));
-    const origin = new URL(page.url).origin;
-    const tries = [...alts.map((h2) => new URL(h2, page.url).href), `${origin}/feed`, `${origin}/rss.xml`, `${origin}/feed.xml`].filter((v, i, a) => a.indexOf(v) === i).slice(0, alts.length ? 2 : 3);
-    for (const u of tries) {
-      try {
-        const f = await getHead(u);
-        info = feedInfo(f.text);
-        if (info) {
-          feed = f.url;
-          break;
-        }
-      } catch {
-      }
-    }
-    if (!info) throw new Error("\u6CA1\u627E\u5230 RSS/Atom \u8BA2\u9605\u5730\u5740");
-  }
-  const h = hostOf(feed);
-  return { src: { name: info.name || h, type: "rss", url: feed, enabled: true }, zh: info.zh, count: info.count, latest: info.latest, sample: info.sample };
-}
-function toCandidate(p, have) {
-  const k = sourceKey(p.src);
-  const h = hostOf(p.src.url || "");
-  const why = have.has(k) ? "\u5DF2\u6709" : p.zh === false ? "\u82F1\u6587" : hostIn(h, BLOCKED_HOSTS) ? "\u673A\u623F\u5E38\u88AB\u62E6" : p.count === 0 ? "\u6CA1\u6709\u6761\u76EE" : p.latest && Date.now() - p.latest > 180 * 864e5 ? "\u534A\u5E74\u6CA1\u66F4\u65B0" : "";
-  const facts = [p.count != null ? p.count + " \u6761" : "", p.latest !== void 0 ? ago(p.latest) : ""].filter(Boolean).join(" \xB7 ");
-  return { key: k, suggest: !why, why, facts, sample: (p.sample || []).join(" / ").slice(0, 120), src: p.src };
-}
-async function probeInputs(current, lines2) {
-  const have = new Set(current.map(sourceKey));
-  const items = [], errors = [];
-  const list = [...new Set(lines2.map((x) => x.trim()).filter(Boolean))].slice(0, 15);
-  const res = await Promise.allSettled(list.map(probeOne));
-  res.forEach((r, i) => r.status === "fulfilled" ? items.push(toCandidate(r.value, have)) : errors.push(`${list[i].slice(0, 60)}\uFF1A${r.reason?.message || r.reason}`));
-  return { groups: items.length ? [{ id: "batch", label: "\u6279\u91CF\u6DFB\u52A0", items }] : [], existing: items.filter((x) => x.why === "\u5DF2\u6709").length, errors };
-}
-async function discoverSources(current, keyword, searchFn) {
-  const have = new Set(current.map(sourceKey));
-  const haveHosts = new Set(current.map((x) => hostOf(x.url || "")).filter(Boolean));
-  const { results, errors } = await searchFn([`${keyword} RSS \u8BA2\u9605`, `${keyword} \u535A\u5BA2`]);
-  const hosts = [];
-  for (const r of results) {
-    const h = hostOf(r.url);
-    if (!h || hosts.some((x) => x.h === h) || haveHosts.has(h) || hostIn(h, SKIP_HOSTS) || hostIn(h, BLOCKED_HOSTS)) continue;
-    hosts.push({ h, url: new URL(r.url).origin + "/", title: r.title });
-    if (hosts.length >= 8) break;
-  }
-  const res = await Promise.allSettled(hosts.map((x) => probeOne(x.url)));
-  const items = [], miss = [];
-  res.forEach((r, i) => r.status === "fulfilled" ? items.push(toCandidate(r.value, have)) : miss.push(hosts[i].h));
-  if (miss.length) errors.push(`\u8FD9\u4E9B\u7AD9\u6CA1\u627E\u5230\u8BA2\u9605\u5730\u5740\uFF1A${miss.join("\u3001")}`);
-  return { groups: items.length ? [{ id: "discover", label: `\u641C\u7D22\u300C${keyword}\u300D\u53D1\u73B0`, items }] : [], existing: items.filter((x) => x.why === "\u5DF2\u6709").length, errors, searched: hosts.length };
-}
-var FREEBIE_SEEDS_URL, CJK3, EN_HOSTS, BLOCKED_HOSTS, NEWS_HOSTS, ZH_HOSTS, CAT_HINT, hostOf, hostIn, reEscape, UA2, SKIP_HOSTS, decode, ago;
-var init_sources_sync = __esm({
-  "src/sources-sync.js"() {
-    init_db();
-    init_crawler();
-    FREEBIE_SEEDS_URL = "https://raw.githubusercontent.com/ZiChuanLan/freebie-radar/main/src/server/collectors/index.ts";
-    CJK3 = /[\u4e00-\u9fff]/;
-    EN_HOSTS = ["reddit.com", "itch.io", "isthereanydeal.com", "indiegamebundles.com", "freesteamkeys.com", "gg.deals", "giveawayoftheday.com", "tickcoupon.com", "sharewareonsale.com", "lowendtalk.com", "lowendspirit.com", "lowendbox.com", "news.ycombinator.com"];
-    BLOCKED_HOSTS = ["linux.do", "reddit.com", "deepflood.com", "52pojie.cn", "hostloc.com", "423down.com"];
-    NEWS_HOSTS = ["chinanews.com.cn", "wallstreetcn.com", "qbitai.com", "leiphone.com", "tmtpost.com", "ifanr.com", "36kr.com", "huxiu.com", "cctv.com", "thepaper.cn", "sspai.com", "ithome.com", "cnbeta.com.tw"];
-    ZH_HOSTS = ["linux.do", "nodeseek.com", "nodeloc.com", "deepflood.com", "vpsgo.com", "vpsxb.net", "keylol.com", "free.com.tw", "v2ex.com", "appinn.com", "appinn.net", "ghxi.com", "yxssp.com", "iplaysoft.com", "vpsjxw.com", "laozuo.org", "veidc.com", "vpser.net", "banwagong.net"];
-    CAT_HINT = { vps: "hosting", hosting: "hosting", software: "software", pan: "pan", game: "game", ai: "ai", domain: "domain", cloud: "cloud", dev: "dev", edu: "edu", course: "course", media: "media", design: "design" };
-    hostOf = (u) => {
-      try {
-        return new URL(u).hostname.replace(/^www\./, "").toLowerCase();
-      } catch {
-        return "";
-      }
-    };
-    hostIn = (h, list) => list.some((d) => h === d || h.endsWith("." + d));
-    reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    UA2 = { "User-Agent": "Mozilla/5.0 (compatible; free-resource-radar)", Accept: "text/html,application/xml,application/rss+xml,*/*" };
-    SKIP_HOSTS = ["zhihu.com", "bilibili.com", "weixin.qq.com", "qq.com", "baidu.com", "csdn.net", "github.com", "gitee.com", "douyin.com", "weibo.com", "xiaohongshu.com", "toutiao.com", "sohu.com", "163.com", "sina.com.cn", "youtube.com", "google.com", "wikipedia.org", "jianshu.com", "juejin.cn", "cnblogs.com", "smzdm.com", "taobao.com", "jd.com", "apple.com", "microsoft.com"];
-    decode = (s) => String(s || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
-    ago = (t) => {
-      if (!t) return "\u65E0\u65E5\u671F";
-      const d = Math.floor((Date.now() - t) / 864e5);
-      return d <= 0 ? "\u4ECA\u5929\u66F4\u65B0" : d + " \u5929\u524D\u66F4\u65B0";
-    };
+    STEP_LABEL = { source: "\u6293\u53D6", search: "\u641C\u7D22", radar: "AI \u798F\u5229\u96F7\u8FBE", judge: "\u5224\u5B9A", cleanup: "\u6E05\u7406", mail: "\u63A8\u9001", check: "\u5931\u6548\u68C0\u6D4B", suggest: "\u63A8\u8350\u65B0\u6E90", dedup: "\u667A\u80FD\u53BB\u91CD", watch: "\u5173\u952E\u8BCD\u63D0\u9192", translate: "\u7FFB\u8BD1\u82F1\u6587" };
   }
 });
 
@@ -3598,21 +3762,21 @@ async function liveHead(env) {
     headMeta(env, st, now),
     env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ${ORDER} LIMIT ${HEAD_N}`).bind(fresh).all()
   ]);
-  const items = shapeItems(rows.results);
+  const items = shapeItems(rows.results, st);
   return pack({ ...meta, ver: "live", parts: meta.total > HEAD_N ? -1 : 0, items });
 }
 async function livePart(env, i) {
   const st = await getBasicSettings(env);
   const { fresh, live } = windowOf(st);
   const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ${ORDER} LIMIT ${PART} OFFSET ?`).bind(fresh, HEAD_N + (i - 1) * PART).all();
-  const items = shapeItems(rows.results);
+  const items = shapeItems(rows.results, st);
   return pack({ items, more: items.length >= PART });
 }
 async function liveOld(env) {
   const st = await getBasicSettings(env);
   const { cutoff, fresh, live } = windowOf(st);
   const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND published_at >= ? AND published_at < ? ORDER BY published_at DESC LIMIT ${OLD_N}`).bind(cutoff, fresh).all();
-  return pack({ items: shapeItems(rows.results) });
+  return pack({ items: shapeItems(rows.results, st) });
 }
 async function snapStep(env, force = false) {
   await ensureSnapTable(env);
@@ -3641,15 +3805,15 @@ async function snapStep(env, force = false) {
     ]);
     b.n = Math.max(0, Math.ceil((meta.total - HEAD_N) / PART));
     b.meta = true;
-    await put("head", pack({ ...meta, ver: b.ver, parts: b.n, items: shapeItems(rows.results) }));
+    await put("head", pack({ ...meta, ver: b.ver, parts: b.n, items: shapeItems(rows.results, st) }));
     b.i = 1;
   } else if (b.i <= b.n) {
     const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ${ORDER} LIMIT ${PART} OFFSET ?`).bind(fresh, HEAD_N + (b.i - 1) * PART).all();
-    await put("part:" + b.i, pack({ items: shapeItems(rows.results) }));
+    await put("part:" + b.i, pack({ items: shapeItems(rows.results, st) }));
     b.i++;
   } else {
     const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND published_at >= ? AND published_at < ? ORDER BY published_at DESC LIMIT ${OLD_N}`).bind(cutoff, fresh).all();
-    await put("old", pack({ items: shapeItems(rows.results) }));
+    await put("old", pack({ items: shapeItems(rows.results, st) }));
     await env.DB.batch([
       env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('meta:snap_ver', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(b.ver),
       env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('meta:snap_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(String(b.at)),
@@ -3673,7 +3837,7 @@ var init_snap = __esm({
     OLD_N = 200;
     ITEM_COLS = "id, title, url, source, published_at, fetched_at, day, category, name, summary, signup, score, obtain, target, sources, extra, expires_at, up, down, dead";
     ORDER = "ORDER BY published_at IS NULL, published_at DESC, fetched_at DESC, id";
-    shapeItems = (rows) => foldItems(rows || []).map((it) => {
+    shapeItems = (rows, st) => zhOnly(foldItems(rows || []), st).map((it) => {
       if (it.extra) {
         try {
           it.extra = JSON.parse(it.extra);
@@ -3917,6 +4081,10 @@ var init_admin = __esm({
   .item:first-child { border-top:none; }
   .item:hover { background:var(--hover); }
   .item.gone { opacity:.3; pointer-events:none; }
+  .item.cur { background:#eef2ff; box-shadow:inset 3px 0 0 #4f46e5; }
+  .bbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 16px; border-bottom:1px solid var(--line); position:sticky; top:0; background:#fff; z-index:2; }
+  .bbar .kbd { cursor:help; }
+  .score .pick { display:block; margin:4px auto 0; }
   .score { font:700 13px/22px var(--mono); color:var(--ink-4); text-align:center; background:var(--muted); border-radius:7px; font-variant-numeric:tabular-nums; }
   .score.hi { color:var(--deal); background:var(--deal-bg); }
   .t { font-size:14.5px; font-weight:600; color:var(--ink); line-height:1.4; word-break:break-word; }
@@ -4045,6 +4213,7 @@ var init_admin = __esm({
           <span style="flex:1"></span>
           <button onclick="clearStatus()" style="color:var(--alert)">\u6E05\u7A7A\u5F53\u524D</button>
         </div>
+        <div class="bbar" id="bbar"><label class="sw"><input type="checkbox" id="pickAll" onchange="pickAll(this.checked)" />\u5168\u9009</label><span id="pickN" class="hint"></span><span class="sp" style="flex:1"></span><button class="btn sm" onclick="batchSet('approved', this)">\u901A\u8FC7\u9009\u4E2D</button><button class="btn sm" onclick="batchSet('rejected', this)">\u62D2\u7EDD\u9009\u4E2D</button><button class="btn sm" onclick="batchSet('pending', this)">\u91CD\u5224\u9009\u4E2D</button><button class="btn sm danger" onclick="batchSet('delete', this)">\u5220\u9664\u9009\u4E2D</button><span class="hint kbd" title="j / k \u4E0A\u4E0B\u79FB\u52A8\uFF0Cx \u9009\u4E2D\uFF0Ca \u901A\u8FC7\uFF0Cr \u62D2\u7EDD\uFF0Cp \u91CD\u5224\uFF0Co \u6253\u5F00\u94FE\u63A5\uFF0CShift+A \u901A\u8FC7\u5168\u90E8\u9009\u4E2D">\u5FEB\u6377\u952E ?</span></div>
         <div id="items" class="list"><div class="empty">\u52A0\u8F7D\u4E2D\u2026</div></div>
       </div>
 
@@ -4078,13 +4247,20 @@ var init_admin = __esm({
               </div>
             </div>
             <div class="row" style="gap:22px">
-              <label class="sw"><input type="checkbox" data-key="filter_english" />\u8FC7\u6EE4\u7EAF\u82F1\u6587\u5185\u5BB9</label>
+              <label class="sw"><input type="checkbox" data-key="filter_english" />\u8FC7\u6EE4\u82F1\u6587\u5185\u5BB9\uFF08\u6807\u9898\u6CA1\u6709\u4E2D\u6587\u5C31\u4E22\u5F03\uFF0C\u5DF2\u6709\u7684\u4E5F\u9690\u85CF\uFF09</label>
+              <label class="sw"><input type="checkbox" data-key="translate_english" />\u82F1\u6587\u7FFB\u8BD1\u6210\u4E2D\u6587\uFF08\u5173\u95ED\u8FC7\u6EE4\u82F1\u6587\u540E\u624D\u7528\u5F97\u5230\uFF09</label>
+              <label class="sw"><input type="checkbox" data-key="hide_english" />\u6CA1\u7FFB\u6210\u4E2D\u6587\u7684\u6761\u76EE\u4E0D\u5C55\u793A\u3001\u4E0D\u63A8\u9001</label>
+              <label class="sw"><input type="checkbox" data-key="source_suggest" />\u6BCF\u5929\u641C\u7D22\u63A8\u8350\u65B0\u8BA2\u9605\u6E90</label>
               <label class="sw"><input type="checkbox" data-key="noise_filter" />\u8DF3\u8FC7\u6C42\u52A9 / \u5410\u69FD\u5E16</label>
               <label class="sw"><input type="checkbox" data-key="keep_undated" />\u4FDD\u7559\u6CA1\u6709\u53D1\u5E03\u65E5\u671F\u7684</label>
             </div>
             <div class="grid2">
               <div><label class="f">\u53EA\u8981\u6700\u8FD1\u591A\u5C11\u5929\u53D1\u5E03\u7684</label><input type="number" data-key="max_age_days" min="1" /></div>
               <div><label class="f">\u6570\u636E\u4FDD\u7559\u5929\u6570\uFF08\u5230\u671F\u81EA\u52A8\u6E05\u7406\uFF09</label><input type="number" data-key="retention_days" min="1" max="365" /></div>
+            </div>
+            <div class="grid2">
+              <div><label class="f">\u5DF2\u901A\u8FC7\u6761\u76EE\u5F52\u6863\u5929\u6570\uFF08\u8D44\u6E90\u9875\u53EF\u641C\u7D22\uFF09</label><input type="number" data-key="archive_days" min="0" max="730" /></div>
+              <div><label class="f">\u574F\u6E90\u5904\u7406</label><label class="sw" style="margin-top:8px"><input type="checkbox" data-key="source_auto_off" />\u8FDE\u7EED 3 \u5929\u5931\u8D25\u81EA\u52A8\u505C\u7528</label></div>
             </div>
             <div class="grid2">
               <div><label class="f">\u53D1\u5E03\u8D85\u8FC7\u591A\u5C11\u5929\u7B97\u300C\u8F83\u65E9\u53D1\u5E03\u300D</label><input type="number" data-key="fresh_days" min="1" max="365" /></div>
@@ -4144,7 +4320,7 @@ var init_admin = __esm({
           </div>
         </div>
         <div class="section">
-          <header><h2>\u6570\u636E\u6E90</h2><span class="hint" id="srcCount"></span><span class="sp"></span><button class="btn sm" onclick="openSync(this)" title="\u4ECE\u5185\u7F6E\u63A8\u8350\u548C freebie-radar \u7B49\u5730\u5740\u62C9\u53D6\u65B0\u6E90">\u21BB \u66F4\u65B0\u6E90</button><button class="btn sm" onclick="openDiscover()" title="\u7528\u5DF2\u5F00\u542F\u7684\u641C\u7D22\u540E\u7AEF\u627E\u65B0\u7684\u8BA2\u9605\u6E90">\u2315 \u53D1\u73B0\u65B0\u6E90</button><button class="btn sm" onclick="openBatch()" title="\u4E00\u6B21\u7C98\u8D34\u591A\u4E2A\u7F51\u5740 / t.me \u94FE\u63A5 / @\u9891\u9053">\uFF0B \u6279\u91CF\u6DFB\u52A0</button></header>
+          <header><h2>\u6570\u636E\u6E90</h2><span class="hint" id="srcCount"></span><span class="sp"></span><button class="btn sm" onclick="openSuggest(this)" title="\u6BCF\u5929\u81EA\u52A8\u641C\u7D22\u4E00\u4E2A\u5206\u7C7B\uFF0C\u63A8\u8350\u8FD8\u6CA1\u8BA2\u9605\u7684\u4E2D\u6587 RSS \u6E90">\u2605 \u6BCF\u65E5\u63A8\u8350<b id="sugN" style="margin-left:4px;color:var(--accent,#4f46e5)"></b></button><button class="btn sm" onclick="openSync(this)" title="\u4ECE\u5185\u7F6E\u63A8\u8350\u548C freebie-radar \u7B49\u5730\u5740\u62C9\u53D6\u65B0\u6E90">\u21BB \u66F4\u65B0\u6E90</button><button class="btn sm" onclick="openDiscover()" title="\u7528\u5DF2\u5F00\u542F\u7684\u641C\u7D22\u540E\u7AEF\u627E\u65B0\u7684\u8BA2\u9605\u6E90">\u2315 \u53D1\u73B0\u65B0\u6E90</button><button class="btn sm" onclick="openBatch()" title="\u4E00\u6B21\u7C98\u8D34\u591A\u4E2A\u7F51\u5740 / t.me \u94FE\u63A5 / @\u9891\u9053">\uFF0B \u6279\u91CF\u6DFB\u52A0</button></header>
           <div class="body" style="padding-top:12px">
             <div class="srcbar"><input type="text" id="srcQ" placeholder="\u641C\u7D22\u6E90\u540D\u79F0 / \u5730\u5740" oninput="renderSources()" /><select id="srcF" onchange="renderSources()"><option value="">\u5168\u90E8</option><option value="on">\u5DF2\u542F\u7528</option><option value="off">\u5DF2\u505C\u7528</option><option value="limited">\u9650\u5B9A\u4E86\u5206\u7C7B</option><option value="bad">\u8FD1 7 \u5929\u6709\u95EE\u9898</option></select><button class="btn sm" id="offBad" onclick="disableBad()" style="display:none">\u505C\u7528\u6709\u95EE\u9898\u7684\u6E90</button></div>
             <div class="srclist" id="srcList"></div>
@@ -4573,7 +4749,7 @@ function route() {
   $('#title').textContent = TITLES[key];
   drawer(false);
   if (key === 'runs' && TOKEN) loadRuns();
-  if (key === 'collect' && TOKEN) { loadCronKey(); loadHealth(); }
+  if (key === 'collect' && TOKEN) { loadCronKey(); loadHealth(); loadSuggest(); }
   window.scrollTo({ top: 0 });
 }
 window.addEventListener('hashchange', route);
@@ -4659,7 +4835,7 @@ function renderSources() {
       '<div class="snm">' + esc(x.name || '\u672A\u547D\u540D') + '<span class="tag">' + (TYPE_ZH[x.type || 'rss'] || x.type) + '</span>' + (x.trusted ? '<span class="tag free">\u514D\u5BA1</span>' : '') + (x.include ? '<span class="tag" title="\u6807\u9898\u9700\u5339\u914D\uFF1A' + esc(x.include) + '">\u6709\u6807\u9898\u7B5B\u9009</span>' : '') + '<small>' + esc(srcWhere(x)) + (x.every ? ' \xB7 \u6BCF ' + x.every + ' \u5C0F\u65F6' : '') + '</small>' + healthHtml(x) + '</div>' +
       '<div class="scats" title="\u70B9\u51FB\u8BBE\u7F6E\u5206\u7C7B">' + chips + (x.hint && !fixed ? '<span class="tag" title="\u9ED8\u8BA4\u5206\u7C7B">\u9ED8\u8BA4 ' + esc(CAT[x.hint] || x.hint) + '</span>' : '') + '</div>' +
       '<button class="sdel" title="\u5220\u9664">\xD7</button>';
-    row.querySelector('input').onchange = (e) => { const l = srcList(); l[i].enabled = e.target.checked; setSrc(l); };
+    row.querySelector('input').onchange = (e) => { const l = srcList(); l[i].enabled = e.target.checked; if (e.target.checked) { delete l[i].auto_off; delete l[i].auto_err; } setSrc(l); };
     row.querySelector('.sdel').onclick = () => { if (confirm('\u5220\u9664\u300C' + (x.name || '') + '\u300D\uFF1F')) { const l = srcList(); l.splice(i, 1); SRC_OPEN = -1; setSrc(l); } };
     row.querySelector('.scats').onclick = () => { SRC_OPEN = SRC_OPEN === i ? -1 : i; renderSources(); };
     if (SRC_OPEN === i) {
@@ -4692,6 +4868,7 @@ function healthOf(x) {
   return { ...h, bad };
 }
 function healthHtml(x) {
+  if (x.auto_off) return '<span class="shealth bad" title="' + esc(x.auto_err || '') + '">\u26A0 ' + esc(x.auto_off) + ' \u8FDE\u7EED 3 \u5929\u5931\u8D25\uFF0C\u5DF2\u81EA\u52A8\u505C\u7528\uFF08\u6253\u5F00\u5F00\u5173\u5373\u53EF\u6062\u590D\uFF09</span>';
   const h = healthOf(x);
   if (!h) return '';
   const q = h.q ? ' \xB7 \u8BC4\u5206 ' + h.q.score + '\uFF0830 \u5929\u901A\u8FC7 ' + h.q.ok + '/' + h.q.n + (h.q.up || h.q.down ? '\uFF0C\u503C ' + h.q.up + ' \u4E0D\u503C ' + h.q.down : '') + '\uFF09' + (h.q.low ? ' \xB7 \u5DF2\u81EA\u52A8\u964D\u9891' : '') : '';
@@ -4763,7 +4940,7 @@ function renderSync(r) {
   $('#syncErr').textContent = (r.errors || []).length ? r.errors.join('\uFF1B') : '';
   $('#syncBody').innerHTML = n ? r.groups.map((g, gi) => '<h4>' + esc(g.label) + ' \xB7 ' + g.items.length + ' \u4E2A</h4>' + g.items.map((it, ii) =>
     '<label class="sitem"><input type="checkbox" data-g="' + gi + '" data-i="' + ii + '"' + (it.suggest ? ' checked' : '') + (it.why === '\u5DF2\u6709' ? ' disabled' : '') + ' /><div class="snm">' + esc(it.src.name) + '<span class="tag">' + (TYPE_ZH[it.src.type || 'rss'] || it.src.type) + '</span>' + (it.why ? '<span class="tag why">' + esc(it.why) + '</span>' : '<span class="tag on">\u63A8\u8350</span>') + (it.src.hint ? '<span class="tag">' + esc(CAT[it.src.hint] || it.src.hint) + '</span>' : '') + (it.facts ? '<span class="tag">' + esc(it.facts) + '</span>' : '') + '<small>' + esc(srcWhere(it.src)) + '</small>' + (it.sample ? '<span class="smp">' + esc(it.sample) + '</span>' : '') + '</div></label>').join('')).join('')
-    : '<div class="empty" style="padding:30px 0">' + (SYNC_MODE === 'sync' ? '\u5DF2\u7ECF\u662F\u6700\u65B0\u7684\u4E86\uFF0C\u6CA1\u6709\u65B0\u7684\u6E90\u3002' : '\u6CA1\u6709\u627E\u5230\u53EF\u7528\u7684\u8BA2\u9605\u6E90\u3002') + '</div>';
+    : '<div class="empty" style="padding:30px 0">' + (SYNC_MODE === 'sync' ? '\u5DF2\u7ECF\u662F\u6700\u65B0\u7684\u4E86\uFF0C\u6CA1\u6709\u65B0\u7684\u6E90\u3002' : SYNC_MODE === 'suggest' ? '\u6682\u65F6\u6CA1\u6709\u63A8\u8350\u3002\u6BCF\u5929\u6293\u53D6\u65F6\u4F1A\u81EA\u52A8\u641C\u4E00\u4E2A\u5206\u7C7B\uFF0C\u4E5F\u53EF\u4EE5\u70B9\u300C\u7ACB\u5373\u641C\u4E00\u6B21\u300D\u3002' : '\u6CA1\u6709\u627E\u5230\u53EF\u7528\u7684\u8BA2\u9605\u6E90\u3002') + '</div>';
   syncCount();
 }
 let SYNC_MODE = 'sync';
@@ -4815,10 +4992,36 @@ function subSite(u) {
   let o = u; try { const x = new URL(u); o = x.hostname === 't.me' ? u : x.origin + '/'; } catch {}
   openBatch(o, true);
 }
+// ---- \u6BCF\u65E5\u63A8\u8350\u6E90 ----
+function sugGroups(r) {
+  const by = {};
+  for (const it of r.items || []) (by[it.day + ' \xB7 \u641C\u300C' + it.kw + '\u300D'] ||= []).push(it);
+  return { groups: Object.entries(by).map(([label, items], i) => ({ id: 'sug' + i, label, items })), errors: [] };
+}
+function sugCount(r) { const n = (r.items || []).length; $('#sugN').textContent = n ? n : ''; }
+async function loadSuggest() { try { sugCount(await api('/api/admin/sources/suggest')); } catch {} }
+async function openSuggest(btn) {
+  await busy(btn, async () => {
+    const r = await api('/api/admin/sources/suggest');
+    syncOpen('suggest', '\u6BCF\u65E5\u63A8\u8350\u6E90', '<div class="row"><span class="hint">' + (r.at ? '\u6700\u8FD1\u4E00\u6B21\uFF1A' + esc(r.last) : '\u8FD8\u6CA1\u641C\u8FC7') + '</span><span class="sp" style="flex:1"></span><button class="btn sm" onclick="sugIgnore(this)" title="\u6CA1\u52FE\u9009\u7684\u4EE5\u540E\u4E0D\u518D\u63A8\u8350">\u5FFD\u7565\u672A\u52FE\u9009</button><button class="btn sm" onclick="sugRun(this)">\u7ACB\u5373\u641C\u4E00\u6B21</button></div>');
+    renderSync(sugGroups(r)); sugCount(r);
+  });
+}
+async function sugRun(btn) {
+  $('#syncBody').innerHTML = '<div class="empty" style="padding:24px 0">\u6B63\u5728\u641C\u7D22\u5E76\u68C0\u6D4B\u8BA2\u9605\u5730\u5740\uFF0C\u5927\u7EA6 10\u201320 \u79D2\u2026</div>';
+  await busy(btn, async () => { const r = await api('/api/admin/sources/suggest', { method: 'POST', body: JSON.stringify({ run: true }) }); renderSync(sugGroups(r)); sugCount(r); if (r.run && r.run.kw) toast('\u641C\u300C' + r.run.kw + '\u300D\u65B0\u589E ' + r.run.added + ' \u4E2A', 3000, 'ok'); });
+}
+async function sugIgnore(btn) {
+  const keys = [...$$('#syncBody input:not(:checked)')].map((i) => SYNC.groups[i.dataset.g].items[i.dataset.i].key);
+  if (!keys.length) return toast('\u6CA1\u6709\u672A\u52FE\u9009\u7684', 2000);
+  await busy(btn, async () => { const r = await api('/api/admin/sources/suggest', { method: 'POST', body: JSON.stringify({ ignore: keys }) }); renderSync(sugGroups(r)); sugCount(r); toast('\u5DF2\u5FFD\u7565 ' + keys.length + ' \u4E2A\uFF0C\u4EE5\u540E\u4E0D\u518D\u63A8\u8350', 2500, 'ok'); });
+}
 function closeSync() { $('#syncModal').classList.remove('on'); }
 function applySync() {
   // \u4ECE\u5206\u7C7B\u5FEB\u6377\u8BCD\u53D1\u73B0\u7684\u6E90\uFF0C\u9ED8\u8BA4\u5206\u7C7B\u5C31\u8BBE\u6210\u90A3\u4E2A\u5206\u7C7B
-  const add = [...$$('#syncBody input:checked')].map((i) => SYNC.groups[i.dataset.g].items[i.dataset.i].src).map((x) => (SYNC_MODE === 'discover' && DISC_CAT && !x.hint ? { ...x, hint: DISC_CAT } : x));
+  const picked = [...$$('#syncBody input:checked')].map((i) => SYNC.groups[i.dataset.g].items[i.dataset.i]);
+  if (SYNC_MODE === 'suggest') api('/api/admin/sources/suggest', { method: 'POST', body: JSON.stringify({ added: picked.map((x) => x.key) }) }).then(sugCount).catch(() => {});
+  const add = picked.map((x) => x.src).map((x) => (SYNC_MODE === 'discover' && DISC_CAT && !x.hint ? { ...x, hint: DISC_CAT } : x));
   const l = srcList() || [];
   setSrc([...l, ...add]);
   closeSync();
@@ -5046,7 +5249,7 @@ async function loadItems(st) {
     const ob = (it.obtain ? '<span class="ob ' + (it.obtain === 'free' ? 'free' : 'cond') + '">' + OB[it.obtain] + '</span>' : '') +
       (it.dead ? ' <span class="tag bad">\u53EF\u80FD\u5931\u6548</span>' : '') + (it.expires_at ? ' <span class="tag ' + (it.expires_at < Date.now() ? 'bad' : 'warn') + '">\u622A\u6B62 ' + new Date(it.expires_at).toLocaleDateString('zh-CN') + '</span>' : '') +
       (it.up || it.down ? ' <span class="tag" title="\u8D44\u6E90\u9875\u4E0A\u7684 \u503C / \u4E0D\u503C \u6295\u7968">\u503C ' + (it.up || 0) + ' \xB7 \u4E0D\u503C ' + (it.down || 0) + '</span>' : '');
-    return '<div class="item" id="it-' + it.id + '"><div class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '\u2014') + '</div><div>' +
+    return '<div class="item" id="it-' + it.id + '" data-id="' + it.id + '" data-url="' + esc(it.url) + '"><div class="score' + (it.score >= 70 ? ' hi' : '') + '">' + (it.score ?? '\u2014') + '<input type="checkbox" class="pick" data-id="' + it.id + '" onchange="pickCount()" /></div><div>' +
       '<a class="t" href="' + esc(it.url) + '" target="_blank" rel="noopener">' + esc(it.name || it.title) + '</a>' + ob +
       (it.summary ? '<div class="sum">' + esc(it.summary) + '</div>' : '') +
       '<div class="meta">' + [esc(it.source) + (() => { try { const l = JSON.parse(it.sources || '[]'); return l.length ? ' <span class="tag zh" title="' + esc(l.map((x) => x.n).join('\u3001')) + '">+' + l.length + ' \u4E2A\u6765\u6E90</span>' : ''; } catch { return ''; } })(), CAT[it.category] || '', it.signup ? '\u6CE8\u518C\uFF1A' + esc(it.signup) : '', ago(it.published_at), it.judged_by ? esc(it.judged_by) : ''].filter(Boolean).join('<i>\xB7</i>') + '</div>' +
@@ -5058,6 +5261,7 @@ async function loadItems(st) {
       '<button class="btn sm" title="\u68C0\u6D4B\u8FD9\u4E2A\u7F51\u7AD9\u7684\u8BA2\u9605\u5730\u5740\u5E76\u52A0\u4E3A\u6570\u636E\u6E90" onclick="subSite(\\'' + esc(it.url) + '\\')">\u8BA2\u9605\u6B64\u7AD9</button>' +
       '<button class="btn sm danger" onclick="del(\\'' + it.id + '\\', this)">\u5220\u9664</button></div></div>';
   }).join('') : '<div class="empty">\u6682\u65E0</div>';
+  KCUR = -1; $('#pickAll').checked = false; pickCount();
 }
 // \u64CD\u4F5C\u540E\u7ACB\u5373\u4ECE\u5217\u8868\u6DE1\u51FA\uFF0C\u4E0D\u7B49\u6574\u9875\u5237\u65B0
 async function setStatus(id, status, btn) { await busy(btn, async () => { await api('/api/admin/items/' + id, { method: 'POST', body: JSON.stringify({ status }) }); $('#it-' + id)?.classList.add('gone'); toast({ approved: '\u5DF2\u901A\u8FC7', rejected: '\u5DF2\u62D2\u7EDD', pending: '\u5DF2\u653E\u56DE\u5F85\u5224\u5B9A' }[status], 1500, 'ok'); bumpCount(status); }); }
@@ -5067,6 +5271,44 @@ function bumpCount(to) {
   n(CUR, -1); if (to) n(to, 1);
   $('#navPending').textContent = Number($('.tabs [data-st="pending"] .n').textContent) || '';
 }
+// ---- \u6279\u91CF\u5BA1\u6838 + \u952E\u76D8 ----
+let KCUR = -1;
+const rowsLive = () => [...$$('#items .item:not(.gone)')];
+function pickCount() { const n = $$('#items .item:not(.gone) .pick:checked').length; $('#pickN').textContent = n ? '\u5DF2\u9009 ' + n + ' \u6761' : ''; }
+function pickAll(on) { rowsLive().forEach((r) => (r.querySelector('.pick').checked = on)); pickCount(); }
+async function batchSet(status, btn) {
+  const ids = [...$$('#items .item:not(.gone) .pick:checked')].map((i) => i.dataset.id);
+  if (!ids.length) return toast('\u5148\u52FE\u9009\u6761\u76EE', 2000, 'err');
+  if (status === 'delete' && !confirm('\u5220\u9664\u9009\u4E2D\u7684 ' + ids.length + ' \u6761\uFF1F')) return;
+  await busy(btn, async () => {
+    await api('/api/admin/items/batch', { method: 'POST', body: JSON.stringify({ ids, status }) });
+    for (const id of ids) { $('#it-' + id)?.classList.add('gone'); bumpCount(status === 'delete' ? null : status); }
+    $('#pickAll').checked = false; pickCount();
+    toast({ approved: '\u5DF2\u901A\u8FC7 ', rejected: '\u5DF2\u62D2\u7EDD ', pending: '\u5DF2\u653E\u56DE\u5F85\u5224\u5B9A ', delete: '\u5DF2\u5220\u9664 ' }[status] + ids.length + ' \u6761', 2000, 'ok');
+  });
+}
+function kMove(d) {
+  const rows = rowsLive(); if (!rows.length) return;
+  $$('#items .item.cur').forEach((r) => r.classList.remove('cur'));
+  KCUR = Math.max(0, Math.min(rows.length - 1, KCUR + d));
+  rows[KCUR].classList.add('cur'); rows[KCUR].scrollIntoView({ block: 'nearest' });
+}
+document.addEventListener('keydown', (e) => {
+  if (!$('#p-items').classList.contains('on') || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '') && document.activeElement.type !== 'checkbox') return;
+  const rows = rowsLive(); const cur = rows[KCUR];
+  const k = e.key;
+  if (k === 'j' || k === 'ArrowDown') { e.preventDefault(); kMove(1); }
+  else if (k === 'k' || k === 'ArrowUp') { e.preventDefault(); kMove(-1); }
+  else if (k === 'A' && e.shiftKey) batchSet('approved');
+  else if (k === 'x' && cur) { const c = cur.querySelector('.pick'); c.checked = !c.checked; pickCount(); }
+  else if (k === 'o' && cur) window.open(cur.dataset.url, '_blank');
+  else if ((k === 'a' || k === 'r' || k === 'p') && cur) {
+    const st = { a: 'approved', r: 'rejected', p: 'pending' }[k];
+    if (st === CUR) return;
+    setStatus(cur.dataset.id, st).then(() => { KCUR--; kMove(1); });
+  }
+});
 async function clearStatus() { if (!confirm('\u6E05\u7A7A\u5F53\u524D\u5206\u7C7B\u7684\u5168\u90E8\u6761\u76EE\uFF1F')) return; await busy(null, async () => { await api('/api/admin/items?status=' + CUR, { method: 'DELETE' }); loadItems(CUR); }); }
 
 async function loadRuns() {
@@ -5621,7 +5863,7 @@ function render() {
   const all = d.items.filter((it) => matches(it)).sort((a, b) => pubOf(b) - pubOf(a));
   const el = $('#list');
   const filtered = state.grp || state.cat || state.ob || state.src || state.q || state.vendor || state.perk;
-  if (!all.length && !d.old_count) {
+  if (!all.length && !d.old_count && !state.q) {
     el.innerHTML = filtered
       ? '<div class="empty"><b>\u8FD9\u4E2A\u680F\u76EE\u6682\u65F6\u6CA1\u6709\u5185\u5BB9</b>\u6362\u4E2A\u680F\u76EE\uFF0C\u6216\u6E05\u7A7A\u641C\u7D22\u518D\u8BD5\u8BD5</div>'
       : '<div class="empty"><b>\u8FD8\u6CA1\u6709\u6570\u636E</b>' + sched(d) + '\uFF08\u5317\u4EAC\u65F6\u95F4\uFF09\u3002\u521A\u90E8\u7F72\u597D\uFF1F\u53BB <a href="/admin">\u7BA1\u7406\u540E\u53F0</a> \u70B9\u300C\u7ACB\u5373\u6293\u53D6\u300D\u3002</div>';
@@ -5633,7 +5875,7 @@ function render() {
   const recent = feed.filter((it) => !it.published_at || now - it.published_at <= fresh);
   state.list = recent.filter((it) => it.published_at && !it.dead).concat(recent.filter((it) => !it.published_at && !it.dead), recent.filter((it) => it.dead));
   const slice = state.list.slice(0, state.shown);
-  let html = slice.length ? feedHtml(slice) : '<div class="empty" style="padding:40px 20px"><b>\u8FD1 ' + d.fresh_days + ' \u5929\u6CA1\u6709\u65B0\u53D1\u5E03\u7684\u5185\u5BB9</b>\u53EF\u4EE5\u770B\u770B\u66F4\u65E9\u53D1\u5E03\u7684</div>';
+  let html = slice.length ? feedHtml(slice) : state.q ? '<div class="empty" style="padding:40px 20px"><b>\u8FD1\u671F\u6CA1\u6709\u5339\u914D\u300C' + esc(state.q) + '\u300D\u7684\u5185\u5BB9</b>\u53EF\u4EE5\u5728\u5F52\u6863\u91CC\u518D\u641C\u4E00\u4E0B</div>' : '<div class="empty" style="padding:40px 20px"><b>\u8FD1 ' + d.fresh_days + ' \u5929\u6CA1\u6709\u65B0\u53D1\u5E03\u7684\u5185\u5BB9</b>\u53EF\u4EE5\u770B\u770B\u66F4\u65E9\u53D1\u5E03\u7684</div>';
   if (state.list.length > state.shown) html += '<button class="more" id="more">\u518D\u663E\u793A ' + Math.min(PAGE, state.list.length - state.shown) + ' \u6761\uFF08\u5269 ' + (state.list.length - state.shown) + '\uFF09</button>';
   else if (d.old_count) {
     const oldList = state.oldItems ? state.oldItems.filter((it) => matches(it) && !isSub(it)) : null;
@@ -5641,7 +5883,25 @@ function render() {
     html += '<div class="oldbar"><button id="oldBtn">' + (state.oldLoading ? '\u52A0\u8F7D\u4E2D\u2026' : (state.showOld ? '\u6536\u8D77' : '\u5C55\u5F00') + ' ' + d.fresh_days + ' \u5929\u524D\u53D1\u5E03\u7684 ' + (oldList ? n : '\u7EA6 ' + n) + ' \u6761') + '</button></div>';
     if (state.showOld && oldList) html += oldList.length ? feedHtml(oldList.slice(0, 300), { flat: true, old: true }) : '<div class="empty" style="padding:30px 20px">\u6CA1\u6709\u7B26\u5408\u7B5B\u9009\u7684\u8F83\u65E9\u5185\u5BB9</div>';
   }
+  html += archHtml();
   el.innerHTML = html;
+}
+// \u641C\u7D22\u5F52\u6863\uFF1A\u670D\u52A1\u5668\u4E0A\u641C\u5168\u90E8\u5DF2\u901A\u8FC7\u7684\u6761\u76EE\uFF08\u8F83\u65E9\u53D1\u5E03\u3001\u8FD8\u6CA1\u52A0\u8F7D\u7684\u90FD\u80FD\u641C\u5230\uFF09
+function archHtml() {
+  if (!state.q || state.q.length < 2) return '';
+  const a = state.arch;
+  if (!a || a.q !== state.q) return '<div class="oldbar"><button id="archBtn">\u5728\u5F52\u6863\u91CC\u641C\u300C' + esc(state.q) + '\u300D</button></div>';
+  if (a.loading) return '<div class="oldbar"><button disabled>\u6B63\u5728\u641C\u7D22\u5F52\u6863\u2026</button></div>';
+  const have = new Set(state.data.items.map((x) => x.id).concat((state.oldItems || []).map((x) => x.id)));
+  const list = a.items.filter((x) => !have.has(x.id));
+  return '<div class="oldbar"><span style="font-size:13px;color:#6b7280">\u5F52\u6863\u91CC\u53E6\u5916\u627E\u5230 ' + list.length + ' \u6761</span></div>' + (list.length ? feedHtml(list, { flat: true, old: true }) : '');
+}
+async function searchArch() {
+  const q = state.q;
+  state.arch = { q, loading: true, items: [] }; render();
+  try { const r = await fetch('/api/search?q=' + encodeURIComponent(q)); if (!r.ok) throw 0; const j = await r.json(); if (state.q === q) state.arch = { q, items: j.items || [] }; }
+  catch { state.arch = null; toast('\u5F52\u6863\u641C\u7D22\u5931\u8D25\uFF0C\u7A0D\u540E\u518D\u8BD5'); }
+  render();
 }
 async function loadOld() {
   if (state.oldItems || state.oldLoading) return;
@@ -5752,6 +6012,7 @@ document.addEventListener('change', (e) => {
   render();
 });
 let qt = 0;
+document.addEventListener('click', (e) => { if (e.target && e.target.id === 'archBtn') searchArch(); });
 $('#q').oninput = () => { clearTimeout(qt); qt = setTimeout(() => go({ q: $('#q').value.trim() }), 200); };
 document.addEventListener('keydown', (e) => {
   if (e.key === '/' && document.activeElement !== $('#q')) { e.preventDefault(); $('#q').focus(); }
@@ -5993,6 +6254,15 @@ async function handleAdmin(req, env, url) {
     if (!kw) return json({ error: "\u8BF7\u8F93\u5165\u5173\u952E\u8BCD" }, 400);
     return json(await discoverSources(current, kw, (qs) => searchForDiscovery(s, qs)));
   }
+  if (p === "/sources/suggest" && m === "GET") return json(await readSuggest(env));
+  if (p === "/sources/suggest" && m === "POST") {
+    const arr = (v) => Array.isArray(v) ? v.map(String).slice(0, 100) : [];
+    if (body.run) {
+      const r = await dailySuggest(env, await getSettings(env), { force: true });
+      return json({ ...await readSuggest(env), run: r });
+    }
+    return json(await pruneSuggest(env, { added: arr(body.added), ignore: arr(body.ignore) }));
+  }
   if (p === "/mail/test" && m === "POST") {
     const ch = body.channel === "telegram" || /^push:\w+$/.test(body.channel || "") ? body.channel : "mail";
     return json(await sendDigest(env, { force: true, test: true, channel: ch }));
@@ -6060,6 +6330,14 @@ async function handleAdmin(req, env, url) {
     const { results } = await env.DB.prepare("SELECT * FROM items WHERE status = ? ORDER BY published_at DESC LIMIT 300").bind(status).all();
     const { results: counts } = await env.DB.prepare("SELECT status, COUNT(*) AS n FROM items GROUP BY status").all();
     return json({ items: results || [], counts: Object.fromEntries((counts || []).map((r) => [r.status, r.n])) });
+  }
+  if (p === "/items/batch" && m === "POST") {
+    const ids = (Array.isArray(body.ids) ? body.ids : []).map(String).filter((x) => /^[0-9a-f]+$/.test(x)).slice(0, 300);
+    if (!ids.length) return json({ error: "\u6CA1\u6709\u9009\u4E2D\u6761\u76EE" }, 400);
+    if (body.status === "delete") await env.DB.batch(ids.map((id) => env.DB.prepare("DELETE FROM items WHERE id = ?").bind(id)));
+    else if (["approved", "rejected", "pending"].includes(body.status)) await env.DB.batch(ids.map((id) => env.DB.prepare("UPDATE items SET status = ?, judged_by = ?, judged_at = ?, attempts = 0 WHERE id = ?").bind(body.status, "manual", Date.now(), id)));
+    else return json({ error: "status \u65E0\u6548" }, 400);
+    return json({ ok: true, n: ids.length });
   }
   const im = p.match(/^\/items\/([0-9a-f]+)$/);
   if (im && m === "POST") {
@@ -6139,7 +6417,7 @@ async function health(env) {
     const r = await env.DB.prepare("SELECT id, started_at, finished_at FROM runs ORDER BY id DESC LIMIT 1").first();
     return { last: r || null };
   });
-  return { ok: Object.values(out).every((x) => x.ok), version: "3.0.0", checks: out };
+  return { ok: Object.values(out).every((x) => x.ok), version: "3.4.0", checks: out };
 }
 async function handleFetch(req, env, ctx) {
   const url = new URL(req.url);
@@ -6165,7 +6443,7 @@ async function handleFetch(req, env, ctx) {
       const lim = Number((await basic(env)).api_rate_per_min);
       if (!rateOk("api:" + ip, Number.isFinite(lim) ? lim : 120) || url.pathname === "/api/vote" && !rateOk("vote:" + ip, 30)) return json({ error: "\u8BF7\u6C42\u592A\u9891\u7E41\uFF0C\u7A0D\u540E\u518D\u8BD5" }, 429);
     }
-    if (["/", "/index.html", "/api/items", "/api/stats", "/feed.xml", "/api/data", "/api/vote"].includes(url.pathname)) {
+    if (["/", "/index.html", "/api/items", "/api/stats", "/feed.xml", "/api/data", "/api/vote", "/api/search"].includes(url.pathname)) {
       const g = await siteGate(req, env, url);
       if (!g.ok) return url.pathname.startsWith("/api/") || url.pathname === "/feed.xml" ? json({ error: "\u9700\u8981\u8BBF\u95EE\u5BC6\u7801" }, 401) : html(lockPage(), 401);
     }
@@ -6173,6 +6451,14 @@ async function handleFetch(req, env, ctx) {
       const r = await vote(req, env);
       ctx.waitUntil(markDirty(env));
       return r;
+    }
+    if (url.pathname === "/api/search") {
+      const q = String(url.searchParams.get("q") || "").trim().slice(0, 40);
+      if (q.length < 2) return json({ items: [] });
+      const st = await getBasicSettings(env);
+      const like = "%" + q.replace(/[%_\\]/g, (m) => "\\" + m) + "%";
+      const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE status = 'approved' AND (title LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\' OR summary LIKE ? ESCAPE '\\' OR extra LIKE ? ESCAPE '\\' OR url LIKE ? ESCAPE '\\') ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT 80`).bind(like, like, like, like, like).all();
+      return json({ q, items: shapeItems(rows.results, st) });
     }
     if (url.pathname === "/api/data") {
       const JS = "application/json; charset=utf-8";
@@ -6412,6 +6698,7 @@ var init_index = __esm({
     init_extras();
     init_search();
     init_sources_sync();
+    init_suggest();
     init_fold();
     init_snap();
     init_categories();
@@ -6577,7 +6864,7 @@ function tursoD1(rawUrl, token) {
 }
 
 // src/vercel.js
-var VERSION = "3.0.0";
+var VERSION = "3.4.0";
 var app = null;
 var loadErr = null;
 var envCache = null;

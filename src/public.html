@@ -513,7 +513,7 @@ function render() {
   const all = d.items.filter((it) => matches(it)).sort((a, b) => pubOf(b) - pubOf(a));
   const el = $('#list');
   const filtered = state.grp || state.cat || state.ob || state.src || state.q || state.vendor || state.perk;
-  if (!all.length && !d.old_count) {
+  if (!all.length && !d.old_count && !state.q) {
     el.innerHTML = filtered
       ? '<div class="empty"><b>这个栏目暂时没有内容</b>换个栏目，或清空搜索再试试</div>'
       : '<div class="empty"><b>还没有数据</b>' + sched(d) + '（北京时间）。刚部署好？去 <a href="/admin">管理后台</a> 点「立即抓取」。</div>';
@@ -525,7 +525,7 @@ function render() {
   const recent = feed.filter((it) => !it.published_at || now - it.published_at <= fresh);
   state.list = recent.filter((it) => it.published_at && !it.dead).concat(recent.filter((it) => !it.published_at && !it.dead), recent.filter((it) => it.dead));
   const slice = state.list.slice(0, state.shown);
-  let html = slice.length ? feedHtml(slice) : '<div class="empty" style="padding:40px 20px"><b>近 ' + d.fresh_days + ' 天没有新发布的内容</b>可以看看更早发布的</div>';
+  let html = slice.length ? feedHtml(slice) : state.q ? '<div class="empty" style="padding:40px 20px"><b>近期没有匹配「' + esc(state.q) + '」的内容</b>可以在归档里再搜一下</div>' : '<div class="empty" style="padding:40px 20px"><b>近 ' + d.fresh_days + ' 天没有新发布的内容</b>可以看看更早发布的</div>';
   if (state.list.length > state.shown) html += '<button class="more" id="more">再显示 ' + Math.min(PAGE, state.list.length - state.shown) + ' 条（剩 ' + (state.list.length - state.shown) + '）</button>';
   else if (d.old_count) {
     const oldList = state.oldItems ? state.oldItems.filter((it) => matches(it) && !isSub(it)) : null;
@@ -533,7 +533,25 @@ function render() {
     html += '<div class="oldbar"><button id="oldBtn">' + (state.oldLoading ? '加载中…' : (state.showOld ? '收起' : '展开') + ' ' + d.fresh_days + ' 天前发布的 ' + (oldList ? n : '约 ' + n) + ' 条') + '</button></div>';
     if (state.showOld && oldList) html += oldList.length ? feedHtml(oldList.slice(0, 300), { flat: true, old: true }) : '<div class="empty" style="padding:30px 20px">没有符合筛选的较早内容</div>';
   }
+  html += archHtml();
   el.innerHTML = html;
+}
+// 搜索归档：服务器上搜全部已通过的条目（较早发布、还没加载的都能搜到）
+function archHtml() {
+  if (!state.q || state.q.length < 2) return '';
+  const a = state.arch;
+  if (!a || a.q !== state.q) return '<div class="oldbar"><button id="archBtn">在归档里搜「' + esc(state.q) + '」</button></div>';
+  if (a.loading) return '<div class="oldbar"><button disabled>正在搜索归档…</button></div>';
+  const have = new Set(state.data.items.map((x) => x.id).concat((state.oldItems || []).map((x) => x.id)));
+  const list = a.items.filter((x) => !have.has(x.id));
+  return '<div class="oldbar"><span style="font-size:13px;color:#6b7280">归档里另外找到 ' + list.length + ' 条</span></div>' + (list.length ? feedHtml(list, { flat: true, old: true }) : '');
+}
+async function searchArch() {
+  const q = state.q;
+  state.arch = { q, loading: true, items: [] }; render();
+  try { const r = await fetch('/api/search?q=' + encodeURIComponent(q)); if (!r.ok) throw 0; const j = await r.json(); if (state.q === q) state.arch = { q, items: j.items || [] }; }
+  catch { state.arch = null; toast('归档搜索失败，稍后再试'); }
+  render();
 }
 async function loadOld() {
   if (state.oldItems || state.oldLoading) return;
@@ -644,6 +662,7 @@ document.addEventListener('change', (e) => {
   render();
 });
 let qt = 0;
+document.addEventListener('click', (e) => { if (e.target && e.target.id === 'archBtn') searchArch(); });
 $('#q').oninput = () => { clearTimeout(qt); qt = setTimeout(() => go({ q: $('#q').value.trim() }), 200); };
 document.addEventListener('keydown', (e) => {
   if (e.key === '/' && document.activeElement !== $('#q')) { e.preventDefault(); $('#q').focus(); }

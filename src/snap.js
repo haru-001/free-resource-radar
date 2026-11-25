@@ -2,7 +2,7 @@
 // 免费版每次请求只有 10ms CPU，现算几百条数据（解析、折叠、排序、序列化）很容易超时报 1102；
 // 快照由每分钟的定时任务分几步生成（每步最多 PART 条），访问只做一次读取和字符串拼接。
 import { getBasicSettings, getMeta, setMeta, dayOf } from './db.js';
-import { foldItems } from './fold.js';
+import { foldItems, zhOnly } from './fold.js';
 import { GROUPS, CAT_MAP, enabledCats } from './categories.js';
 import { weeklyPicks, perksOf, checkinOf } from './extras.js';
 
@@ -12,7 +12,7 @@ const OLD_N = 200;         // 「较早发布」最多给多少条
 export const ITEM_COLS = 'id, title, url, source, published_at, fetched_at, day, category, name, summary, signup, score, obtain, target, sources, extra, expires_at, up, down, dead';
 const ORDER = 'ORDER BY published_at IS NULL, published_at DESC, fetched_at DESC, id';
 
-export const shapeItems = (rows) => foldItems(rows || []).map((it) => {
+export const shapeItems = (rows, st) => zhOnly(foldItems(rows || []), st).map((it) => {
   if (it.extra) { try { it.extra = JSON.parse(it.extra); } catch { delete it.extra; } } else delete it.extra;
   if (it.published_at) delete it.fetched_at;
   if (it.summary && it.summary.length > 160) it.summary = it.summary.slice(0, 160) + '…';
@@ -87,7 +87,7 @@ export async function liveHead(env) {
     headMeta(env, st, now),
     env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ${ORDER} LIMIT ${HEAD_N}`).bind(fresh).all(),
   ]);
-  const items = shapeItems(rows.results);
+  const items = shapeItems(rows.results, st);
   return pack({ ...meta, ver: 'live', parts: meta.total > HEAD_N ? -1 : 0, items });
 }
 /** 没有快照时按页现算（?page=i，每页 PART 条） */
@@ -95,14 +95,14 @@ export async function livePart(env, i) {
   const st = await getBasicSettings(env);
   const { fresh, live } = windowOf(st);
   const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ${ORDER} LIMIT ${PART} OFFSET ?`).bind(fresh, HEAD_N + (i - 1) * PART).all();
-  const items = shapeItems(rows.results);
+  const items = shapeItems(rows.results, st);
   return pack({ items, more: items.length >= PART });
 }
 export async function liveOld(env) {
   const st = await getBasicSettings(env);
   const { cutoff, fresh, live } = windowOf(st);
   const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND published_at >= ? AND published_at < ? ORDER BY published_at DESC LIMIT ${OLD_N}`).bind(cutoff, fresh).all();
-  return pack({ items: shapeItems(rows.results) });
+  return pack({ items: shapeItems(rows.results, st) });
 }
 
 /** 生成快照的一步。返回 { building, done, step, total } 或 null（不需要生成） */
@@ -132,16 +132,16 @@ export async function snapStep(env, force = false) {
     ]);
     b.n = Math.max(0, Math.ceil((meta.total - HEAD_N) / PART));
     b.meta = true;
-    await put('head', pack({ ...meta, ver: b.ver, parts: b.n, items: shapeItems(rows.results) }));
+    await put('head', pack({ ...meta, ver: b.ver, parts: b.n, items: shapeItems(rows.results, st) }));
     b.i = 1;
   } else if (b.i <= b.n) {
     const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND (published_at IS NULL OR published_at >= ?) ${ORDER} LIMIT ${PART} OFFSET ?`).bind(fresh, HEAD_N + (b.i - 1) * PART).all();
-    await put('part:' + b.i, pack({ items: shapeItems(rows.results) }));
+    await put('part:' + b.i, pack({ items: shapeItems(rows.results, st) }));
     b.i++;
   } else {
     // 最后一步：较早发布的条目，然后切换到新版本、删掉旧版本
     const rows = await env.DB.prepare(`SELECT ${ITEM_COLS} FROM items WHERE ${live} AND published_at >= ? AND published_at < ? ORDER BY published_at DESC LIMIT ${OLD_N}`).bind(cutoff, fresh).all();
-    await put('old', pack({ items: shapeItems(rows.results) }));
+    await put('old', pack({ items: shapeItems(rows.results, st) }));
     await env.DB.batch([
       env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('meta:snap_ver', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(b.ver),
       env.DB.prepare("INSERT INTO secrets (key, value) VALUES ('meta:snap_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(String(b.at)),

@@ -92,11 +92,11 @@ export async function judgeBatch(items, s, bad = []) {
 
 // 英文条目：翻译标题 + 从给出的链接里挑项目地址
 export async function translateBatch(items, s) {
-  const payload = items.map((it, i) => ({ i, title: it.title, name: it.name || null, links: it.links }));
+  const payload = items.map((it, i) => ({ i, title: it.title || null, summary: it.summary || null, name: it.name || null, links: it.links }));
   const content = await chat({
     baseUrl: s.ai_base_url, apiKey: s.ai_api_key, model: s.ai_model,
     messages: [
-      { role: 'system', content: '把每条英文标题翻成简洁自然的简体中文（产品名、品牌名保留英文），不超过 40 字。project：从该条的 links 里挑出项目本身的地址（GitHub 仓库、官网、产品页），新闻 / 论坛 / 聚合页不算，没有就填 null，不要编造。只输出 JSON：{"results":[{"i":0,"zh":"中文标题","project":null}]}' },
+      { role: 'system', content: 'title 不为 null 时，把英文标题翻成简洁自然的简体中文（产品名、品牌名保留英文），不超过 40 字，填 zh；summary 不为 null 时，用简体中文概括成一句话（送什么 / 讲了什么 + 限制），不超过 60 字，填 summary。为 null 的字段输出 null。project：从该条的 links 里挑出项目本身的地址（GitHub 仓库、官网、产品页），新闻 / 论坛 / 聚合页不算，没有就填 null，不要编造。只输出 JSON：{"results":[{"i":0,"zh":"中文标题","summary":"中文简介","project":null}]}' },
       { role: 'user', content: JSON.stringify(payload) },
     ],
   });

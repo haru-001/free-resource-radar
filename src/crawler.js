@@ -1,5 +1,5 @@
 // 抓取、过滤、AI 判定的主流程
-import { getSettings, lines, getMeta, setMeta } from './db.js';
+import { getSettings, saveSettings, lines, getMeta, setMeta } from './db.js';
 import { judgeBatch, translateBatch } from './ai.js';
 import { sendDigest } from './mailer.js';
 import { dayOf } from './db.js';
@@ -8,6 +8,7 @@ import { BACKENDS, BACKEND_MAP, backendReady, runBackend, backendCats } from './
 import { isProxyTopic, isNoiseTitle, guessObtain, compileBlockRules, matchBlock, titleFingerprint, cleanTitle, extractDeadline, extractCodes, firstSentence, stripNegated } from './rules.js';
 import { guessVendor, guessPerk, radarQueries } from './extras.js';
 import { deliver } from './mailer.js';
+import { dailySuggest } from './suggest.js';
 
 const UA = 'Mozilla/5.0 (compatible; FreeResourceRadar/1.0; +https://github.com/haru-001/free-resource-radar)';
 const DAY = 86400000;
@@ -70,14 +71,8 @@ function tag(block, name) {
   return end < 0 ? '' : block.slice(gt + 1, end);
 }
 /** 目标链接的比较键：去掉协议、www / m.、末尾斜杠和跟踪参数 */
-export function targetKey(u) {
-  try {
-    const x = new URL(normalizeUrl(u));
-    // 邀请 / 推广参数不同也算同一个地址
-    for (const k of [...x.searchParams.keys()]) if (/^(aff|aff_code|ref|refer|referral|invite|invite_code|inviter|via|from|share|channel|code)$/i.test(k)) x.searchParams.delete(k);
-    return (x.hostname.replace(/^(www|m)\./, '').toLowerCase() + x.pathname.replace(/\/+$/, '') + x.search).slice(0, 300);
-  } catch { return String(u || '').slice(0, 300); }
-}
+export { targetKey } from './fold.js';
+import { targetKey, keyOf } from './fold.js';
 const mergeSources = (a, b) => { const out = [...a]; for (const x of b) if (!out.some((y) => y.u === x.u)) out.push(x); return out.slice(0, 12); };
 export function parseTelegram(html, ch) {
   const out = [];
@@ -400,6 +395,8 @@ async function fetchSource(src, cutoff, env) {
 
 // ---------- 过滤 ----------
 const CJK = /[\u4e00-\u9fff]/;
+// 中文占比：汉字数 /（汉字数 + 英文单词数）
+export const zhRatio = (t) => { const z = (String(t).match(/[\u3400-\u9fff]/g) || []).length; const w = (String(t).match(/[A-Za-z]{2,}/g) || []).length; return z + w ? z / (z + w) : 1; };
 function isBlocked(u, domains) {
   if (!domains.length) return false;
   let host = '';
@@ -474,6 +471,7 @@ function ctxOf(s, now) {
     blockRules: compileBlockRules(s.block_rules),
     noiseOn: s.noise_filter !== 'false',
     noEnglish: s.filter_english !== 'false',
+    canTranslate: aiReadyOf(s) && s.translate_english !== 'false',
     aiReady: aiReadyOf(s),
   };
 }
@@ -528,7 +526,8 @@ async function ingest(env, c, src, items, stats, log) {
     if (isProxyTopic(it.title + ' ' + (it.raw_text || '').slice(0, 300))) { stats.noise++; continue; }
     if (c.noiseOn && isNoiseTitle(it.title)) { stats.noise++; continue; }
     // 默认过滤纯英文内容：标题、简介、正文前 500 字都没有中文就丢弃
-    if (c.noEnglish && !CJK.test(it.title) && !CJK.test(it.summary || '') && !CJK.test(String(it.raw_text || '').slice(0, 500))) { stats.non_zh++; continue; }
+    // 过滤英文（默认开）：标题没有中文、或标题 + 简介 + 正文开头几乎全是英文，直接丢弃，不翻译
+    if (c.noEnglish && (!CJK.test(it.title) || zhRatio(`${it.title} ${it.summary || ''} ${String(it.raw_text || '').slice(0, 300)}`) < 0.2)) { stats.non_zh++; continue; }
     if (c.blockRules.length && matchBlock(c.blockRules, `${it.title}\n${it.raw_text || ''}`)) { stats.block_rule++; continue; }
     // AI 福利雷达：只要「有福利」的消息，选购指南、对比、问答这类常青文章不要
     if (src.radar && RADAR_SKIP.test(it.title)) { stats.off_topic++; continue; }
@@ -553,9 +552,10 @@ async function ingest(env, c, src, items, stats, log) {
     if (candidates.has(id)) continue;
     // 目标链接相同（TG 转发的博客文章、正文里指向同一个地址），或标题几乎一样：合并成一条，记下其它来源
     const tkey = targetKey(it.target || url);
-    const twin = (fp.length >= 8 && runFp.get(fp)) || [...candidates.values()].find((x) => x.tkey === tkey || (x.target && targetKey(x.url) === tkey));
+    const ukey = targetKey(url);
+    const twin = (fp.length >= 8 && runFp.get(fp)) || [...candidates.values()].find((x) => x.tkey === tkey || x.ukey === tkey || x.tkey === ukey);
     if (twin) { twin.also = mergeSources(twin.also || [], [{ n: it.source, u: url }]); stats.merged++; continue; }
-    const cand = { ...it, url, id, fp, tkey };
+    const cand = { ...it, url, id, fp, tkey, ukey };
     if (fp.length >= 8) runFp.set(fp, cand);
     candidates.set(id, cand);
   }
@@ -576,11 +576,12 @@ async function ingest(env, c, src, items, stats, log) {
   // 库里已有同一目标链接的条目：把来源追加过去，不再新建
   const byTarget = new Map();
   const byFp = new Map();
-  const tkeys = [...new Set([...candidates.values()].flatMap((x) => [x.tkey, targetKey(x.url)]))];
-  for (let i = 0; i < tkeys.length; i += 90) {
-    const chunk = tkeys.slice(i, i + 90);
-    const { results: rows } = await env.DB.prepare(`SELECT id, target, source, url, sources FROM items WHERE target IN (${chunk.map(() => '?').join(',')})`).bind(...chunk).all();
-    for (const row of rows || []) if (!byTarget.has(row.target)) byTarget.set(row.target, row);
+  const tkeys = [...new Set([...candidates.values()].flatMap((x) => [x.tkey, x.ukey]))];
+  for (let i = 0; i < tkeys.length; i += 45) {
+    const chunk = tkeys.slice(i, i + 45);
+    const q = chunk.map(() => '?').join(',');
+    const { results: rows } = await env.DB.prepare(`SELECT id, target, ukey, source, url, sources FROM items WHERE target IN (${q}) OR ukey IN (${q})`).bind(...chunk, ...chunk).all();
+    for (const row of rows || []) for (const k of [row.target, row.ukey || targetKey(row.url)]) if (k && !byTarget.has(k)) byTarget.set(k, row);
   }
   const fpList = [...new Set([...candidates.values()].map((x) => x.fp).filter((f) => f && f.length >= 8))];
   for (let i = 0; i < fpList.length; i += 90) {
@@ -595,15 +596,15 @@ async function ingest(env, c, src, items, stats, log) {
       // 节点订阅这类“一个仓库一条”的条目：有新提交就刷新时间和说明，没变化就不动
       stats.new += existing.has(id) ? 0 : 1;
       stmts.push(
-        env.DB.prepare(`INSERT INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, obtain, score, judged_by, judged_at, target, extra) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', NULL, ?, ?, ?, ?, 'free', 80, 'trusted', ?, ?, ?)
+        env.DB.prepare(`INSERT INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, obtain, score, judged_by, judged_at, target, ukey, extra) VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', NULL, ?, ?, ?, ?, 'free', 80, 'trusted', ?, ?, ?, ?)
           ON CONFLICT(id) DO UPDATE SET title = excluded.title, summary = excluded.summary, extra = excluded.extra, published_at = excluded.published_at, fetched_at = excluded.fetched_at, judged_at = excluded.judged_at, day = excluded.day, status = 'approved' WHERE items.published_at IS NOT excluded.published_at OR items.extra IS NOT excluded.extra`)
-          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || c.now, c.now, today, it.category, it.name || null, it.summary || null, c.now, it.tkey, JSON.stringify(it.extra || {})),
+          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || c.now, c.now, today, it.category, it.name || null, it.summary || null, c.now, it.tkey, it.ukey, JSON.stringify(it.extra || {})),
         env.DB.prepare('INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)').bind(id, null, c.now)
       );
       continue;
     }
     if (existing.has(id)) continue;
-    const prev = byTarget.get(it.tkey) || byTarget.get(targetKey(it.url)) || (it.fp && it.fp.length >= 8 ? byFp.get(it.fp) : null);
+    const prev = byTarget.get(it.tkey) || byTarget.get(it.ukey) || (it.fp && it.fp.length >= 8 ? byFp.get(it.fp) : null);
     if (prev && prev.id !== id) {
       let list = [];
       try { list = JSON.parse(prev.sources || '[]'); } catch {}
@@ -628,10 +629,10 @@ async function ingest(env, c, src, items, stats, log) {
     if (direct) { stats.trusted++; stats.approved++; }
     stmts.push(
       direct
-        ? env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at, target, sources, expires_at, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, c.now, 'approved', it.fp || null, today, it.category, it.name || null, it.summary || firstSentence(it.raw_text, 100), it.signup || null, isInfoCat(it.category) ? null : 'free', 80, 'trusted', c.now, it.tkey, it.also ? JSON.stringify(it.also) : null, exp, extra)
-        : env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, cats, hint, target, sources, expires_at, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, c.now, 'pending', it.fp || null, today, it.cats || null, it.hint || null, it.tkey, it.also ? JSON.stringify(it.also) : null, exp, extra),
+        ? env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, category, name, summary, signup, obtain, score, judged_by, judged_at, target, ukey, sources, expires_at, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, c.now, 'approved', it.fp || null, today, it.category, it.name || null, it.summary || firstSentence(it.raw_text, 100), it.signup || null, isInfoCat(it.category) ? null : 'free', 80, 'trusted', c.now, it.tkey, it.ukey, it.also ? JSON.stringify(it.also) : null, exp, extra)
+        : env.DB.prepare('INSERT OR IGNORE INTO items (id, title, url, source, raw_text, published_at, fetched_at, status, fp, day, cats, hint, target, ukey, sources, expires_at, extra) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+          .bind(id, it.title.slice(0, 500), it.url, it.source || '', (it.raw_text || '').slice(0, 2000), it.published_at || null, c.now, 'pending', it.fp || null, today, it.cats || null, it.hint || null, it.tkey, it.ukey, it.also ? JSON.stringify(it.also) : null, exp, extra),
       env.DB.prepare('INSERT OR IGNORE INTO seen (id, fp, seen_at) VALUES (?, ?, ?)').bind(id, it.fp || null, c.now)
     );
   }
@@ -764,10 +765,30 @@ async function judgeStep(env, c, stats, log, judgedSoFar, capOverride) {
   return (pending || []).length > list.length || (c.aiReady && list.length === perStep);
 }
 
-async function cleanupStep(env, c, stats) {
+// 连续 3 天每次都失败、一条都没抓到的源：自动停用（在源上记 auto_off，后台可以看到、一键恢复）
+async function autoOffSources(env, c, log) {
+  if (c.s.source_auto_off === 'false') return;
+  const { results: rows } = await env.DB.prepare('SELECT name, COUNT(*) AS d, SUM(fetched) AS f, SUM(errors) AS e, MAX(last_err) AS err FROM src_health WHERE day >= ? GROUP BY name HAVING d >= 3 AND f = 0 AND e >= 3').bind(dayOf(c.now - 3 * DAY)).all();
+  if (!(rows || []).length) return;
+  let list; try { list = JSON.parse(c.s.sources); } catch { return; }
+  if (!Array.isArray(list)) return;
+  const bad = new Map(rows.map((r) => [r.name, r]));
+  const off = [];
+  for (const x of list) if (x && x.enabled !== false && bad.has(x.name)) { x.enabled = false; x.auto_off = dayOf(c.now); x.auto_err = String(bad.get(x.name).err || '').slice(0, 120); off.push(x.name); }
+  if (!off.length) return;
+  await saveSettings(env, { sources: JSON.stringify(list) });
+  c.s.sources = JSON.stringify(list);
+  log.push(`⚠ 自动停用 ${off.length} 个连续 3 天失败的源：${off.join('、')}`);
+}
+
+async function cleanupStep(env, c, stats, log = []) {
   const keepMs = Math.max(1, Number(c.s.retention_days) || 15) * DAY;
-  const del = await env.DB.prepare('DELETE FROM items WHERE fetched_at < ? OR (published_at IS NOT NULL AND published_at < ?)').bind(c.now - keepMs, c.cutoff).run();
+  // 已通过的条目留作归档（默认 180 天，可搜索），过了 retention_days 只清掉正文省空间；其它状态照旧按 retention_days 删除
+  const archMs = Math.max(keepMs, Math.max(0, Number(c.s.archive_days) || 0) * DAY);
+  const del = await env.DB.prepare("DELETE FROM items WHERE (status != 'approved' AND fetched_at < ?) OR (status = 'approved' AND fetched_at < ?) OR (published_at IS NOT NULL AND published_at < ?)").bind(c.now - keepMs, c.now - archMs, Math.min(c.cutoff, c.now - archMs)).run();
   stats.expired_removed += del.meta?.changes || 0;
+  if (archMs > keepMs) await env.DB.prepare("UPDATE items SET raw_text = '' WHERE status = 'approved' AND fetched_at < ? AND raw_text != ''").bind(c.now - keepMs).run().catch(() => {});
+  await autoOffSources(env, c, log).catch((e) => log.push('✗ 自动停用源：' + e.message));
   await env.DB.batch([
     env.DB.prepare('DELETE FROM seen WHERE seen_at < ?').bind(Math.min(c.cutoff, c.now - keepMs)),
     env.DB.prepare('DELETE FROM verdicts WHERE at < ?').bind(c.cutoff),
@@ -835,16 +856,19 @@ async function expiryRemind(env, c, log) {
 
 // ---------- 智能去重：AI 提取的名称相同（或中英文标题相同）的同类条目合并为一条，其它来源挂到保留的那条 ----------
 const normName = (x) => String(x || '').toLowerCase().replace(/[\s·:：\-_|【】\[\]()（）"'“”!！?？,.，。]+/g, '').slice(0, 40);
-export async function dedupStep(env, c, stats, log) {
-  if (c.s.ai_dedup === 'false') return false;
-  const { results: rows } = await env.DB.prepare("SELECT id, name, title, url, source, category, score, sources, extra, COALESCE(published_at, fetched_at) AS t FROM items WHERE status = 'approved' AND COALESCE(judged_at, fetched_at) > ? ORDER BY score DESC, t ASC LIMIT 600").bind(c.now - 14 * DAY).all();
+async function dedupStep(env, c, stats, log) {
+  const { results: rows } = await env.DB.prepare("SELECT id, name, title, url, target, ukey, source, category, score, sources, extra, COALESCE(published_at, fetched_at) AS t FROM items WHERE status = 'approved' AND COALESCE(judged_at, fetched_at) > ? ORDER BY score DESC, t ASC LIMIT 600").bind(c.now - 14 * DAY).all();
   const keep = new Map(), stmts = [];
   let n = 0;
   for (const r of rows || []) {
     let x = {}; try { x = r.extra ? JSON.parse(r.extra) : {}; } catch {}
-    const keys = [r.name, x.zh].map(normName).filter((k) => k.length >= 4).map((k) => r.category + '|' + k);
+    const uk = r.ukey || targetKey(r.url);
+    if (!r.ukey) stmts.push(env.DB.prepare('UPDATE items SET ukey = ? WHERE id = ?').bind(uk, r.id)); // 老条目补上自身地址键
+    // 自身地址或指向地址相同 = 同一条信息；名称相同的同类条目也算
+    const keys = [...[keyOf(r.target), uk].filter(Boolean).map((k) => 'u|' + k), ...(c.s.ai_dedup === 'false' ? [] : [r.name, x.zh]).map(normName).filter((k) => k.length >= 4).map((k) => r.category + '|' + k)];
     const hit = keys.map((k) => keep.get(k)).find(Boolean);
     if (!hit) { for (const k of keys) keep.set(k, r); continue; }
+    for (const k of keys) if (!keep.has(k)) keep.set(k, hit);
     if (hit.url === r.url) continue;
     let src = []; try { src = JSON.parse(hit.sources || '[]'); } catch {}
     if (!src.some((y) => y.u === r.url)) src.push({ n: r.source, u: r.url });
@@ -853,7 +877,7 @@ export async function dedupStep(env, c, stats, log) {
     stmts.push(env.DB.prepare('UPDATE items SET sources = ? WHERE id = ?').bind(hit.sources, hit.id));
     n++;
   }
-  if (stmts.length) await env.DB.batch(stmts.slice(0, 200));
+  for (let i = 0; i < stmts.length; i += 100) await env.DB.batch(stmts.slice(i, i + 100));
   if (n) { stats.merged = (stats.merged || 0) + n; log.push(`✓ 智能去重：合并 ${n} 条重复`); }
   return false;
 }
@@ -864,31 +888,40 @@ const REPO_RE = /https?:\/\/(?:github\.com|gitlab\.com|codeberg\.org|huggingface
 const linksOf = (r) => [...new Set([r.url, r.target && /^https?:/.test(r.target) ? r.target : null, ...(String(r.raw_text || '').match(/https?:\/\/[^\s"'<>)\]]+/g) || [])].filter(Boolean))].slice(0, 8);
 async function translateStep(env, c, stats, log) {
   if (c.s.translate_english === 'false') return false;
+  // zv:2 = 标题和简介都处理过；老版本只翻了标题的条目会再补一次简介
   const { results: rows } = await env.DB.prepare(
-    "SELECT id, title, name, url, target, raw_text, extra FROM items WHERE status = 'approved' AND COALESCE(judged_at, fetched_at) > ? AND (extra IS NULL OR extra NOT LIKE '%\"zh\"%') ORDER BY COALESCE(judged_at, fetched_at) DESC LIMIT 300"
+    "SELECT id, title, name, summary, url, target, raw_text, extra FROM items WHERE status = 'approved' AND COALESCE(judged_at, fetched_at) > ? AND (extra IS NULL OR extra NOT LIKE '%\"zv\":2%') ORDER BY COALESCE(judged_at, fetched_at) DESC LIMIT 300"
   ).bind(c.now - 30 * DAY).all();
-  const todo = (rows || []).filter((r) => !HAS_CJK.test(r.title || '') && /[A-Za-z]{3}/.test(r.title || '')).slice(0, 15);
-  if (!todo.length) return false;
-  let tr = new Map();
-  if (c.aiReady) {
-    try { tr = await translateBatch(todo.map((r) => ({ title: r.title, name: r.name, links: linksOf(r) })), c.s); }
-    catch (e) { log.push(`✗ 翻译英文：${e.message}`); return false; }
-  }
-  const stmts = [];
+  const enTitle = (r) => !HAS_CJK.test(r.title || '') && /[A-Za-z]{3}/.test(r.title || '');
+  const enSum = (r) => r.summary && zhRatio(r.summary) < 0.3 && /[A-Za-z]{3}/.test(r.summary);
+  const all = rows || [];
+  const todo = all.filter((r) => enTitle(r) || enSum(r)).slice(0, 15);
+  // 已经是中文的条目直接打上标记，下次不再扫
+  const done = all.filter((r) => !enTitle(r) && !enSum(r)).slice(0, 100);
+  const stmts = done.map((r) => { let x = {}; try { x = r.extra ? JSON.parse(r.extra) : {}; } catch {} x.zv = 2; return env.DB.prepare('UPDATE items SET extra = ? WHERE id = ?').bind(JSON.stringify(x), r.id); });
+  if (!todo.length) { if (stmts.length) await env.DB.batch(stmts); return false; }
+  if (!c.aiReady) { if (stmts.length) await env.DB.batch(stmts); log.push(`– 翻译英文：${todo.length} 条待翻译，未配置 AI，这些条目暂不展示`); return false; }
+  let tr;
+  try { tr = await translateBatch(todo.map((r) => ({ title: enTitle(r) ? r.title : null, summary: enSum(r) ? String(r.summary).slice(0, 400) : null, name: r.name, links: linksOf(r) })), c.s); }
+  catch (e) { if (stmts.length) await env.DB.batch(stmts); log.push(`✗ 翻译英文：${e.message}`); return false; }
+  let n = 0;
   todo.forEach((r, i) => {
     let x = {}; try { x = r.extra ? JSON.parse(r.extra) : {}; } catch {}
     const t = tr.get(i) || {};
     const links = linksOf(r);
     const repo = links.map((u) => (REPO_RE.exec(u) || [])[0]).find(Boolean);
     const proj = repo || (t.project && links.includes(t.project) ? t.project : null);
-    x.zh = t.zh && HAS_CJK.test(t.zh) ? String(t.zh).slice(0, 80) : ''; // 空串 = 处理过但没翻
+    if (enTitle(r)) x.zh = t.zh && HAS_CJK.test(t.zh) ? String(t.zh).slice(0, 80) : '';
+    else if (!('zh' in x)) x.zh = '';
+    if (enSum(r) && t.summary && HAS_CJK.test(t.summary)) x.zs = String(t.summary).slice(0, 120);
+    if ((!enTitle(r) || x.zh) && (!enSum(r) || x.zs)) { x.zv = 2; n++; }
+    else x.zt = (x.zt || 0) + 1, x.zt >= 3 && (x.zv = 2); // 翻 3 次都失败就放弃
     if (proj) x.project = proj.replace(/[.,;]+$/, '');
     stmts.push(env.DB.prepare('UPDATE items SET extra = ? WHERE id = ?').bind(JSON.stringify(x), r.id));
   });
   await env.DB.batch(stmts);
-  const n = todo.filter((_, i) => (tr.get(i) || {}).zh).length;
   stats.translated = (stats.translated || 0) + n;
-  log.push(`✓ 翻译英文：处理 ${todo.length} 条，翻好 ${n} 条` + (c.aiReady ? '' : '（未配置 AI，只提取项目地址）'));
+  log.push(`✓ 翻译英文：处理 ${todo.length} 条，翻好 ${n} 条`);
   return todo.length === 15 && (stats.translated || 0) < 90;
 }
 
@@ -916,7 +949,7 @@ async function watchStep(env, c, stats, log) {
   return false;
 }
 
-const STEP_LABEL = { source: '抓取', search: '搜索', radar: 'AI 福利雷达', judge: '判定', cleanup: '清理', mail: '推送', check: '失效检测', dedup: '智能去重', watch: '关键词提醒', translate: '翻译英文' };
+const STEP_LABEL = { source: '抓取', search: '搜索', radar: 'AI 福利雷达', judge: '判定', cleanup: '清理', mail: '推送', check: '失效检测', suggest: '推荐新源', dedup: '智能去重', watch: '关键词提醒', translate: '翻译英文' };
 
 /** 新建一次运行（已有进行中的运行则直接返回它） */
 export async function planRun(env, trigger = 'cron', opts = {}) {
@@ -961,7 +994,7 @@ export async function planRun(env, trigger = 'cron', opts = {}) {
     // AI 福利雷达：AI 两个分类有勾选、且有可用的搜索后端时，单独跑一步（最多 2 家）
     const cats = enabledCats(s);
     if (s.aifree_radar !== 'false' && ready.length && (cats.includes('ai') || cats.includes('aideal'))) for (const id of ready.slice(0, 2)) steps.push(['radar', { engines: [id] }]);
-    steps.push(['judge', {}], ['translate', {}], ['dedup', {}], ['cleanup', {}], ['check', {}], ['watch', {}]);
+    steps.push(['judge', {}], ['translate', {}], ['dedup', {}], ['cleanup', {}], ['check', {}], ['watch', {}], ['suggest', {}]);
   }
   if (!aiReady) log.push('未配置 AI，使用关键词判定');
 
@@ -1027,10 +1060,15 @@ async function runJob(env, job, c, stats, log, runStats) {
     case 'judge':
       return judgeStep(env, c, stats, log, Math.max(0, (runStats.judged || 0) - (runStats.auto || 0) - (runStats.cached || 0)), p.cap);
     case 'cleanup':
-      await cleanupStep(env, c, stats);
+      await cleanupStep(env, c, stats, log);
       return false;
     case 'check':
       return checkStep(env, c, stats, log);
+    case 'suggest': {
+      const r = await dailySuggest(env, c.s).catch((e) => ({ errors: [e.message] }));
+      if (r) log.push(r.kw ? `✓ 每日推荐源：搜「${r.kw}」，新增 ${r.added} 个候选` : `✗ 每日推荐源：${(r.errors || []).join('；')}`);
+      return false;
+    }
     case 'dedup':
       return dedupStep(env, c, stats, log);
     case 'translate':
